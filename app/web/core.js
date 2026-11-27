@@ -733,6 +733,41 @@ function editRole(h, values, o){
   return {h: finish(out, o), changed: changed};
 }
 function editFields(list){ return EDIT_FIELDS[list] || ADD_FIELDS[list]; }
+
+/* ================= The plan's dates (1.1) ================= */
+/* The first day is optional: nobody may be hired yet, or the start date may not be known. Without it the handover runs with no overlap. */
+var PLAN_FIELDS = [
+  {k: "prepStart", t: "date", req: true, label: "Preparation from", n: "when preparation starts"},
+  {k: "lastDay", t: "date", req: true, label: "The outgoing assistant's last day", n: "the last day"},
+  {k: "firstDay", t: "date", label: "The incoming assistant's first day", hint: "Leave it empty while nobody is hired or the date isn't known. Until it is set, the handover runs with no overlap", n: "the first day"},
+  {k: "track", t: [["light", "Light: asks less of the principal's time"], ["full", "Full"]], req: true, label: "Track", n: "the track"}];
+/* The dates form's starting values, or null when the file has no plan */
+function planValues(h){
+  var p = h.plan; if (!p) return null;
+  var v = {track: p.track || "light"};
+  ["prepStart", "lastDay", "firstDay"].forEach(function(k){ if (p[k] !== undefined) v[k] = p[k]; });
+  return v;
+}
+/* A copy of h with the plan's dates or track changed: values = every field of the form, o = {role (who edited it), date, at}.
+   Step dates are worked out from these, so nothing else moves. Returns {h, changed}; throws with .field set. */
+function editPlan(h, values, o){
+  o = o || {}; values = values || {};
+  if (!h.plan) throw new Error("This file has no handover plan.");
+  var next = readFields(PLAN_FIELDS, values);
+  if (next.prepStart > next.lastDay) throw addError("Preparation has to start on or before the last day.", "prepStart");
+  if (next.firstDay && next.firstDay < next.prepStart) throw addError("The first day can't be before preparation starts.", "firstDay");
+  var out = clone(h), plan = out.plan, changed = [];
+  PLAN_FIELDS.forEach(function(d){
+    var was = d.k === "track" ? plan.track || "light" : plan[d.k];
+    if (was === next[d.k]) return;
+    changed.push(d.k === "firstDay" && next.firstDay === undefined ? "the first day (now not known)" : fieldName(d));
+    if (next[d.k] === undefined) delete plan[d.k]; else plan[d.k] = next[d.k];
+  });
+  if (!changed.length) throw new Error("Nothing has changed.");
+  o.idPrefix = "edit";
+  logChange(out, o, "Edited the handover dates in the app: " + listWords(changed) + ".");
+  return {h: finish(out, o), changed: changed};
+}
 function fieldName(d){ return d.n || (d.k === "text" ? "the text" : d.label.charAt(0).toLowerCase() + d.label.slice(1)); }
 function editList(h, list){
   if (list === "path"){ var all = []; (h.path || []).forEach(function(s){ all = all.concat(s.tasks || []); }); return all; }
@@ -1002,7 +1037,7 @@ function exportItems(h, key, o){
       if (pl){
         dates.push({id: "d-prep", title: "Preparation from", meta: [nice(pl.prepStart, "long")]});
         dates.push({id: "d-last", title: who(h, "outgoing") + "'s last day", meta: [nice(pl.lastDay, "long")]});
-        dates.push({id: "d-first", title: pl.firstDay ? who(h, "incoming") + "'s first day" : "First day", meta: [pl.firstDay ? nice(pl.firstDay, "long") : "Not hired yet"]});
+        dates.push({id: "d-first", title: pl.firstDay || personOf(h, "incoming") ? who(h, "incoming") + "'s first day" : "First day", meta: [pl.firstDay ? nice(pl.firstDay, "long") : personOf(h, "incoming") ? "Not known yet" : "Not hired yet"]});
         dates.push({id: "d-mode", title: ovl ? "Overlap" : "No overlap", meta: [ovl ? "Both assistants work together for a time" : who(h, "principal") + " holds the desk in between"]});
       }
       if (h.timezone) dates.push({id: "d-tz", title: "Timezone", meta: [h.timezone]});
@@ -2106,6 +2141,6 @@ function docXlsx(doc){
 var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);
