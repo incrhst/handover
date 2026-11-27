@@ -789,8 +789,124 @@ function itemsDocument(h, o){
   });
   return {title: o.title || h.title, subtitle: h.title + (o.date ? " · " + nice(o.date, "long") : ""), parts: parts};
 }
+/* ================= Reports for the principal =================
+   Plain documents the principal can be sent at any point. Each opens with a short summary worked out from the file:
+   it states what the file shows and never claims more. Items the principal may not see are left out (spec section 14). */
+var REPORTS = [
+  {key: "working", title: "What we're working on", hint: "What's under way, what's been finished lately, and what's next in the handover"},
+  {key: "jobs", title: "The assistant's jobs", hint: "The regular jobs, and what the assistant decides alone or brings to you"},
+  {key: "needs", title: "What needs you", hint: "Questions waiting for an answer, things handed to you, and the who-decides board to confirm"}
+];
+function forPrincipal(x){ return !Array.isArray(x.visibleTo) || x.visibleTo.indexOf("principal") > -1; }
+function plural(n, one, many){ return n + " " + (n === 1 ? one : many || one + "s"); }
+function isAre(n){ return n === 1 ? "is" : "are"; }
+function addDays(d, n){ var t = new Date(utc(d)); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
+function listWords(xs){ return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]; }
+function principalReport(h, key, o){
+  o = o || {};
+  var date = o.date || new Date().toISOString().slice(0, 10);
+  var P = who(h, "principal"), hasIncoming = (h.people || []).some(function(p){ return (p.roles || []).indexOf("incoming") > -1; });
+  var Afull = hasIncoming ? who(h, "incoming") : who(h, "outgoing"), A = Afull.split(" ")[0];
+  var whoFor = function(role){ return role === "principal" ? "you" : who(h, role); };
+  var meta = REPORTS.filter(function(r){ return r.key === key; })[0];
+  if (!meta) throw new Error("No report called " + key + ".");
+  var open = function(x){ return !x.closed && forPrincipal(x); };
+  var day = function(v){ return nice(String(v).slice(0, 10)); };
+  var OK = "ok", WARN = "warn", BAD = "bad", NEUTRAL = "neutral";
+  /* An item: title (first column), cells (the other columns), status {text, tone}, or a block with a body */
+  var I = function(id, title, cells, status, extra){ var it = {id: id, title: title, cells: cells || [], status: status || null, meta: [], note: "", body: "", block: false, row: []}; Object.keys(extra || {}).forEach(function(k){ it[k] = extra[k]; }); it.meta = it.cells.filter(Boolean).concat(status ? [status.text] : []); return it; };
+  var intro = [], parts = [], figures = [];
+  var part = function(title, columns, groups){ groups = groups.filter(function(g){ return g.items.length; }); if (groups.length) parts.push({key: key, title: title, columns: columns, groups: groups}); };
+  var fig = function(value, label, tone){ figures.push({value: String(value), label: label, tone: tone || NEUTRAL}); };
+  var steps = ((h.plan && h.plan.steps) || []).filter(function(s){ return s.status !== "na"; }), ov = overlap(h.plan);
+  var board = (h.decide && h.decide.cards || []).filter(open);
+  var COL = {alone: A + " decides alone", check: A + " checks with you first", principal: "Always you"};
+  function boardGroups(){
+    return ["alone", "check", "principal"].map(function(c){
+      return {title: COL[c], items: board.filter(function(x){ return x.column === c; }).map(function(x){
+        var ap = x.approver ? (x.approver.role ? whoFor(x.approver.role) : ((h.stakeholders || []).filter(function(s){ return s.id === x.approver.stakeholder; })[0] || {}).name) : "";
+        return I(x.id, x.text, [x.limit ? "Up to " + money(x.limit) : "", ap ? cap(ap) : ""], x.movedByPrincipal ? {text: "You moved this", tone: NEUTRAL} : null);
+      })};
+    });
+  }
+  var BOARD_COLS = ["Kind of decision", "Limit", "Approved by", ""];
+  function findingOut(gp){ return gp.sort(function(a, b){ return (b.blocks ? 1 : 0) - (a.blocks ? 1 : 0); }).map(function(x){ return I(x.id, x.text, [], x.blocks ? {text: "Holds up work", tone: BAD} : {text: "Not holding up work", tone: NEUTRAL}); }); }
+  if (key === "working"){
+    var ip = (h.inProgress || []).filter(open).sort(function(a, b){ return (a.due || "9") < (b.due || "9") ? -1 : 1; });
+    var good = ip.filter(function(x){ return x.owner && x.due; }).length, late = ip.filter(function(x){ return x.due && x.due < date; }).length;
+    if (!ip.length) intro.push("Nothing is half-finished right now.");
+    else intro.push(plural(ip.length, "thing") + " " + isAre(ip.length) + " under way. " + (good === ip.length ? (ip.length === 1 ? "It has" : "Each one has") + " an owner and a date." : good + " of them " + (good === 1 ? "has" : "have") + " an owner and a date; the table shows what the others still need.") + (late ? " " + late + " " + isAre(late) + " past " + (late === 1 ? "its" : "their") + " date." : ""));
+    var since = o.since || addDays(date, -7), done = [];
+    ["inProgress", "gaps", "risks"].forEach(function(l){ (h[l] || []).filter(forPrincipal).forEach(function(x){ if (x.closed && x.closed.at && String(x.closed.at).slice(0, 10) >= since && x.closed.how !== "principal") done.push(x); }); });
+    done.sort(function(a, b){ return a.closed.at < b.closed.at ? -1 : 1; });
+    if (done.length) intro.push("Since " + nice(since, "long") + ", " + plural(done.length, "thing was", "things were") + " finished or settled.");
+    var gp = (h.gaps || []).filter(open), blocking = gp.filter(function(g){ return g.blocks; }).length;
+    intro.push(gp.length ? plural(gp.length, "thing") + " " + isAre(gp.length) + " still being found out" + (blocking ? (gp.length === 1 ? ", and it holds up work today." : ", and " + blocking + " of them " + (blocking === 1 ? "holds" : "hold") + " up work today.") : (gp.length === 1 ? "; it doesn't hold up work today." : "; none of them holds up work today.")) : "Nothing about the role is still unknown.");
+    var sd = steps.filter(function(s){ return s.status === "done"; }).length;
+    if (steps.length) intro.push("The handover plan: " + sd + " of " + plural(steps.length, "step") + " done.");
+    fig(ip.length, "Under way", late ? BAD : good === ip.length ? OK : WARN);
+    fig(done.length, "Finished since " + nice(since), done.length ? OK : NEUTRAL);
+    fig(gp.length, "Still being found out", blocking ? BAD : gp.length ? WARN : OK);
+    if (steps.length) fig(sd + "/" + steps.length, "Handover steps done", sd === steps.length ? OK : NEUTRAL);
+    part("Under way", ["What", "With", "Due", "Status"], [{title: "", items: ip.map(function(x){
+      var st = x.due && x.due < date ? {text: "Past its date", tone: BAD} : !x.owner ? {text: "No one named yet", tone: WARN} : !x.due ? {text: "No date yet", tone: WARN} : {text: "Scheduled", tone: OK};
+      return I(x.id, x.text, [x.owner ? cap(whoFor(x.owner)) : "", x.due ? nice(x.due) : ""], st);
+    })}]);
+    part("Finished since " + nice(since, "long"), ["What", "When", "Where the answer is", "Outcome"], [{title: "", items: done.map(function(x){ return I(x.id, x.text, [day(x.closed.at), x.closed.fix || ""], {text: CLOSE_LABEL[x.closed.how], tone: OK}); })}]);
+    part("Still being found out", ["What " + A + " is finding out", "Effect"], [{title: "", items: findingOut(gp)}]);
+    var next = PHASES.map(function(ph){ return steps.filter(function(s){ return s.phase === ph && s.status === "open"; }); }).filter(function(l){ return l.length; })[0] || [];
+    part("Next in the handover", ["Step", "Who", "Stage"], [{title: "", items: next.map(function(s){ return I(s.id, s.title, [cap(whoFor(s.role)), phaseLabel(s.phase, ov)]); })}]);
+  } else if (key === "jobs"){
+    var rec = h.recurring || [], counts = [];
+    FREQ.forEach(function(f){ var n = rec.filter(function(r){ return f[2].indexOf(r.every) > -1; }).length; if (n) counts.push(n + " " + f[1].toLowerCase()); });
+    intro.push(rec.length ? A + " does " + plural(rec.length, "regular job") + " for you: " + listWords(counts) + ". Each one comes up on " + A + "'s list on the day it's due, with its time." : "No regular jobs are recorded yet.");
+    var c = function(col){ return board.filter(function(x){ return x.column === col; }).length; };
+    if (board.length){
+      intro.push(A + " decides " + plural(c("alone"), "kind of thing", "kinds of thing") + " alone, checks with you first on " + c("check") + ", and always brings " + c("principal") + " to you.");
+      intro.push(h.decide.confirmed ? "You confirmed this" + (h.decide.confirmedAt ? " on " + nice(String(h.decide.confirmedAt).slice(0, 10), "long") : "") + "." : "You haven't confirmed this yet. It is in “What needs you”.");
+    }
+    fig(rec.length, "Regular jobs", rec.length ? OK : NEUTRAL);
+    if (board.length){ fig(c("alone"), A + " decides alone"); fig(c("check"), "Checked with you first"); fig(c("principal"), "Always you"); }
+    var jobs = [];
+    FREQ.forEach(function(f){ rec.filter(function(r){ return f[2].indexOf(r.every) > -1; }).forEach(function(r){ jobs.push(I(r.id, r.text, [f[1].replace(/^Every /, "Each ").replace("Each day", "Daily"), cadence(r), r.time || ""])); }); });
+    part("Regular jobs", ["Job", "How often", "When", "Time"], [{title: "", items: jobs}]);
+    part("Who decides what", BOARD_COLS, boardGroups());
+    var ru = (h.rules || []).filter(open), sits = ru.map(function(r){ return r.situation || ""; }).filter(function(s, i, a){ return a.indexOf(s) === i; }).sort(function(a, b){ return a === "" ? -1 : b === "" ? 1 : 0; });
+    part("When something comes up", ["What happens"], sits.map(function(s){ return {title: s || "Any time", items: ru.filter(function(r){ return (r.situation || "") === s; }).map(function(r){ return I(r.id, r.text); })}; }));
+  } else {
+    var asks = (h.asks || []).filter(function(a){ return a.status === "draft" || a.status === "sent"; });
+    var mins = asks.reduce(function(n, a){ return n + (typeof a.minutes === "number" ? a.minutes : 0); }, 0);
+    var handed = (h.gaps || []).filter(function(g){ return g.closed && g.closed.how === "principal" && forPrincipal(g); });
+    var asked = {}; asks.forEach(function(a){ asked[a.id] = true; });
+    var mine = steps.filter(function(s){ return s.role === "principal" && s.status === "open" && !(s.ask && asked[s.ask]); });
+    var checks = (h.finalCheck || []).filter(function(x){ return x.result === "fail" && x.owner === "principal"; });
+    var confirm = board.length && !(h.decide && h.decide.confirmed);
+    var bits = [];
+    if (asks.length) bits.push(plural(asks.length, "question") + " to answer" + (mins ? " (about " + mins + " minutes in all)" : ""));
+    if (handed.length) bits.push(plural(handed.length, "thing") + " handed to you");
+    if (confirm) bits.push("the who-decides board to confirm");
+    if (mine.length) bits.push(plural(mine.length, "step") + " for you in the handover plan");
+    if (checks.length) bits.push(plural(checks.length, "check") + " waiting on you");
+    intro.push(bits.length ? "Waiting for you: " + listWords(bits) + "." : "Nothing is waiting for you right now.");
+    var gq = (h.gaps || []).filter(open);
+    if (gq.length) intro.push(A + " is still finding out " + plural(gq.length, "thing") + (gq.length === 1 ? ". It is listed at the end, in case you know the answer." : ". They are listed at the end, in case you know the answer."));
+    fig(asks.length, "Questions to answer", asks.length ? WARN : OK);
+    if (asks.length) fig(mins ? "~" + mins : "–", "Minutes needed");
+    fig(handed.length, "Handed to you", handed.length ? WARN : OK);
+    fig(board.length ? (confirm ? "To confirm" : "Confirmed") : "–", "Who decides what", confirm ? WARN : OK);
+    part("Questions for you", [], [{title: "", items: asks.map(function(a){ return I(a.id, ASK_TITLE[a.id], [a.minutes ? "About " + a.minutes + " minutes" : "", a.replyBy ? "Reply by " + nice(a.replyBy, "long") : ""], null, {block: true, body: a.draft || "", note: a["default"] ? "If there's no reply: " + oneLine(a["default"]) : ""}); })}]);
+    part("Handed to you", ["What", "Handed over", "Notes"], [{title: "", items: handed.map(function(g){ return I(g.id, g.text, [g.closed.at ? day(g.closed.at) : "", g.closed.fix || ""]); })}]);
+    if (confirm) part("Please confirm who decides what", BOARD_COLS, boardGroups());
+    part("Your steps in the handover", ["Step", "Stage", "Why"], [{title: "", items: mine.map(function(s){ return I(s.id, s.title, [phaseLabel(s.phase, ov), s.why || ""]); })}]);
+    part("Checks waiting on you", ["Check", "Due", "Note"], [{title: "", items: checks.map(function(x){ return I(x.id, FINAL_TITLE[x.id], [x.due ? nice(x.due) : "", x.note || ""]); })}]);
+    part("Still being found out", ["What " + A + " is finding out", "Effect"], [{title: "", items: findingOut(gq)}]);
+  }
+  return {style: "report", report: key, title: meta.title, subtitle: h.title + " · for " + P + " · " + nice(date, "long"),
+    kicker: "Handover report", role: h.title, preparedFor: P, preparedBy: Afull, date: nice(date, "long"), figures: figures, intro: intro, parts: parts};
+}
 function docMarkdown(doc){
   var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""];
+  if (doc.intro && doc.intro.length) doc.intro.forEach(function(s){ L.push(s, ""); });
   doc.parts.forEach(function(p){
     L.push("## " + p.title, "");
     p.groups.forEach(function(g){
@@ -894,8 +1010,10 @@ function htmlBody(src, base){
   }).join("");
 }
 function docHtml(doc){
+  if (doc.style === "report") return reportHtml(doc);
   var b = [];
   b.push("<h1>" + inlineHtml(doc.title) + "</h1>", '<p class="sub">' + inlineHtml(doc.subtitle) + "</p>");
+  if (doc.intro && doc.intro.length) b.push('<div class="intro">' + doc.intro.map(function(x){ return "<p>" + inlineHtml(x) + "</p>"; }).join("") + "</div>");
   doc.parts.forEach(function(p){
     b.push("<h2>" + inlineHtml(p.title) + "</h2>");
     p.groups.forEach(function(g){
@@ -917,7 +1035,7 @@ function docHtml(doc){
   return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(doc.title) + "</title><style>" +
     "body{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f;max-width:720px;margin:24px auto;padding:0 16px}" +
     "h1{font-size:20pt;margin:0 0 4px}h2{font-size:15pt;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}h3{font-size:12pt;margin:14px 0 4px}" +
-    ".sub{color:#666;margin:0 0 12px}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
+    ".sub{color:#666;margin:0 0 12px}.intro{background:#f3f6f1;border-left:3px solid #4f7a5a;padding:8px 14px;margin:8px 0 16px}.intro p{margin:6px 0}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
     "table{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:10pt}th,td{border:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top}th{background:#efede6}" +
     ".note,.warn{border-left:3px solid #c9c4b5;background:#f6f5f1;padding:6px 10px;margin:6px 0 10px}.warn{border-color:#b3261e;background:#fbeeec}" +
     "</style></head><body>\n" + b.join("\n") + "\n</body></html>\n";
@@ -950,6 +1068,7 @@ function wrapText(str, bold, size, width){
 }
 function docPdf(doc, o){
   o = o || {};
+  if (doc.style === "report") return reportPdf(doc, o);
   var letter = /^America\//.test(o.timezone || ""), W = letter ? 612 : 595.28, Hh = letter ? 792 : 841.89, M = 56, CW = W - 2 * M;
   var pages = [], ops = null, y = 0;
   function newPage(){ ops = []; pages.push(ops); y = Hh - M; }
@@ -1003,6 +1122,7 @@ function docPdf(doc, o){
   newPage();
   para(doc.title, {font: "F2", size: 20}); y -= 2;
   para(doc.subtitle, {font: "F3", size: 10, grey: true}); y -= 10;
+  if (doc.intro && doc.intro.length){ doc.intro.forEach(function(x){ para(x, {font: "F1", size: 11.5}); y -= 5; }); y -= 4; }
   doc.parts.forEach(function(p){
     need(14 * 1.3 + 50); y -= 12; para(p.title, {font: "F2", size: 14});
     ops.push("0.85 0.84 0.8 RG 0.6 w " + M + " " + (y - 4).toFixed(2) + " m " + (W - M) + " " + (y - 4).toFixed(2) + " l S"); y -= 8;
@@ -1026,13 +1146,19 @@ function docPdf(doc, o){
   });
   var n = pages.length;
   pages.forEach(function(pg, i){ var foot = plainText(doc.title) + "  ·  " + (i + 1) + " of " + n; pg.push("0.37 0.39 0.36 rg BT /F1 8 Tf " + M + " " + (M - 24) + " Td " + pdfStr(foot) + " Tj ET"); });
+  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle));
+}
+
+/* The PDF objects around the pages: three Helvetica fonts, an info dictionary and the cross-reference table */
+function pdfFile(pages, W, Hh, title, subject){
   var objs = [];
   objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
   objs[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
   objs[5] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>";
-  objs[6] = "<< /Title " + pdfStr(plainText(doc.title)) + " /Subject " + pdfStr(plainText(doc.subtitle)) + " /Producer (Handover) >>";
+  objs[6] = "<< /Title " + pdfStr(title) + " /Subject " + pdfStr(subject) + " /Producer (Handover) >>";
   var kids = [];
+  var n = pages.length;
   pages.forEach(function(pg, i){
     var pid = 7 + i * 2, cid = pid + 1, body = pg.join("\n");
     kids.push(pid + " 0 R");
@@ -1046,6 +1172,179 @@ function docPdf(doc, o){
   out += "xref\n0 " + objs.length + "\n0000000000 65535 f \n" + offs.slice(1).map(function(x){ return ("000000000" + x).slice(-10) + " 00000 n \n"; }).join("");
   out += "trailer\n<< /Size " + objs.length + " /Root 1 0 R /Info 6 0 R >>\nstartxref\n" + xref + "\n%%EOF\n";
   return out;
+}
+
+/* ================= Report layout (reports for the principal) =================
+   A band with the title, key figures, a summary box, numbered sections and tables with status pills. */
+var RPT = {accent: "2E4A3B", gold: "B08D4A", ink: "1C201E", grey: "5F6560", rule: "DDDAD2", tint: "F2F4F0", card: "F8F8F5", band: "D5E0D8",
+  tones: {ok: ["2A6F45", "E2F0E6"], warn: ["8A5A00", "FBEFD3"], bad: ["A12A1F", "F8E0DC"], neutral: ["5F6560", "ECEBE6"]}};
+function rgbOf(hex){ return [0, 2, 4].map(function(i){ return (parseInt(hex.substr(i, 2), 16) / 255).toFixed(3); }).join(" "); }
+/* The columns a report table shows: drops columns that are empty in every row */
+function reportColumns(cols, items){
+  var nc = items.length ? items[0].cells.length : 0, out = [{k: "title", label: cols[0] || ""}];
+  for (var i = 0; i < nc; i++) if (items.some(function(it){ return it.cells[i]; })) out.push({k: i, label: cols[i + 1] || ""});
+  if (cols.length > 1 + nc && items.some(function(it){ return it.status; })) out.push({k: "status", label: cols[cols.length - 1] || ""});
+  return out;
+}
+function cellOf(it, c){ return c.k === "title" ? it.title : c.k === "status" ? (it.status ? it.status.text : "") : it.cells[c.k] || ""; }
+function blockLines(src){ var out = []; parseBlocks(src).forEach(function(b){ if (b.items) b.items.forEach(function(x){ out.push("• " + x); }); else if (b.text) out.push(b.text); }); return out; }
+function reportPdf(doc, o){
+  o = o || {};
+  var letter = /^America\//.test(o.timezone || ""), W = letter ? 612 : 595.28, Hh = letter ? 792 : 841.89, M = 50, CW = W - 2 * M, BOTTOM = M + 34;
+  var pages = [], ops = null, y = 0;
+  function rect(x, yy, w, hgt, hex){ ops.push(rgbOf(hex) + " rg " + x.toFixed(2) + " " + yy.toFixed(2) + " " + w.toFixed(2) + " " + hgt.toFixed(2) + " re f"); }
+  function hline(x1, yy, x2, hex, wd){ ops.push(rgbOf(hex) + " RG " + (wd || 0.5) + " w " + x1.toFixed(2) + " " + yy.toFixed(2) + " m " + x2.toFixed(2) + " " + yy.toFixed(2) + " l S"); }
+  function text(x, yy, str, font, size, hex, sp){ ops.push(rgbOf(hex) + " rg BT /" + font + " " + size + " Tf " + (sp || 0) + " Tc " + x.toFixed(2) + " " + yy.toFixed(2) + " Td " + pdfStr(str) + " Tj ET"); }
+  function wrap(str, bold, size, width){ return wrapText(plainText(str), bold, size, width); }
+  function newPage(){
+    ops = []; pages.push(ops); y = Hh - M;
+    if (pages.length > 1){
+      text(M, Hh - 30, plainText(doc.title).toUpperCase(), "F2", 7.5, RPT.grey, 0.8);
+      var r = plainText(doc.role || ""); text(W - M - textWidth(r, false, 8), Hh - 30, r, "F1", 8, RPT.grey);
+      hline(M, Hh - 37, W - M, RPT.rule, 0.5); y = Hh - 58;
+    }
+  }
+  function need(hgt){ if (y - hgt < BOTTOM) newPage(); }
+  /* The band */
+  newPage();
+  var tl = wrap(doc.title, true, 24, CW), bandH = 112 + (tl.length - 1) * 28 + (doc.role ? 15 : 0);
+  rect(0, Hh - bandH, W, bandH, RPT.accent); rect(0, Hh - bandH - 3, W, 3, RPT.gold);
+  text(M, Hh - 42, (doc.kicker || "Report").toUpperCase(), "F2", 8, RPT.gold, 1.4);
+  var yy = Hh - 72; tl.forEach(function(l){ text(M, yy, l, "F2", 24, "FFFFFF"); yy -= 28; });
+  yy += 6; if (doc.role){ text(M, yy, plainText(doc.role), "F1", 10, RPT.band); yy -= 15; }
+  text(M, yy, (doc.preparedFor ? "Prepared for " + doc.preparedFor + "  ·  " : "") + (doc.date || ""), "F1", 10, RPT.band);
+  y = Hh - bandH - 3 - 26;
+  /* Key figures */
+  var F = doc.figures || [];
+  if (F.length){
+    var gap = 10, tw = (CW - gap * (F.length - 1)) / F.length, th = 64;
+    F.forEach(function(f, i){
+      var x = M + i * (tw + gap), t = RPT.tones[f.tone] || RPT.tones.neutral, vs = f.value.length > 6 ? 15 : 22;
+      rect(x, y - th, tw, th, t[1]); rect(x, y - th, 3, th, t[0]);
+      text(x + 12, y - 30, f.value, "F2", vs, t[0]);
+      wrap(f.label, false, 8.5, tw - 20).slice(0, 2).forEach(function(l, j){ text(x + 12, y - 46 - j * 10.5, l, "F1", 8.5, RPT.ink); });
+    });
+    y -= th + 22;
+  }
+  /* Summary */
+  if (doc.intro && doc.intro.length){
+    var lines = [];
+    doc.intro.forEach(function(s, i){ wrap(s, false, 10.5, CW - 48).forEach(function(l, j){ lines.push({t: l, first: j === 0, gap: j === 0 && i > 0}); }); });
+    var bh = 46 + lines.length * 14.5 + (doc.intro.length - 1) * 4;
+    need(bh); rect(M, y - bh, CW, bh, RPT.tint); rect(M, y - bh, 3, bh, RPT.accent);
+    text(M + 18, y - 20, "SUMMARY", "F2", 7.5, RPT.accent, 1.2);
+    var sy = y - 38;
+    lines.forEach(function(l){ if (l.gap) sy -= 4; if (l.first) rect(M + 18, sy + 2.5, 4, 4, RPT.gold); text(M + 32, sy, l.t, "F1", 10.5, RPT.ink); sy -= 14.5; });
+    y -= bh + 28;
+  }
+  function pill(x, top, st){
+    var t = RPT.tones[st.tone] || RPT.tones.neutral, w = textWidth(st.text, true, 7.5) + 12;
+    rect(x, top - 13, w, 13, t[1]); text(x + 6, top - 9.3, st.text, "F2", 7.5, t[0]);
+  }
+  function table(cols, items){
+    var C = reportColumns(cols, items), size = 9, lh = 11.5, pad = 5, widths = [];
+    var natural = function(c){ var w = textWidth(plainText(c.label).toUpperCase(), true, 7.5) + 2 * pad; items.forEach(function(it){ var v = plainText(cellOf(it, c)); w = Math.max(w, c.k === "status" ? textWidth(v, true, 7.5) + 12 + 2 * pad + 2 : textWidth(v, c.k === "title", size) + 2 * pad + 3); }); return w; };
+    var nat = C.map(natural), fixed = 0, flex = 0;
+    C.forEach(function(c, i){ if (c.k === "title") return; nat[i] = Math.min(nat[i], c.k === "status" ? 120 : 150); fixed += nat[i]; });
+    var titleW = Math.max(CW - fixed, CW * 0.42);
+    if (C.length === 1) titleW = CW;
+    var scale = C.length > 1 ? (CW - titleW) / fixed : 1;
+    C.forEach(function(c, i){ widths[i] = c.k === "title" ? titleW : nat[i] * scale; });
+    function header(){
+      if (C.length === 1 && !C[0].label) return;
+      need(24); var x = M;
+      C.forEach(function(c, i){ text(x + pad, y - 10, plainText(c.label).toUpperCase(), "F2", 7, RPT.grey, 0.6); x += widths[i]; });
+      y -= 16; hline(M, y, W - M, RPT.accent, 0.8);
+    }
+    header();
+    items.forEach(function(it){
+      var cells = C.map(function(c, i){ return c.k === "status" ? null : wrap(cellOf(it, c), c.k === "title", size, widths[i] - 2 * pad); });
+      var nl = Math.max.apply(null, cells.map(function(l){ return l ? l.length : 1; })), rh = nl * lh + 2 * pad + 2, before = pages.length;
+      need(rh); if (pages.length > before) header();
+      var top = y, x = M;
+      C.forEach(function(c, i){
+        if (c.k === "status"){ if (it.status) pill(x + pad, top - pad + 1, it.status); }
+        else cells[i].forEach(function(l, li){ text(x + pad, top - pad - 8 - li * lh, l, c.k === "title" ? "F2" : "F1", size, RPT.ink); });
+        x += widths[i];
+      });
+      y = top - rh; hline(M, y, W - M, RPT.rule, 0.5);
+    });
+    y -= 10;
+  }
+  function card(it){
+    var inner = CW - 34, tl2 = wrap(it.title, true, 11, inner), body = [];
+    blockLines(it.body).forEach(function(s){ wrap(s, false, 10, inner).forEach(function(l){ body.push(l); }); });
+    var meta = it.cells.filter(Boolean).join("  ·  "), ml = meta ? wrap(meta, false, 8.5, inner) : [], nl = it.note ? wrap(it.note, false, 9, inner) : [];
+    var hgt = 22 + tl2.length * 14 + body.length * 13 + (ml.length ? 6 + ml.length * 11 : 0) + (nl.length ? 4 + nl.length * 12 : 0);
+    need(hgt); rect(M, y - hgt, CW, hgt, RPT.card); rect(M, y - hgt, 3, hgt, RPT.gold);
+    var cy = y - 18;
+    tl2.forEach(function(l){ text(M + 18, cy, l, "F2", 11, RPT.ink); cy -= 14; });
+    body.forEach(function(l){ text(M + 18, cy, l, "F1", 10, RPT.ink); cy -= 13; });
+    if (ml.length){ cy -= 6; ml.forEach(function(l){ text(M + 18, cy, l, "F2", 8.5, RPT.accent); cy -= 11; }); }
+    if (nl.length){ cy -= 4; nl.forEach(function(l){ text(M + 18, cy, l, "F3", 9, RPT.grey); cy -= 12; }); }
+    y -= hgt + 10;
+  }
+  /* Sections */
+  doc.parts.forEach(function(p, pi){
+    need(90);
+    text(M, y - 14, (pi < 9 ? "0" : "") + (pi + 1), "F2", 11, RPT.gold);
+    text(M + 24, y - 14, plainText(p.title), "F2", 14, RPT.ink);
+    y -= 26;
+    p.groups.forEach(function(g){
+      if (g.title){ need(50); text(M, y - 9, plainText(g.title).toUpperCase(), "F2", 7.5, RPT.accent, 0.8); y -= 16; }
+      if (g.items.some(function(it){ return it.block; })) g.items.forEach(card); else table(p.columns || [], g.items);
+    });
+    y -= 12;
+  });
+  var n = pages.length;
+  pages.forEach(function(pg, i){
+    ops = pg;
+    hline(M, M + 12, W - M, RPT.rule, 0.5);
+    text(M, M, (doc.preparedFor ? "Prepared for " + doc.preparedFor + " from the handover file" : "From the handover file") + (doc.date ? "  ·  " + doc.date : ""), "F1", 7.5, RPT.grey);
+    var pn = "Page " + (i + 1) + " of " + n; text(W - M - textWidth(pn, false, 7.5), M, pn, "F1", 7.5, RPT.grey);
+  });
+  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle || ""));
+}
+
+function reportHtml(doc){
+  var b = [], T = RPT.tones;
+  var pillH = function(st){ return st ? '<span class="pill ' + (T[st.tone] ? st.tone : "neutral") + '">' + escHtml(st.text) + "</span>" : ""; };
+  b.push('<header class="band"><div class="kicker">' + escHtml(doc.kicker || "Report") + "</div><h1>" + inlineHtml(doc.title) + "</h1>" + (doc.role ? '<div class="line">' + inlineHtml(doc.role) + "</div>" : "") +
+    '<div class="line">' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " &middot; " : "") + escHtml(doc.date || "") + "</div></header>");
+  if ((doc.figures || []).length) b.push('<div class="figs">' + doc.figures.map(function(f){ return '<div class="fig ' + (T[f.tone] ? f.tone : "neutral") + '"><b>' + escHtml(f.value) + "</b><span>" + escHtml(f.label) + "</span></div>"; }).join("") + "</div>");
+  if ((doc.intro || []).length) b.push('<div class="summary"><div class="kick">Summary</div><ul>' + doc.intro.map(function(s){ return "<li>" + inlineHtml(s) + "</li>"; }).join("") + "</ul></div>");
+  doc.parts.forEach(function(p, pi){
+    b.push('<h2><span class="num">' + (pi < 9 ? "0" : "") + (pi + 1) + "</span>" + inlineHtml(p.title) + "</h2>");
+    p.groups.forEach(function(g){
+      if (g.title) b.push('<h3>' + inlineHtml(g.title) + "</h3>");
+      if (g.items.some(function(it){ return it.block; })){
+        g.items.forEach(function(it){ b.push('<div class="card"><h4>' + inlineHtml(it.title) + "</h4>" + (it.body ? htmlBody(it.body, 4) : "") + (it.cells.filter(Boolean).length ? '<p class="cmeta">' + it.cells.filter(Boolean).map(inlineHtml).join(" &middot; ") + "</p>" : "") + (it.note ? '<p class="cnote">' + inlineHtml(it.note) + "</p>" : "") + "</div>"); });
+        return;
+      }
+      var C = reportColumns(p.columns || [], g.items);
+      b.push("<table>" + (C.length === 1 && !C[0].label ? "" : "<thead><tr>" + C.map(function(c){ return "<th" + (c.k === "status" ? ' class="st"' : "") + ">" + escHtml(c.label) + "</th>"; }).join("") + "</tr></thead>") + "<tbody>" +
+        g.items.map(function(it){ return "<tr>" + C.map(function(c){ return c.k === "status" ? '<td class="st">' + pillH(it.status) + "</td>" : "<td" + (c.k === "title" ? ' class="t"' : "") + ">" + inlineHtml(cellOf(it, c)) + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>");
+    });
+  });
+  b.push('<footer>' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " from the handover file" : "From the handover file") + (doc.date ? " &middot; " + escHtml(doc.date) : "") + "</footer>");
+  var tone = function(k){ return "." + k + "{--fg:#" + T[k][0] + ";--bg:#" + T[k][1] + "}"; };
+  return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(plainText(doc.title)) + "</title><style>" +
+    "body{font-family:-apple-system,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10.5pt;line-height:1.45;color:#" + RPT.ink + ";margin:0;background:#fff}" +
+    ".band{background:#" + RPT.accent + ";color:#fff;padding:30px 40px 22px;border-bottom:3px solid #" + RPT.gold + "}.kicker{color:#" + RPT.gold + ";font-weight:700;font-size:8pt;letter-spacing:.16em;text-transform:uppercase}" +
+    ".band h1{font-size:24pt;margin:6px 0 8px;line-height:1.15}.band .line{color:#" + RPT.band + ";font-size:10pt}" +
+    "main{padding:22px 40px 30px;max-width:900px}.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 20px}" +
+    ".fig{background:var(--bg);border-left:3px solid var(--fg);padding:10px 12px}.fig b{display:block;color:var(--fg);font-size:20pt;line-height:1.1}.fig span{font-size:8.5pt}" +
+    tone("ok") + tone("warn") + tone("bad") + tone("neutral") +
+    ".summary{background:#" + RPT.tint + ";border-left:3px solid #" + RPT.accent + ";padding:12px 18px;margin:0 0 24px}.kick{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}" +
+    ".summary ul{margin:0;padding:0;list-style:none}.summary li{position:relative;padding-left:16px;margin:4px 0}.summary li::before{content:'';position:absolute;left:0;top:.55em;width:5px;height:5px;background:#" + RPT.gold + "}" +
+    "h2{font-size:14pt;margin:26px 0 8px}.num{color:#" + RPT.gold + ";font-size:11pt;margin-right:10px}h3{color:#" + RPT.accent + ";font-size:7.5pt;letter-spacing:.1em;text-transform:uppercase;margin:14px 0 4px}" +
+    "table{width:100%;border-collapse:collapse;margin:0 0 10px;font-size:9.5pt}th{text-align:left;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:#" + RPT.grey + ";border-bottom:1.5px solid #" + RPT.accent + ";padding:4px 6px}" +
+    "td{border-bottom:1px solid #" + RPT.rule + ";padding:6px;vertical-align:top}td.t{font-weight:700}th.st,td.st{width:1%;white-space:nowrap}" +
+    ".pill{display:inline-block;background:var(--bg);color:var(--fg);font-weight:700;font-size:7.5pt;padding:2px 7px}" +
+    ".card{background:#" + RPT.card + ";border-left:3px solid #" + RPT.gold + ";padding:10px 16px;margin:0 0 10px}.card h4{margin:0 0 4px;font-size:11pt}.card p{margin:4px 0}.cmeta{color:#" + RPT.accent + ";font-weight:700;font-size:8.5pt}.cnote{color:#" + RPT.grey + ";font-style:italic;font-size:9pt}" +
+    "footer{border-top:1px solid #" + RPT.rule + ";color:#" + RPT.grey + ";font-size:8pt;padding:8px 40px 20px;margin-top:10px}" +
+    "@media print{.band,.fig,.summary,.pill,.card{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
+    "</style></head><body>\n" + b[0] + "\n<main>" + b.slice(1, -1).join("\n") + "</main>\n" + b[b.length - 1] + "\n</body></html>\n";
 }
 
 /* ================= Word (.docx) and Excel (.xlsx), with no dependencies =================
@@ -1146,9 +1445,78 @@ function docDocx(doc){
       }
     }).join("");
   }
+  /* Report layout (reports for the principal): band, key figures, summary, numbered sections, tables with status labels */
+  function reportBody(body){
+    var T = RPT.tones, TWD = 9638;
+    var shd = function(hex){ return '<w:shd w:val="clear" w:color="auto" w:fill="' + hex + '"/>'; };
+    var r = function(text, o){ o = o || {}; return "<w:r><w:rPr>" + (o.bold ? "<w:b/>" : "") + (o.italic ? "<w:i/>" : "") + (o.caps ? "<w:caps/>" : "") + (o.color ? '<w:color w:val="' + o.color + '"/>' : "") + (o.spacing ? '<w:spacing w:val="' + o.spacing + '"/>' : "") + (o.size ? '<w:sz w:val="' + o.size + '"/><w:szCs w:val="' + o.size + '"/>' : "") + (o.fill ? shd(o.fill) : "") + '</w:rPr><w:t xml:space="preserve">' + xmlEsc(text) + "</w:t></w:r>"; };
+    var para = function(content, ppr){ return "<w:p><w:pPr>" + (ppr || "") + "</w:pPr>" + content + "</w:p>"; };
+    var sp = function(before, after){ return '<w:spacing w:before="' + (before || 0) + '" w:after="' + (after || 0) + '"/>'; };
+    var none = function(){ return ["top", "left", "bottom", "right", "insideH", "insideV"].map(function(e){ return "<w:" + e + ' w:val="nil"/>'; }).join(""); };
+    var box = function(cells, mar){ return '<w:tbl><w:tblPr><w:tblW w:w="' + TWD + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>' + none() + "</w:tblBorders>" + (mar || "") + '</w:tblPr><w:tblGrid>' + cells.map(function(c){ return '<w:gridCol w:w="' + c.w + '"/>'; }).join("") + "</w:tblGrid><w:tr><w:trPr><w:cantSplit/></w:trPr>" + cells.map(function(c){ return '<w:tc><w:tcPr><w:tcW w:w="' + c.w + '" w:type="dxa"/>' + (c.left ? '<w:tcBorders><w:left w:val="single" w:sz="24" w:space="0" w:color="' + c.left + '"/></w:tcBorders>' : "") + (c.fill ? shd(c.fill) : "") + '<w:tcMar><w:top w:w="' + (c.pad || 140) + '" w:type="dxa"/><w:left w:w="' + (c.padX || 220) + '" w:type="dxa"/><w:bottom w:w="' + (c.pad || 140) + '" w:type="dxa"/><w:right w:w="' + (c.padX || 220) + '" w:type="dxa"/></w:tcMar></w:tcPr>' + (c.body || para("")) + "</w:tc>"; }).join("") + "</w:tr></w:tbl>"; };
+    var gapP = function(after){ return para("", sp(0, after) + '<w:rPr><w:sz w:val="4"/></w:rPr>'); };
+    /* Band */
+    body.push(box([{w: TWD, fill: RPT.accent, pad: 300, padX: 360, body:
+      para(r((doc.kicker || "Report").toUpperCase(), {bold: true, color: RPT.gold, size: 16, spacing: 30}), sp(0, 60)) +
+      para(r(plainText(doc.title), {bold: true, color: "FFFFFF", size: 52}), sp(0, 100)) +
+      (doc.role ? para(r(plainText(doc.role), {color: RPT.band, size: 20}), sp(0, 20)) : "") +
+      para(r((doc.preparedFor ? "Prepared for " + doc.preparedFor + "  ·  " : "") + (doc.date || ""), {color: RPT.band, size: 20}), sp(0, 0))}]));
+    body.push(para("", sp(0, 0) + '<w:pBdr><w:top w:val="single" w:sz="24" w:space="0" w:color="' + RPT.gold + '"/></w:pBdr>'));
+    /* Key figures */
+    var F = doc.figures || [];
+    if (F.length){
+      var g = 160, fw = Math.floor((TWD - g * (F.length - 1)) / F.length), cells = [];
+      F.forEach(function(f, i){
+        var t = T[f.tone] || T.neutral;
+        if (i) cells.push({w: g, padX: 0, pad: 0});
+        cells.push({w: fw, fill: t[1], left: t[0], padX: 200, pad: 140, body: para(r(f.value, {bold: true, color: t[0], size: f.value.length > 6 ? 30 : 40}), sp(0, 20)) + para(r(f.label, {size: 17, color: RPT.ink}), sp(0, 0))});
+      });
+      body.push(gapP(160)); body.push(box(cells));
+    }
+    /* Summary */
+    if ((doc.intro || []).length){
+      body.push(gapP(240));
+      body.push(box([{w: TWD, fill: RPT.tint, left: RPT.accent, pad: 180, padX: 300, body:
+        para(r("SUMMARY", {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
+        doc.intro.map(function(s){ return para(r("■  ", {color: RPT.gold, size: 14}) + runs(s, {size: 21}), sp(0, 80) + '<w:ind w:left="300" w:hanging="300"/>'); }).join("")}]));
+    }
+    /* Sections */
+    doc.parts.forEach(function(pt, pi){
+      body.push(para(r((pi < 9 ? "0" : "") + (pi + 1) + "   ", {bold: true, color: RPT.gold, size: 22}) + r(plainText(pt.title), {bold: true, size: 28}), "<w:keepNext/>" + sp(400, 120)));
+      pt.groups.forEach(function(gr){
+        if (gr.title) body.push(para(r(plainText(gr.title), {bold: true, caps: true, color: RPT.accent, size: 15, spacing: 16}), "<w:keepNext/>" + sp(160, 60)));
+        if (gr.items.some(function(it){ return it.block; })){
+          gr.items.forEach(function(it){
+            body.push(box([{w: TWD, fill: RPT.card, left: RPT.gold, pad: 140, padX: 260, body:
+              para(runs(it.title, {bold: true, size: 22}), sp(0, 60)) + (it.body ? blocks(it.body) : "") +
+              (it.cells.filter(Boolean).length ? para(r(it.cells.filter(Boolean).map(plainText).join("  ·  "), {bold: true, color: RPT.accent, size: 17}), sp(60, 20)) : "") +
+              (it.note ? para(r(plainText(it.note), {italic: true, color: RPT.grey, size: 18}), sp(20, 0)) : "")}]));
+            body.push(gapP(120));
+          });
+          return;
+        }
+        var C = reportColumns(pt.columns || [], gr.items), nat = C.map(function(c){ var w = Math.max(6, c.label.length); gr.items.forEach(function(it){ w = Math.max(w, Math.min(c.k === "title" ? 70 : 28, plainText(cellOf(it, c)).length + (c.k === "status" ? 3 : 0))); }); return w; });
+        var other = 0; C.forEach(function(c, i){ if (c.k !== "title") other += nat[i]; });
+        var titleShare = C.length === 1 ? 1 : Math.max(0.42, Math.min(0.7, nat[0] / (nat[0] + other)));
+        var widths = C.map(function(c, i){ return c.k === "title" ? Math.round(TWD * titleShare) : Math.round(TWD * (1 - titleShare) * nat[i] / other); });
+        var edge = function(e, sz, col){ return "<w:" + e + ' w:val="single" w:sz="' + sz + '" w:space="0" w:color="' + col + '"/>'; };
+        var tc = function(i, content, head){ return '<w:tc><w:tcPr><w:tcW w:w="' + widths[i] + '" w:type="dxa"/><w:tcBorders>' + edge("bottom", head ? 12 : 4, head ? RPT.accent : RPT.rule) + "</w:tcBorders></w:tcPr>" + content + "</w:tc>"; };
+        var cellP = function(content){ return para(content, sp(40, 40)); };
+        var head = C.length === 1 && !C[0].label ? "" : "<w:tr><w:trPr><w:tblHeader/></w:trPr>" + C.map(function(c, i){ return tc(i, cellP(r(c.label.toUpperCase(), {bold: true, color: RPT.grey, size: 14, spacing: 10})), true); }).join("") + "</w:tr>";
+        var rows = gr.items.map(function(it){ return "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + C.map(function(c, i){
+          if (c.k === "status"){ var t = it.status ? T[it.status.tone] || T.neutral : null; return tc(i, cellP(t ? r(" " + it.status.text + " ", {bold: true, color: t[0], size: 15, fill: t[1]}) : "")); }
+          return tc(i, cellP(c.k === "title" ? runs(cellOf(it, c), {bold: true, size: 19}) : runs(cellOf(it, c), {size: 19})));
+        }).join("") + "</w:tr>"; }).join("");
+        body.push('<w:tbl><w:tblPr><w:tblW w:w="' + TWD + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>' + none() + '</w:tblBorders><w:tblCellMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' + widths.map(function(w){ return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>" + head + rows + "</w:tbl>");
+        body.push(gapP(120));
+      });
+    });
+  }
   var body = [];
+  if (doc.style === "report") reportBody(body); else {
   body.push(p("Title", run(plainText(doc.title))));
   body.push(p("Subtitle", run(plainText(doc.subtitle))));
+  (doc.intro || []).forEach(function(x){ body.push(p("", runs(x, {size: 24}))); });
   doc.parts.forEach(function(pt){
     body.push(p("Heading1", run(pt.title)));
     pt.groups.forEach(function(g){
@@ -1167,9 +1535,10 @@ function docDocx(doc){
       });
     });
   });
+  }
   var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
   var documentXml = XML_HEAD + "<w:document " + W + "><w:body>" + body.join("") +
-    '<w:sectPr><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
+    '<w:sectPr>' + (doc.style === "report" ? '<w:footerReference w:type="default" r:id="rIdF"/>' : "") + '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
   var font = '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/>';
   function style(id, name, ppr, rpr, based){ return '<w:style w:type="paragraph" w:styleId="' + id + '"><w:name w:val="' + name + '"/>' + (based ? '<w:basedOn w:val="' + based + '"/>' : "") + '<w:qFormat/><w:pPr>' + (ppr || "") + "</w:pPr><w:rPr>" + (rpr || "") + "</w:rPr></w:style>"; }
   var stylesXml = XML_HEAD + "<w:styles " + W + "><w:docDefaults><w:rPrDefault><w:rPr>" + font + '<w:color w:val="1D1D1F"/><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
@@ -1191,16 +1560,20 @@ function docDocx(doc){
     '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="300"/></w:pPr></w:lvl></w:abstractNum>' +
     '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' + new Array(ordered + 1).join(".").split("").map(function(x, i){ return '<w:num w:numId="' + (i + 2) + '"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>'; }).join("") + "</w:numbering>";
   var rels = '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
-    links.map(function(u, i){ return '<Relationship Id="rIdL' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(u) + '" TargetMode="External"/>'; }).join("");
+    (doc.style === "report" ? '<Relationship Id="rIdF" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>' : "") + links.map(function(u, i){ return '<Relationship Id="rIdL' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(u) + '" TargetMode="External"/>'; }).join("");
   return zip([
-    {name: "[Content_Types].xml", text: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'},
+    {name: "[Content_Types].xml", text: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>' + (doc.style === "report" ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : "") + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'},
     {name: "_rels/.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>'},
     {name: "docProps/core.xml", text: coreProps(plainText(doc.title))},
     {name: "word/document.xml", text: documentXml},
     {name: "word/styles.xml", text: stylesXml},
     {name: "word/numbering.xml", text: numberingXml},
+    doc.style === "report" ? {name: "word/footer1.xml", text: XML_HEAD + "<w:ftr " + W + '><w:p><w:pPr><w:pBdr><w:top w:val="single" w:sz="4" w:space="4" w:color="' + RPT.rule + '"/></w:pBdr><w:tabs><w:tab w:val="right" w:pos="9638"/></w:tabs></w:pPr>' +
+      '<w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/></w:rPr><w:t xml:space="preserve">' + xmlEsc((doc.preparedFor ? "Prepared for " + doc.preparedFor + " from the handover file" : "From the handover file") + (doc.date ? "  \u00b7  " + doc.date : "")) + '</w:t></w:r><w:r><w:rPr><w:sz w:val="15"/></w:rPr><w:tab/></w:r>' +
+      '<w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/></w:rPr><w:t xml:space="preserve">Page </w:t></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>' +
+      '<w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/></w:rPr><w:t xml:space="preserve"> of </w:t></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:color w:val="' + RPT.grey + '"/><w:sz w:val="15"/><w:szCs w:val="15"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r></w:p></w:ftr>'} : null,
     {name: "word/_rels/document.xml.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + rels + "</Relationships>"}
-  ]);
+  ].filter(Boolean));
 }
 
 /* One sheet per kind of item, with a header row, filters and frozen headers */
@@ -1246,6 +1619,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

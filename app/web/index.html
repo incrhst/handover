@@ -92,6 +92,12 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
 .xopts label{display:flex;gap:8px;align-items:center;cursor:pointer}
 .xopts input[type=text]{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
 .xopts .fmt{display:flex;gap:16px;flex-wrap:wrap}
+dialog.dlg.wide{width:min(980px,calc(100vw - 32px))}
+.rep{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;min-height:0}
+.rep .chow label{flex-direction:column;gap:2px}
+.rep .chow small{color:var(--ink-3);font-size:12.5px;font-weight:400}
+.rep iframe{width:100%;height:min(60vh,560px);border:1px solid var(--line);border-radius:10px;background:#fff}
+@media (max-width:720px){.rep{grid-template-columns:1fr}.rep iframe{height:50vh}}
 
 /* Hero */
 .hero{background:var(--hero);color:var(--hero-ink);padding:44px 0 92px}
@@ -381,10 +387,12 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <button class="btn" id="searchJump" type="button">Search</button>
       <button class="gapchip" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
       <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
+      <button class="btn" type="button" data-cmd="report" id="reportBtn" hidden title="A short, plain report for the principal: what's under way, the assistant's jobs, or what needs them">Report…</button>
       <details class="menu" id="shareMenu">
         <summary class="btn primary">Share &amp; export</summary>
         <div class="menu-panel" role="menu">
           <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
+          <button type="button" data-cmd="report" id="reportMenuBtn" hidden><span id="reportMenuLabel">Report for the principal…</span><small>What we're working on, the assistant's jobs, or what needs them</small></button>
           <button type="button" data-cmd="exportItems">Export items as a document…<small>Jobs, tasks or any other list, as PDF, Word or Excel</small></button>
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
@@ -512,6 +520,25 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <p id="closeMsg" hidden></p>
     </div>
     <footer><button class="btn" type="button" id="closeCancel">Cancel</button><button class="btn primary" type="submit" id="closeGo">Close item</button></footer>
+  </form>
+</dialog>
+
+<dialog class="dlg wide" id="reportDlg" aria-labelledby="reportDlgTitle">
+  <form method="dialog" id="reportForm">
+    <header><h2 id="reportDlgTitle">Report for the principal</h2><p>A short, plain document you can send at any point. It says only what the handover file shows, and leaves out anything the principal may not see.</p></header>
+    <div class="dlg-body rep">
+      <div>
+        <div class="chow" id="reportKinds" role="radiogroup" aria-label="Which report"></div>
+        <label class="cfield" id="reportSinceRow">Finished since <input type="date" id="reportSince"></label>
+        <div class="xopts"><div class="fmt" role="radiogroup" aria-label="Format">
+          <label><input type="radio" name="reportFmt" value="pdf" checked> PDF</label>
+          <label><input type="radio" name="reportFmt" value="docx"> Word</label>
+          <label><input type="radio" name="reportFmt" value="md"> Markdown</label>
+        </div></div>
+      </div>
+      <iframe id="reportPreview" title="Preview of the report" sandbox=""></iframe>
+    </div>
+    <footer><button class="btn" type="button" id="reportCancel">Cancel</button><button class="btn primary" type="submit" id="reportGo">Save report</button></footer>
   </form>
 </dialog>
 
@@ -713,6 +740,10 @@ function render(){
   if (visibleSections().length) nav.push(["#refWrap", "Reference"]);
   var is11 = has11();
   $("exportRecordBtn").hidden = !is11;
+  var pf = is11 ? principalFirst() : "";
+  $("reportBtn").hidden = $("reportMenuBtn").hidden = !is11;
+  $("reportBtn").textContent = pf ? "Report for " + pf + "…" : "Report…";
+  $("reportMenuLabel").textContent = pf ? "Report for " + pf + "…" : "Report for the principal…";
   $("shareNote").textContent = is11 ? "For someone new: knowledge only, no process state or private items" : "The content only, for someone new";
   $("topnav").innerHTML = nav.map(function(n){ return '<a href="' + n[0] + '">' + n[1] + "</a>"; }).join("");
   $("autoExportNote").textContent = native ? "Each morning at " + exportTime() + " a task sheet for the day is saved in your data folder." : "Use Share & export to save today's task sheet.";
@@ -1145,6 +1176,40 @@ function reopen(ref){
   saveContent(next).then(function(ok){ if (ok) toast("Reopened"); });
 }
 
+/* Reports for the principal */
+var REPORT = {key: "working"};
+function principalFirst(){ var p = (H.people || []).filter(function(x){ return (x.roles || []).indexOf("principal") > -1; })[0]; return p ? p.name.split(" ")[0] : ""; }
+function reportDoc(){ return C.principalReport(H, REPORT.key, {date: TODAY, since: $("reportSince").value || undefined}); }
+function reportRender(){
+  $("reportSinceRow").hidden = REPORT.key !== "working";
+  $("reportPreview").srcdoc = C.docHtml(reportDoc());
+}
+function openReport(){
+  if (!has11()) return;
+  var p = principalFirst();
+  $("reportDlgTitle").textContent = p ? "Report for " + p : "Report for the principal";
+  $("reportKinds").innerHTML = C.reports.map(function(r){ return '<label><span><input type="radio" name="reportKind" value="' + r.key + '"' + (r.key === REPORT.key ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
+  var d = new Date(Date.parse(TODAY + "T00:00:00Z") - 7 * 864e5); $("reportSince").value = d.toISOString().slice(0, 10);
+  reportRender();
+  $("reportDlg").showModal();
+}
+$("reportKinds").addEventListener("change", function(e){ if (e.target.name === "reportKind"){ REPORT.key = e.target.value; reportRender(); } });
+$("reportSince").addEventListener("change", reportRender);
+$("reportCancel").addEventListener("click", function(){ $("reportDlg").close(); });
+$("reportForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var doc = reportDoc(), fmt = (document.querySelector('[name="reportFmt"]:checked') || {}).value || "pdf";
+  var slug = doc.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  var out = {
+    pdf: {content: C.docPdf(doc, {timezone: H.timezone}), mime: "application/pdf"},
+    docx: {base64: C.base64(C.docDocx(doc)), mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    md: {content: C.docMarkdown(doc), mime: "text/markdown"}
+  }[fmt];
+  $("reportDlg").close();
+  call("saveAs", {filename: H.id + "-" + slug + "-" + TODAY + "." + fmt, content: out.content, base64: out.base64, mime: out.mime, title: doc.title})
+    .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Saved " + doc.title); });
+});
+
 /* Add a record (spec section 11) */
 var ADD_KINDS = [["inProgress", "A thing in progress"], ["gaps", "A gap"], ["rules", "A rule (when this happens)"], ["decisions", "A decision"], ["risks", "A risk"], ["systems", "A system and its access"], ["documents", "A document"], ["decide", "A who-decides card"]];
 var ADD_PANEL = {inProgress: "rec-inprogress", gaps: "rec-gaps", rules: "rec-rules", decisions: "rec-decisions", risks: "rec-risks", systems: "rec-systems", documents: "rec-documents", decide: "decide"};
@@ -1258,6 +1323,7 @@ function command(c){
     case "open": return openFile();
     case "close": return closeHandover();
     case "exportItems": return openExportDialog();
+    case "report": return openReport();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "exportRecord": return call("saveAs", {filename: H.id + "-record.handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Export the full record"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });

@@ -400,3 +400,57 @@ test("adding records in the app (spec section 11)", () => {
   assert.throws(() => C.addItem(h, "people", {}, o()), /can't be added/);
   assert.throws(() => C.addItem(json("site/examples/sample.handover"), "gaps", {text: "x"}, o()), /format 1\.0/);
 });
+
+test("reports for the principal: summaries say only what the file shows", () => {
+  const h = ea(), o = {date: "2026-11-27"};
+  const w = C.principalReport(h, "working", o);
+  assert.equal(w.title, "What we're working on");
+  assert.match(w.subtitle, /for Dana Whitfield/);
+  const ip = h.inProgress.filter(x => !x.closed);
+  assert.match(w.intro[0], new RegExp("^" + ip.length + " things are under way"));
+  assert.deepEqual(w.parts.map(p => p.title).slice(0, 1), ["Under way"]);
+  // A thing with no date is reported as such, not as covered
+  const nodate = JSON.parse(JSON.stringify(h)); delete nodate.inProgress.find(x => !x.closed).due;
+  assert.match(C.principalReport(nodate, "working", o).intro[0], /of them (has|have) an owner and a date; the table shows what the others still need/);
+  // Finished lately: a gap closed yesterday shows; one handed to the principal goes to "What needs you" instead
+  const g = h.gaps.find(x => !x.closed);
+  const fixed = C.closeItem(h, "gaps", g.id, {how: "fixed", date: "2026-11-26", at: "2026-11-26T09:00:00Z"});
+  const w2 = C.principalReport(fixed, "working", o);
+  assert.ok(w2.parts.some(p => /^Finished since/.test(p.title) && p.groups[0].items.some(i => i.title === g.text)));
+  assert.match(w2.intro.join(" "), /Nothing about the role is still unknown|still being found out/);
+  const handed = C.closeItem(h, "gaps", g.id, {how: "principal", date: "2026-11-26", at: "2026-11-26T09:00:00Z"});
+  assert.ok(C.principalReport(handed, "needs", o).parts.find(p => p.title === "Handed to you").groups[0].items.some(i => i.title === g.text));
+
+  const j = C.principalReport(h, "jobs", o);
+  assert.match(j.intro[0], new RegExp("^Marcus does " + h.recurring.length + " regular jobs for you"));
+  assert.match(j.intro[2], /^You confirmed this/);
+  assert.ok(j.parts.find(p => p.title === "Who decides what").groups.some(g => g.title === "Always you"));
+
+  // What needs you: an open question, the unconfirmed board, and no step that only repeats the question
+  const b = JSON.parse(JSON.stringify(h)); b.asks[0].status = "sent"; delete b.asks[0].answered; b.decide.confirmed = false; delete b.decide.confirmedAt;
+  const st = b.plan.steps.find(s => s.role === "principal" && s.ask === b.asks[0].id); if (st) st.status = "open";
+  const n = C.principalReport(b, "needs", o);
+  assert.match(n.intro[0], /^Waiting for you: 1 question to answer/);
+  assert.match(n.intro[0], /the who-decides board to confirm/);
+  assert.ok(n.parts.some(p => p.title === "Please confirm who decides what"));
+  if (st) assert.ok(!n.parts.some(p => p.title === "Your steps in the handover" && p.groups[0].items.some(i => i.id === st.id)));
+  const none = JSON.parse(JSON.stringify(h)); none.gaps = []; none.asks.forEach(a => { a.status = "confirmed"; });
+  assert.equal(C.principalReport(none, "needs", o).intro[0], "Nothing is waiting for you right now.");
+
+  // Items the principal may not see are left out; items shared with the principal stay
+  const v = JSON.parse(JSON.stringify(h)); delete v.audience;
+  v.inProgress.push({id: "private-one", text: "Private to the assistants", visibleTo: ["outgoing", "incoming"]}, {id: "shared-one", text: "Shared with Dana", visibleTo: ["incoming", "principal"]});
+  const vt = C.principalReport(v, "working", o).parts[0].groups[0].items.map(i => i.id);
+  assert.ok(!vt.includes("private-one")); assert.ok(vt.includes("shared-one"));
+
+  // Every format carries the summary
+  assert.ok(C.docMarkdown(j).includes(j.intro[0]));
+  assert.ok(C.docHtml(j).includes('class="summary"') && C.docHtml(j).includes(j.intro[1]));
+  assert.ok(j.figures.length >= 1 && j.figures.every(f => f.value && f.label));
+  const unzipNames = buf => { const names = []; const b = Buffer.from(buf); for (let i = 0; i + 4 < b.length; i++) if (b.readUInt32LE(i) === 0x04034b50){ const n = b.readUInt16LE(i + 26); names.push(b.slice(i + 30, i + 30 + n).toString()); } return names; };
+  assert.ok(unzipNames(C.docDocx(j)).includes("word/footer1.xml"), "reports get a footer with page numbers");
+  assert.ok(!unzipNames(C.docDocx(C.itemsDocument(h, {kinds: ["jobs"]}))).includes("word/footer1.xml"), "plain exports are unchanged");
+  assert.match(C.docPdf(j), /^%PDF-1\.4/);
+  assert.ok(C.docDocx(j).length > 1000);
+  assert.throws(() => C.principalReport(h, "gossip", o), /No report/);
+});
