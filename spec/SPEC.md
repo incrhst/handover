@@ -34,7 +34,7 @@ Version 1.1 lets a file carry a whole assistant handover as it is run: an outgoi
 
 Handover files get emailed, shared and fed to AI tools. A file MUST NOT contain passwords, PINs, API keys, tokens, card or bank account numbers, or personal health or financial details. Say where a secret is kept ("in the shared password manager, Finance folder"), never what it is.
 
-This applies to every text field, including every field added in 1.1: a system's `credentialLocation` and `grantedBy`, a document's `url` and `location`, a stakeholder's `relationship`, `involve` and `contact`, an ask's `draft`, `default` and `correction`, follow-up answers, sign-off notes and the `history` log. Two cases need care:
+This applies to every text field, including every field added in 1.1 and 1.2: a system's `credentialLocation` and `grantedBy`, a document's `url` and `location`, a stakeholder's `relationship`, `involve` and `contact`, an ask's `draft`, `default` and `correction`, follow-up answers, sign-off notes, the `history` log, the role's `organisation`, `purpose`, `location`, `hours`, `travel`, `manages`, `skills` and `measures`, and a job's `area`, `when` and `detail`. Some cases need care:
 
 - **Systems** record where a credential is kept and who grants access. They MUST NOT record the credential itself, a recovery code or a one-time code.
 - **People and stakeholders** MAY have contact details. Their `relationship` and `involve` text MUST NOT reveal anyone's health or personal finances: "Dr Lee, the principal's oncologist" is a health detail even without a phone number. Write "Personal appointment contact; see the protected file" instead.
@@ -378,7 +378,7 @@ A handover already holds most of what a job description says: the regular jobs a
 | `skills` | markdown | The skills and experience the work calls for, usually a list. |
 | `measures` | markdown | What good looks like: how anyone can tell the role is done well. |
 
-`role` MUST NOT hold pay, benefits or any other personal financial detail (section 1). Pay is decided when someone is hired, not handed over. Who the role reports to is not stored either: it is the person with the `principal` role (section 9).
+Like every text field, the role, area and job fields MUST NOT hold passwords, PINs, API keys, tokens, card or bank account numbers, or personal health or financial details (section 1). A job that uses a login says where the credential is kept and who grants access, never the credential. `role` MUST NOT hold pay, benefits or any other personal financial detail either. Pay is decided when someone is hired, not handed over. Who the role reports to is not stored either: it is the person with the `principal` role (section 9).
 
 **Area** (`area`, a line, on a `recurring` duty or an `asNeeded` job): the part of the role the job belongs to, such as `"Finance"` or `"Office and staff"`. To put an area under a larger one, write both with ` / ` (a slash with a space each side) between them: `"Olive Branch Villa / Bookings"` is the Bookings part of Olive Branch Villa. A slash with no spaces, as in `"Account Executive/Admin Assistant"`, is part of the name. Jobs with the same `area` belong together. Areas are listed in the order they first appear, regular jobs first. Use the same spelling each time.
 
