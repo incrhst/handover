@@ -353,6 +353,25 @@ function zoneTime(date, time, tz){
   return wall - zoneClock(t, tz).offset;
 }
 function firstFew(names, n){ return names.length <= n ? names.join(", ") : names.slice(0, n).join(", ") + " and " + (names.length - n) + " more"; }
+/* The morning summary for day d: what needs doing that day (jobs due, overdue and under way, and open things in progress
+   due by then), as a reminder at settings.dailyExportTime. null when there is nothing to do. Also used to bring a summary
+   already shown up to date once jobs in it are ticked. */
+function summaryFor(h, progress, d){
+  progress = progress || {};
+  var done = progress.recurring || {}, lines = [], count = 0;
+  var morning = (h.settings && TIME.test(h.settings.dailyExportTime || "") && h.settings.dailyExportTime) || "07:00";
+  function open(x){ return !done[x.r.id + "@" + x.date]; }
+  function name(x){ return plainText(x.r.text); }
+  var sc = schedule(h, progress, d);
+  var due = sc.due.filter(open), overdue = sc.overdue.filter(open), start = sc.start.filter(open);
+  var work = (h.inProgress || []).filter(function(x){ return !x.closed && x.due && x.due <= d; });
+  if (due.length){ count += due.length; lines.push("Due: " + firstFew(due.map(function(x){ return name(x) + (x.r.time ? " (" + x.r.time + ")" : ""); }), 3)); }
+  if (overdue.length){ count += overdue.length; lines.push("Overdue: " + firstFew(overdue.map(name), 2)); }
+  if (start.length){ count += start.length; lines.push("Under way: " + firstFew(start.map(function(x){ return name(x) + " (" + (x.daysLeft === 1 ? "1 day" : x.daysLeft + " days") + " left)"; }), 2)); }
+  if (work.length){ count += work.length; lines.push("In progress: " + firstFew(work.map(function(x){ return plainText(x.text) + (x.due < d ? " (overdue)" : ""); }), 2)); }
+  if (!count) return null;
+  return {id: "summary." + d, at: zoneTime(d, morning, h.timezone), date: d, kind: "summary", key: "", title: h.title, subtitle: (count === 1 ? "1 thing" : count + " things") + " to do today", body: lines.join("\n")};
+}
 /* The reminders to schedule from now until the end of the next `days` days (default 14), each {id, at, date, kind, title,
    subtitle, body, key}: at is the instant (ms) it goes off, date the day it is for. Two kinds:
    - "summary": each morning at settings.dailyExportTime, what needs doing that day (jobs due, overdue and under way, and open
@@ -364,9 +383,6 @@ function firstFew(names, n){ return names.length <= n ? names.join(", ") : names
 function reminders(h, progress, now, o){
   o = o || {}; progress = progress || {};
   var tz = h.timezone, today = zoneClock(now, tz).date, days = o.days || 14, done = progress.recurring || {}, out = [];
-  var morning = (h.settings && TIME.test(h.settings.dailyExportTime || "") && h.settings.dailyExportTime) || "07:00";
-  function open(x){ return !done[x.r.id + "@" + x.date]; }
-  function name(x){ return plainText(x.r.text); }
   for (var i = 0; i < days; i++){
     var d = addDays(today, i);
     if (o.jobs !== false) (h.recurring || []).forEach(function(r){
@@ -375,17 +391,8 @@ function reminders(h, progress, now, o){
       if (at > now) out.push({id: "job." + r.id + "@" + d, at: at, date: d, kind: "job", key: r.id + "@" + d, title: plainText(r.text), subtitle: h.title, body: "Due at " + r.time + (r.detail ? ". " + plainText(String(r.detail).split("\n")[0]) : "")});
     });
     if (o.morning === false) continue;
-    var at0 = zoneTime(d, morning, tz);
-    if (at0 <= now) continue;
-    var sc = schedule(h, progress, d), lines = [], count = 0;
-    var due = sc.due.filter(open), overdue = sc.overdue.filter(open), start = sc.start.filter(open);
-    var work = (h.inProgress || []).filter(function(x){ return !x.closed && x.due && x.due <= d; });
-    if (due.length){ count += due.length; lines.push("Due: " + firstFew(due.map(function(x){ return name(x) + (x.r.time ? " (" + x.r.time + ")" : ""); }), 3)); }
-    if (overdue.length){ count += overdue.length; lines.push("Overdue: " + firstFew(overdue.map(name), 2)); }
-    if (start.length){ count += start.length; lines.push("Under way: " + firstFew(start.map(function(x){ return name(x) + " (" + (x.daysLeft === 1 ? "1 day" : x.daysLeft + " days") + " left)"; }), 2)); }
-    if (work.length){ count += work.length; lines.push("In progress: " + firstFew(work.map(function(x){ return plainText(x.text) + (x.due < d ? " (overdue)" : ""); }), 2)); }
-    if (!count) continue;
-    out.push({id: "summary." + d, at: at0, date: d, kind: "summary", key: "", title: h.title, subtitle: (count === 1 ? "1 thing" : count + " things") + " to do today", body: lines.join("\n")});
+    var sum = summaryFor(h, progress, d);
+    if (sum && sum.at > now) out.push(sum);
   }
   out.sort(function(a, b){ return a.at - b.at || (a.id < b.id ? -1 : 1); });
   var limit = o.limit || 60;
@@ -2248,7 +2255,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};

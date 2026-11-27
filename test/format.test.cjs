@@ -994,3 +994,18 @@ test("reminders: the jobs ticked since a day, so a reminder put off for later ca
   assert.deepEqual(C.ticksSince({}, "2026-11-27"), []);
   assert.deepEqual(C.ticksSince(undefined, "2026-11-27"), []);
 });
+
+test("reminders: a summary already shown can be brought up to date as jobs are ticked", () => {
+  const h = desk(), p = {firstSeen: "2026-11-25", recurring: {}};
+  // Friday, after 07:30: the summary has gone out, but what it should say now can still be worked out
+  let s = C.summaryFor(h, p, "2026-11-27");
+  assert.equal(new Date(s.at).toISOString(), "2026-11-27T12:30:00.000Z");
+  assert.equal(s.subtitle, "4 things to do today");
+  // the same as the one scheduled for that morning
+  assert.deepEqual(C.reminders(h, p, jam("2026-11-27", "06:00"), {days: 1, jobs: false})[0], s);
+  p.recurring["post@2026-11-27"] = "x"; p.recurring["post@2026-11-26"] = "x";
+  s = C.summaryFor(h, p, "2026-11-27");
+  assert.deepEqual([s.subtitle, s.body], ["2 things to do today", "Due: Count the petty cash (16:00)\nUnder way: Renew the van's insurance (13 days left)"]);
+  p.recurring["petty@2026-11-27"] = "x"; p.recurring["van-insurance@2026-12-10"] = "x";
+  assert.equal(C.summaryFor(h, p, "2026-11-27"), null, "nothing left: no summary");
+});

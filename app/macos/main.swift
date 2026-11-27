@@ -415,7 +415,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         case "reminders":
             // Everything to remind about from now on, worked out by the page (core.js reminders). It replaces what was scheduled.
             let items = payload["items"] as? [[String: Any]] ?? []
-            reminders.schedule(handover: str("handover"), items: items, ticked: payload["ticked"] as? [String] ?? []) { status in reply(["status": status]) }
+            let ticked = payload["ticked"] as? [String] ?? []
+            let handover = str("handover"), day = str("day"), today = payload["today"] as? [String: Any]
+            // Refresh what's shown only once the old schedule is cleared, so the clear-out can't take the refreshed summary with it.
+            reminders.schedule(handover: handover, items: items, ticked: ticked) { status in
+                reply(["status": status])
+                self.reminders.refreshShown(handover: handover, day: day, today: today, ticked: ticked)
+            }
         case "setReminderPrefs":
             reminders.prefs = ["morning": payload["morning"] as? Bool ?? true, "jobs": payload["jobs"] as? Bool ?? true]; reply(["ok": true])
         case "notificationSettings":
@@ -593,6 +599,28 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
+    /// Bring what Notification Center already shows up to date: take out the reminders for jobs now ticked, and
+    /// rewrite this morning's summary with what is left (quietly: no banner or sound), or take it out when nothing is.
+    func refreshShown(handover: String, day: String, today: [String: Any]?, ticked: [String]) {
+        guard validID(handover) else { return }
+        center.getDeliveredNotifications { shown in
+            let ids = Set(shown.map { $0.request.identifier })
+            let gone = ticked.flatMap { [self.prefix + handover + ".job." + $0, self.snoozeID(handover, $0)] }.filter { ids.contains($0) }
+            if !gone.isEmpty { self.center.removeDeliveredNotifications(withIdentifiers: gone) }
+            let sid = self.prefix + handover + ".summary." + day
+            guard !day.isEmpty, let old = shown.first(where: { $0.request.identifier == sid })?.request.content else { return }
+            guard let today = today else { self.center.removeDeliveredNotifications(withIdentifiers: [sid]); return }
+            let subtitle = today["subtitle"] as? String ?? "", body = today["body"] as? String ?? ""
+            guard subtitle != old.subtitle || body != old.body else { return }
+            let c = old.mutableCopy() as! UNMutableNotificationContent
+            c.subtitle = subtitle; c.body = body; c.sound = nil
+            c.interruptionLevel = .passive
+            var info = c.userInfo; info["refresh"] = true; c.userInfo = info
+            // The same identifier replaces the one shown, in place.
+            self.center.add(UNNotificationRequest(identifier: sid, content: c, trigger: nil)) { e in if let e = e { NSLog("Handover: couldn't update the summary: \(e)") } }
+        }
+    }
+
     func openSettings() {
         let id = Bundle.main.bundleIdentifier ?? ""
         let deep = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")!
@@ -601,7 +629,8 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
 
     /// Show reminders even while Handover is the app in front.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
-        done([.banner, .list, .sound])
+        // A summary brought up to date only changes what Notification Center shows.
+        done(notification.request.content.userInfo["refresh"] as? Bool == true ? [.list] : [.banner, .list, .sound])
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {
