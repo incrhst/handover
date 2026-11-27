@@ -226,10 +226,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             }
         case "saveAs":
             let p = NSSavePanel(); p.nameFieldStringValue = str("filename"); p.title = str("title")
-            p.allowedContentTypes = [handoverType]; p.isExtensionHidden = false
+            let ext = (str("filename") as NSString).pathExtension.lowercased()
+            p.allowedContentTypes = [ext.isEmpty || ext == "handover" ? handoverType : (UTType(filenameExtension: ext) ?? .data)]; p.isExtensionHidden = false
             p.beginSheetModal(for: window) { r in
                 guard r == .OK, let u = p.url else { reply(nil); return }
-                do { try Data(self.str(payload, "content").utf8).write(to: u, options: .atomic); reply(["path": u.path]) }
+                let b64 = self.str(payload, "base64")
+                let data = b64.isEmpty ? Data(self.str(payload, "content").utf8) : (Data(base64Encoded: b64) ?? Data())
+                do { try data.write(to: u, options: .atomic); reply(["path": u.path]) }
                 catch { self.alert("Couldn't save: \(error.localizedDescription)"); reply(nil) }
             }
         case "exportSheet":

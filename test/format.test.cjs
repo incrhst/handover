@@ -176,3 +176,89 @@ test("the AI prompt's example file is a valid 1.1 file", () => {
   assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, []);
   assert.deepEqual(check(schema.latest, h), []);
 });
+
+test("items export: kinds, single items, privacy and closed items", () => {
+  const h = ea();
+  const kinds = C.exportKinds(h);
+  assert.deepEqual(kinds.slice(0, 2).map(k => k.key), ["jobs", "tasks"]);
+  assert.equal(kinds.find(k => k.key === "jobs").count, h.recurring.length);
+  const md = C.docMarkdown(C.itemsDocument(h, {kinds: ["jobs", "tasks"], title: "Jobs and tasks", date: "2026-11-27"}));
+  assert.match(md, /^# Jobs and tasks\n/);
+  assert.match(md, /### Every week\n\n- \*\*Submit Dana's expense claims for approval\*\*\n  - Every Thursday · 11:00 · High risk/);
+  assert.doesNotMatch(md, /\]\(#/, "links into the handover are reduced to their text");
+  assert.doesNotMatch(md, /\*\*\*\*/, "titles that are already bold are not wrapped again");
+  const only = C.itemsDocument(h, {kinds: ["jobs"], only: {jobs: ["expense-approvals"]}});
+  assert.equal(only.parts[0].groups.length, 1);
+  assert.deepEqual(only.parts[0].groups[0].items.map(i => i.id), ["expense-approvals"]);
+  const restricted = h.stakeholders.find(s => s.visibleTo);
+  const people = C.docMarkdown(C.itemsDocument(h, {kinds: ["stakeholders"]}));
+  assert.ok(!people.includes(restricted.name), "items only some people may see are left out by default");
+  assert.ok(C.docMarkdown(C.itemsDocument(h, {kinds: ["stakeholders"], private: true})).includes(restricted.name));
+  const closedGap = h.gaps.find(g => g.closed);
+  assert.ok(!C.docMarkdown(C.itemsDocument(h, {kinds: ["gaps"]})).includes(closedGap.text));
+  assert.ok(C.docMarkdown(C.itemsDocument(h, {kinds: ["gaps"], closed: true})).includes(closedGap.text));
+  const html = C.docHtml(C.itemsDocument(h, {kinds: ["documents"]}));
+  assert.match(html, /^<!doctype html>/); assert.match(html, /<a href="https:\/\//);
+  assert.doesNotMatch(html, /<script/i);
+});
+
+test("items export works on a 1.0 file", () => {
+  const h = sample();
+  assert.deepEqual(C.exportKinds(h).map(k => k.key), ["jobs", "tasks", "questions"]);
+  const md = C.docMarkdown(C.itemsDocument(h, {kinds: ["jobs", "tasks", "questions"]}));
+  assert.ok(md.includes("## Jobs") && md.includes("## First-weeks tasks") && md.includes("## Questions and answers"));
+});
+
+/* Reads a stored (uncompressed) zip and checks each entry's CRC */
+function unzipStored(bytes) {
+  const buf = Buffer.from(bytes), files = {};
+  let i = 0;
+  while (buf.readUInt32LE(i) === 0x04034b50) {
+    const method = buf.readUInt16LE(i + 8), crc = buf.readUInt32LE(i + 14), size = buf.readUInt32LE(i + 18), nlen = buf.readUInt16LE(i + 26), xlen = buf.readUInt16LE(i + 28);
+    assert.equal(method, 0);
+    const name = buf.slice(i + 30, i + 30 + nlen).toString("utf8"), data = buf.slice(i + 30 + nlen + xlen, i + 30 + nlen + xlen + size);
+    assert.equal(require("zlib").crc32 ? require("zlib").crc32(data) : crc, crc, "CRC of " + name);
+    files[name] = data.toString("utf8");
+    i += 30 + nlen + xlen + size;
+  }
+  assert.equal(buf.readUInt32LE(buf.length - 22), 0x06054b50, "end of central directory");
+  assert.equal(buf.readUInt16LE(buf.length - 12), Object.keys(files).length);
+  return files;
+}
+
+test("PDF export: ASCII only, valid cross-references, paged with footers", () => {
+  const h = ea(), doc = C.itemsDocument(h, {kinds: ["jobs", "tasks", "steps", "risks"], title: "Jobs (and tasks) \\ ‘quoted’ – é"});
+  const pdf = C.docPdf(doc, {timezone: h.timezone});
+  assert.match(pdf, /^%PDF-1\.4\n/); assert.match(pdf, /%%EOF\n$/);
+  assert.doesNotMatch(pdf, /[^\x00-\x7f]/, "plain ASCII, so it travels as a string");
+  const startxref = +pdf.match(/startxref\n(\d+)/)[1];
+  assert.equal(pdf.slice(startxref, startxref + 4), "xref");
+  const offsets = pdf.slice(startxref).split("\n").filter(l => / 00000 n $/.test(l)).map(l => +l.slice(0, 10));
+  offsets.forEach((o, k) => assert.equal(pdf.slice(o, o + String(k + 1).length + 6), (k + 1) + " 0 obj"));
+  const pages = (pdf.match(/\/Type \/Page /g) || []).length;
+  assert.ok(pages > 1); assert.ok(pdf.includes("1 of " + pages));
+  assert.ok(pdf.includes("/MediaBox [0 0 612 792]"), "Letter paper for an American timezone");
+  assert.ok(C.docPdf(doc, {timezone: "Europe/London"}).includes("/MediaBox [0 0 595.28 841.89]"), "A4 elsewhere");
+  assert.ok(pdf.includes("(Jobs \\(and tasks\\) \\\\ \\221quoted\\222 \\226 \\351)"), "brackets, backslashes and WinAnsi characters escaped");
+});
+
+test("Word export is a valid package with styles, bullets and external links", () => {
+  const files = unzipStored(C.docDocx(C.itemsDocument(ea(), {kinds: ["jobs", "documents"], title: "Jobs & documents"})));
+  ["[Content_Types].xml", "_rels/.rels", "word/document.xml", "word/styles.xml", "word/numbering.xml", "word/_rels/document.xml.rels", "docProps/core.xml"].forEach(n => assert.ok(files[n], n));
+  const d = files["word/document.xml"];
+  assert.ok(d.includes("Jobs &amp; documents")); assert.ok(d.includes("Submit Dana&apos;s") || d.includes("Submit Dana's"));
+  const ids = [...d.matchAll(/r:id="(rIdL\d+)"/g)].map(m => m[1]);
+  assert.ok(ids.length > 0);
+  ids.forEach(id => assert.match(files["word/_rels/document.xml.rels"], new RegExp('Id="' + id + '"[^>]*TargetMode="External"')));
+  assert.doesNotMatch(d, /\*\*/, "Markdown bold becomes Word bold");
+});
+
+test("Excel export has a sheet per kind, a header row and one row per item", () => {
+  const h = ea(), files = unzipStored(C.docXlsx(C.itemsDocument(h, {kinds: ["jobs", "decide"]})));
+  const wb = files["xl/workbook.xml"];
+  assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what"]);
+  const jobs = files["xl/worksheets/sheet1.xml"];
+  assert.equal((jobs.match(/<row /g) || []).length, h.recurring.length + 1);
+  assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<"));
+  assert.match(jobs, /<autoFilter ref="A1:F7"\/>/);
+});

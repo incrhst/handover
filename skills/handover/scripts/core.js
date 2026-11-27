@@ -439,8 +439,387 @@ function withRendered(h){
   return o;
 }
 
+/* ================= Items as a document =================
+   exportKinds(h) lists what can go in a document; itemsDocument(h, opts) builds it.
+   opts: kinds (keys, in order), only ({kind: [ids]} to pick single items), closed (include closed items),
+   private (include items with visibleTo and restricted contacts), title, date (YYYY-MM-DD). */
+var FREQ = [["daily", "Every day", ["day", "weekday"]], ["weekly", "Every week", ["week"]], ["monthly", "Every month", ["month"]], ["quarterly", "Every quarter", ["quarter"]], ["yearly", "Every year", ["year"]]];
+var RISK_LIST = {weekly: "Recurring work", occasional: "Occasional", spof: "Only one person knows"}, TREAT = {record: "Record someone doing it", write: "Write it down", brief: "A line in the brief"};
+var COLUMN = {alone: "Decide alone", check: "Check first", principal: "Always the principal"};
+var EXPORT_KINDS = [
+  {key: "jobs", title: "Jobs", hint: "Recurring duties, by how often they happen"},
+  {key: "tasks", title: "First-weeks tasks", hint: "The path, stage by stage"},
+  {key: "steps", title: "Handover plan steps", hint: "Who does what, phase by phase"},
+  {key: "inProgress", title: "In progress", hint: "Unfinished work, with owners and due dates"},
+  {key: "gaps", title: "Gaps", hint: "Things still unknown or unclear"},
+  {key: "rules", title: "When this happens", hint: "If this, then that"},
+  {key: "decisions", title: "Decisions", hint: "Already made, and why"},
+  {key: "risks", title: "Risks", hint: "What could go wrong"},
+  {key: "systems", title: "Systems and access", hint: "Where logins are kept and who grants access"},
+  {key: "documents", title: "Documents", hint: "Links and where files are kept"},
+  {key: "stakeholders", title: "People to know", hint: "Who they are and when to involve them"},
+  {key: "decide", title: "Who decides what", hint: "Limits and approvers"},
+  {key: "questions", title: "Questions and answers", hint: "Quick answers"}
+];
+var KIND_COLS = {
+  jobs: ["How often", "Job", "When", "Time", "Risk", "Notes"], tasks: ["Stage", "Task", "Detail"], steps: ["Phase", "Step", "Who", "Status", "Why"],
+  inProgress: ["What", "Owner", "Due", "Status"], gaps: ["Gap", "Blocks work", "Status"], rules: ["When this happens", "Situation", "Status"],
+  decisions: ["Decision", "Why", "Decided", "Status"], risks: ["Risk", "Kind", "Severity", "How it's passed on", "On the list", "Evidence", "Status"],
+  systems: ["System", "Used for", "Login kept in", "Access from", "Access check", "Status"], documents: ["Document", "Type", "Where", "Link", "Status"],
+  stakeholders: ["Name", "Who they are", "When to involve them", "Contact"], decide: ["Who decides", "Decision", "Limit", "Approver", "Note"],
+  questions: ["Question", "Answer", "Topic"]
+};
+function exportItems(h, key, o){
+  o = o || {};
+  var keep = function(x){ return (o.closed || !x.closed) && (o["private"] || !Array.isArray(x.visibleTo)); };
+  var stake = {}; (h.stakeholders || []).forEach(function(s){ stake[s.id] = s.name; });
+  var duty = {}; (h.recurring || []).forEach(function(r){ duty[r.id] = r; });
+  var riskFor = {}; (h.risks || []).filter(keep).forEach(function(r){ if (r.recurring) riskFor[r.recurring] = r; });
+  var closedMeta = function(x){ return x.closed ? "Closed" + (x.closed.at ? " " + nice(String(x.closed.at).slice(0, 10)) : "") : ""; };
+  var status = function(x){ return x.closed ? closedMeta(x) : "Open"; };
+  var G = function(title, items){ return {title: title, items: items}; };
+  switch (key){
+    case "jobs": return FREQ.map(function(f){
+      return G(f[1], (h.recurring || []).filter(function(r){ return f[2].indexOf(r.every) > -1; }).map(function(r){
+        var rk = riskFor[r.id], when = cadence(r), risk = rk && rk.severity ? cap(rk.severity) + " risk: " + rk.text : "";
+        var span = r.start || r.end ? (r.start ? "From " + nice(r.start) : "") + (r.start && r.end ? " " : "") + (r.end ? "until " + nice(r.end) : "") : "";
+        return {id: r.id, title: r.text, meta: [when + (r.time ? " · " + r.time : ""), risk, span], note: r.detail, row: [f[1], r.text, when + (span ? " (" + span + ")" : ""), r.time || "", risk, r.detail || ""]};
+      }));
+    });
+    case "tasks": return (h.path || []).map(function(st){ return G(st.title, st.tasks.map(function(t){ return {id: t.id, title: t.text, note: t.detail, row: [st.title, t.text, t.detail || ""]}; })); });
+    case "steps": var steps = (h.plan && h.plan.steps) || [], ov = overlap(h.plan); return PHASES.map(function(ph){
+      var label = phaseLabel(ph, ov);
+      return G(label, steps.filter(function(x){ return x.phase === ph; }).map(function(x){
+        var st = {open: "Open", done: "Done", na: "Not needed" + (x.reason ? ": " + x.reason : "")}[x.status];
+        return {id: x.id, title: x.title, meta: [who(h, x.role), st], note: x.why, row: [label, x.title, who(h, x.role), st, x.why || ""]};
+      }));
+    });
+    case "inProgress": return [G("", (h.inProgress || []).filter(keep).map(function(x){ var ow = x.owner ? who(h, x.owner) : ""; return {id: x.id, title: x.text, meta: [ow ? "Owner: " + ow : "", x.due ? "Due " + nice(x.due) : "", closedMeta(x)], row: [x.text, ow, x.due || "", status(x)]}; }))];
+    case "gaps": return [G("", (h.gaps || []).filter(keep).map(function(x){ return {id: x.id, title: x.text, meta: [x.blocks ? "Blocks work" : "", closedMeta(x)], row: [x.text, x.blocks ? "Yes" : "", status(x)]}; }))];
+    case "rules": return [G("", (h.rules || []).filter(keep).map(function(x){ return {id: x.id, title: x.text, meta: [x.situation || "", closedMeta(x)], row: [x.text, x.situation || "", status(x)]}; }))];
+    case "decisions": return [G("", (h.decisions || []).filter(keep).map(function(x){ return {id: x.id, title: x.text, meta: [x.date ? "Decided " + nice(x.date) : "", closedMeta(x)], note: x.reason, row: [x.text, x.reason || "", x.date || "", status(x)]}; }))];
+    case "risks": return [G("", (h.risks || []).filter(keep).map(function(x){
+      var d = x.recurring && duty[x.recurring], ev = x.evidence, onList = d ? cadence(d) + (d.time ? " · " + d.time : "") : "";
+      var evText = ev ? [ev.cadence ? cap(ev.cadence) : "", ev.occurrences !== undefined ? ev.occurrences + (ev.occurrences === 1 ? " time" : " times") : "", ev.hours !== undefined ? "about " + ev.hours + " h" : "", ev.source || ""].filter(Boolean).join(", ") : "";
+      return {id: x.id, title: x.text, meta: [RISK_LIST[x.list], x.severity ? cap(x.severity) + " severity" : "", x.treatment ? TREAT[x.treatment] : "", onList ? "On the list: " + onList : "", closedMeta(x)],
+        note: evText ? "Evidence: " + evText + "." : "", row: [x.text, RISK_LIST[x.list] || "", cap(x.severity), x.treatment ? TREAT[x.treatment] : "", onList, evText, status(x)]};
+    }))];
+    case "systems": return [G("", (h.systems || []).filter(keep).map(function(x){ var ck = checksText(x.checks); return {id: x.id, title: x.name, meta: [x.purpose || "", x.credentialLocation ? "Login kept in: " + x.credentialLocation : "", x.grantedBy ? "Access from: " + x.grantedBy : "", ck, closedMeta(x)], row: [x.name, x.purpose || "", x.credentialLocation || "", x.grantedBy || "", ck, status(x)]}; }))];
+    case "documents": return [G("", (h.documents || []).filter(keep).map(function(x){ return {id: x.id, title: x.url ? "[" + x.title + "](" + x.url + ")" : x.title, meta: [DOC_TYPE[x.type] || "", x.location || "", cap(x.status), closedMeta(x)], row: [x.title, DOC_TYPE[x.type] || "", x.location || "", x.url || "", x.closed ? closedMeta(x) : cap(x.status)]}; }))];
+    case "stakeholders": return [G("", (h.stakeholders || []).filter(keep).map(function(x){
+      var contact = x.contact && (o["private"] || !Array.isArray(x.contactVisibleTo)) ? x.contact : "";
+      return {id: x.id, title: x.name, meta: [x.relationship, contact ? "Contact: " + contact : ""], note: x.involve, row: [x.name, x.relationship, x.involve || "", contact]};
+    }))];
+    case "decide": var cards = ((h.decide && h.decide.cards) || []).filter(keep); return ["alone", "check", "principal"].map(function(c){
+      return G(COLUMN[c], cards.filter(function(x){ return x.column === c; }).map(function(x){
+        var ap = x.approver ? (x.approver.role ? who(h, x.approver.role) : stake[x.approver.stakeholder] || "") : "", moved = x.movedByPrincipal ? "Moved here by the principal" : "";
+        return {id: x.id, title: x.text, meta: [x.limit ? "Up to " + money(x.limit) : "", ap ? "Approver: " + ap : "", moved], row: [COLUMN[c], x.text, x.limit ? money(x.limit) : "", ap, moved]};
+      }));
+    });
+    case "questions": return [G("", (h.questions || []).map(function(q, i){ return {id: q.id || "q" + (i + 1), title: q.q, meta: [q.tag || ""], note: q.a, row: [q.q, q.a, q.tag || ""]}; }))];
+  }
+  return [];
+}
+function exportKinds(h, o){
+  return EXPORT_KINDS.map(function(k){
+    var groups = exportItems(h, k.key, o).filter(function(g){ return g.items.length; });
+    var items = []; groups.forEach(function(g){ g.items.forEach(function(it){ items.push({id: it.id, title: it.title, group: g.title}); }); });
+    return {key: k.key, title: k.title, hint: k.hint, count: items.length, items: items};
+  }).filter(function(k){ return k.count; });
+}
+function itemsDocument(h, o){
+  o = o || {};
+  var kinds = o.kinds || ["jobs", "tasks"], parts = [];
+  kinds.forEach(function(key){
+    var meta = EXPORT_KINDS.filter(function(k){ return k.key === key; })[0]; if (!meta) return;
+    var pick = o.only && o.only[key] ? o.only[key] : null;
+    var groups = exportItems(h, key, o).map(function(g){
+      return {title: g.title, items: g.items.filter(function(it){ return !pick || pick.indexOf(it.id) > -1; }).map(function(it){
+        return {id: it.id, title: it.title, meta: (it.meta || []).filter(Boolean), note: it.note || "", row: it.row || []};
+      })};
+    }).filter(function(g){ return g.items.length; });
+    if (groups.length) parts.push({key: key, title: meta.title, columns: KIND_COLS[key], groups: groups});
+  });
+  return {title: o.title || h.title, subtitle: h.title + (o.date ? " · " + nice(o.date, "long") : ""), parts: parts};
+}
+function docMarkdown(doc){
+  var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""];
+  doc.parts.forEach(function(p){
+    L.push("## " + p.title, "");
+    p.groups.forEach(function(g){
+      if (g.title) L.push("### " + g.title, "");
+      g.items.forEach(function(it){
+        var t = oneLine(it.title);
+        L.push("- " + (/\*\*/.test(t) ? t : "**" + t + "**"));
+        if (it.meta.length) L.push("  - " + it.meta.map(oneLine).join(" · "));
+        if (it.note) L.push("  - " + oneLine(it.note));
+      });
+      L.push("");
+    });
+  });
+  return L.join("\n");
+}
+/* One line, with links into the handover itself reduced to their text: they lead nowhere outside it */
+function oneLine(s){ return String(s).replace(/\s*\r?\n+\s*/g, " ").replace(/\[([^\]]+)\]\(#[^)\s]*\)/g, "$1").trim(); }
+function escHtml(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function inlineHtml(s){
+  return escHtml(oneLine(s))
+    .replace(/\{TODO:\s*([^}]*)\}/g, '<span style="background:#fff3c4">To fill in: $1</span>').replace(/(^|\s)TODO:\s*(.*)$/, '$1<span style="background:#fff3c4">To fill in: $2</span>')
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<i>$2</i>").replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>').replace(/\[([^\]]+)\]\([^)\s]*\)/g, "$1");
+}
+function docHtml(doc){
+  var b = [];
+  b.push("<h1>" + inlineHtml(doc.title) + "</h1>", '<p class="sub">' + inlineHtml(doc.subtitle) + "</p>");
+  doc.parts.forEach(function(p){
+    b.push("<h2>" + inlineHtml(p.title) + "</h2>");
+    p.groups.forEach(function(g){
+      if (g.title) b.push("<h3>" + inlineHtml(g.title) + "</h3>");
+      b.push("<ul>" + g.items.map(function(it){
+        var t = inlineHtml(it.title);
+        return "<li>" + (/<b>/.test(t) ? t : "<b>" + t + "</b>") + (it.meta.length ? '<br><span class="meta">' + it.meta.map(inlineHtml).join(" · ") + "</span>" : "") + (it.note ? "<br>" + inlineHtml(it.note) : "") + "</li>";
+      }).join("") + "</ul>");
+    });
+  });
+  return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(doc.title) + "</title><style>" +
+    "body{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f;max-width:720px;margin:24px auto;padding:0 16px}" +
+    "h1{font-size:20pt;margin:0 0 4px}h2{font-size:15pt;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}h3{font-size:12pt;margin:14px 0 4px}" +
+    ".sub{color:#666;margin:0 0 12px}.meta{color:#555;font-size:10pt}ul{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}" +
+    "</style></head><body>\n" + b.join("\n") + "\n</body></html>\n";
+}
+
+/* ================= PDF, with no dependencies =================
+   Standard Helvetica fonts, WinAnsi text, uncompressed: the whole file is 7-bit ASCII, so it can be
+   passed around as a string. Letter paper for American timezones, A4 elsewhere. */
+var HELV = " 278 278 355 556 556 889 667 191 333 333 389 584 278 333 278 278 556 556 556 556 556 556 556 556 556 556 278 278 584 584 584 556 1015 667 667 722 722 667 611 778 722 278 500 667 556 833 722 778 667 778 722 667 611 722 667 944 667 667 611 278 278 278 469 556 333 556 556 500 556 556 278 556 556 222 222 500 222 833 556 556 556 556 333 500 278 556 500 722 500 500 500 334 260 334 584".trim().split(" ").map(Number);
+var HELVB = "278 333 474 556 556 889 722 238 333 333 389 584 278 333 278 278 556 556 556 556 556 556 556 556 556 556 333 333 584 584 584 611 975 722 722 722 722 667 611 778 722 278 556 722 611 833 722 778 667 778 722 667 611 722 667 944 667 667 611 333 278 333 584 556 333 556 611 556 611 556 333 611 611 278 278 556 278 889 611 611 611 611 389 556 333 611 556 778 556 556 500 389 280 389 584".split(" ").map(Number);
+var WIN = {8364: 128, 8218: 130, 402: 131, 8222: 132, 8230: 133, 8224: 134, 8225: 135, 710: 136, 8240: 137, 352: 138, 8249: 139, 338: 140, 381: 142, 8216: 145, 8217: 146, 8220: 147, 8221: 148, 8226: 149, 8211: 150, 8212: 151, 732: 152, 8482: 153, 353: 154, 8250: 155, 339: 156, 382: 158, 376: 159, 8239: 32, 8201: 32, 8202: 32, 8209: 45, 8208: 45};
+var WIN_W = {128: 556, 130: 222, 133: 1000, 145: 222, 146: 222, 147: 333, 148: 333, 149: 350, 150: 556, 151: 1000, 153: 1000, 160: 278, 183: 278};
+function winBytes(str){ var out = []; for (var i = 0; i < str.length; i++){ var c = str.charCodeAt(i); if (c >= 0xD800 && c <= 0xDBFF){ i++; out.push(63); continue; } out.push(c < 128 || (c >= 160 && c < 256) ? c : WIN[c] || 63); } return out; }
+function textWidth(str, bold, size){ return winBytes(str).reduce(function(w, b){ return w + (b >= 32 && b <= 126 ? (bold ? HELVB : HELV)[b - 32] : WIN_W[b] || 556); }, 0) * size / 1000; }
+function pdfStr(str){ return "(" + winBytes(str).map(function(b){ return b === 40 || b === 41 || b === 92 ? "\\" + String.fromCharCode(b) : b < 32 || b > 126 ? "\\" + ("00" + b.toString(8)).slice(-3) : String.fromCharCode(b); }).join("") + ")"; }
+/* Inline Markdown reduced to plain text for print */
+function plainText(s){
+  return oneLine(s).replace(/\{TODO:\s*([^}]*)\}/g, "[to fill in: $1]").replace(/(^|\s)TODO:\s*(.*)$/, "$1[to fill in: $2]")
+    .replace(/\*\*([^*]+)\*\*/g, "$1").replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1$2").replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, "$1");
+}
+function wrapText(str, bold, size, width){
+  var words = str.split(/\s+/).filter(Boolean), lines = [], cur = "";
+  words.forEach(function(w){
+    while (textWidth(w, bold, size) > width){ var n = w.length; while (n > 1 && textWidth(w.slice(0, n), bold, size) > width) n--; if (cur){ lines.push(cur); cur = ""; } lines.push(w.slice(0, n)); w = w.slice(n); }
+    var t = cur ? cur + " " + w : w;
+    if (cur && textWidth(t, bold, size) > width){ lines.push(cur); cur = w; } else cur = t;
+  });
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
+function docPdf(doc, o){
+  o = o || {};
+  var letter = /^America\//.test(o.timezone || ""), W = letter ? 612 : 595.28, Hh = letter ? 792 : 841.89, M = 56, CW = W - 2 * M;
+  var pages = [], ops = null, y = 0;
+  function newPage(){ ops = []; pages.push(ops); y = Hh - M; }
+  function need(h){ if (!ops || y - h < M + 18) newPage(); }
+  function text(x, str, font, size, grey){ ops.push((grey ? "0.37 0.39 0.36 rg " : "0.1 0.1 0.1 rg ") + "BT /" + font + " " + size + " Tf " + x.toFixed(2) + " " + y.toFixed(2) + " Td " + pdfStr(str) + " Tj ET"); }
+  function para(str, opt){
+    var bold = opt.font === "F2", lines = wrapText(plainText(str), bold, opt.size, CW - (opt.indent || 0)), lh = opt.size * 1.3;
+    lines.forEach(function(l, i){ need(lh); y -= lh; if (i === 0 && opt.bullet) text(M + (opt.indent || 0) - 11, "•", "F1", opt.size, false); text(M + (opt.indent || 0), l, opt.font, opt.size, opt.grey); });
+  }
+  newPage();
+  para(doc.title, {font: "F2", size: 20}); y -= 2;
+  para(doc.subtitle, {font: "F3", size: 10, grey: true}); y -= 10;
+  doc.parts.forEach(function(p){
+    need(14 * 1.3 + 50); y -= 12; para(p.title, {font: "F2", size: 14});
+    ops.push("0.85 0.84 0.8 RG 0.6 w " + M + " " + (y - 4).toFixed(2) + " m " + (W - M) + " " + (y - 4).toFixed(2) + " l S"); y -= 8;
+    p.groups.forEach(function(g){
+      if (g.title){ need(11 * 1.3 + 40); y -= 6; para(g.title, {font: "F2", size: 11, grey: true}); y -= 2; }
+      g.items.forEach(function(it){
+        need(10.5 * 1.3 + (it.meta.length ? 12 : 0));
+        para(it.title, {font: "F2", size: 10.5, indent: 14, bullet: true});
+        if (it.meta.length) para(it.meta.join(" · "), {font: "F1", size: 9, indent: 14, grey: true});
+        if (it.note) para(it.note, {font: "F1", size: 10, indent: 14});
+        y -= 6;
+      });
+    });
+  });
+  var n = pages.length;
+  pages.forEach(function(pg, i){ var foot = plainText(doc.title) + "  ·  " + (i + 1) + " of " + n; pg.push("0.37 0.39 0.36 rg BT /F1 8 Tf " + M + " " + (M - 24) + " Td " + pdfStr(foot) + " Tj ET"); });
+  var objs = [];
+  objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+  objs[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
+  objs[5] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>";
+  objs[6] = "<< /Title " + pdfStr(plainText(doc.title)) + " /Subject " + pdfStr(plainText(doc.subtitle)) + " /Producer (Handover) >>";
+  var kids = [];
+  pages.forEach(function(pg, i){
+    var pid = 7 + i * 2, cid = pid + 1, body = pg.join("\n");
+    kids.push(pid + " 0 R");
+    objs[pid] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + Hh + "] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents " + cid + " 0 R >>";
+    objs[cid] = "<< /Length " + body.length + " >>\nstream\n" + body + "\nendstream";
+  });
+  objs[2] = "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + n + " >>";
+  var out = "%PDF-1.4\n", offs = [];
+  for (var k = 1; k < objs.length; k++){ offs[k] = out.length; out += k + " 0 obj\n" + objs[k] + "\nendobj\n"; }
+  var xref = out.length;
+  out += "xref\n0 " + objs.length + "\n0000000000 65535 f \n" + offs.slice(1).map(function(x){ return ("000000000" + x).slice(-10) + " 00000 n \n"; }).join("");
+  out += "trailer\n<< /Size " + objs.length + " /Root 1 0 R /Info 6 0 R >>\nstartxref\n" + xref + "\n%%EOF\n";
+  return out;
+}
+
+/* ================= Word (.docx) and Excel (.xlsx), with no dependencies =================
+   Both are zip files of XML. The zip is stored, not compressed: simple, and these files are small. */
+function utf8(str){
+  var out = [], i, c;
+  for (i = 0; i < str.length; i++){
+    c = str.charCodeAt(i);
+    if (c >= 0xD800 && c <= 0xDBFF && i + 1 < str.length){ c = 0x10000 + ((c - 0xD800) << 10) + (str.charCodeAt(++i) - 0xDC00); }
+    if (c < 0x80) out.push(c);
+    else if (c < 0x800) out.push(0xC0 | c >> 6, 0x80 | c & 63);
+    else if (c < 0x10000) out.push(0xE0 | c >> 12, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+    else out.push(0xF0 | c >> 18, 0x80 | c >> 12 & 63, 0x80 | c >> 6 & 63, 0x80 | c & 63);
+  }
+  return out;
+}
+var CRC = (function(){ var t = [], c, n, k; for (n = 0; n < 256; n++){ c = n; for (k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(bytes){ var c = 0xFFFFFFFF; for (var i = 0; i < bytes.length; i++) c = CRC[(c ^ bytes[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zip(files){
+  var out = [], central = [], le = function(arr, v, n){ for (var i = 0; i < n; i++) arr.push(v >>> (8 * i) & 255); };
+  var push = function(arr){ for (var i = 0; i < arr.length; i++) out.push(arr[i]); };
+  files.forEach(function(f){
+    var name = utf8(f.name), data = utf8(f.text), crc = crc32(data), off = out.length, hd = [];
+    le(hd, 0x04034b50, 4); le(hd, 20, 2); le(hd, 0x0800, 2); le(hd, 0, 2); le(hd, 0, 2); le(hd, 0x21, 2); le(hd, crc, 4); le(hd, data.length, 4); le(hd, data.length, 4); le(hd, name.length, 2); le(hd, 0, 2);
+    push(hd); push(name); push(data);
+    var cd = []; le(cd, 0x02014b50, 4); le(cd, 20, 2); le(cd, 20, 2); le(cd, 0x0800, 2); le(cd, 0, 2); le(cd, 0, 2); le(cd, 0x21, 2); le(cd, crc, 4); le(cd, data.length, 4); le(cd, data.length, 4); le(cd, name.length, 2); le(cd, 0, 2); le(cd, 0, 2); le(cd, 0, 2); le(cd, 0, 2); le(cd, 0, 4); le(cd, off, 4);
+    central.push(cd.concat(name));
+  });
+  var start = out.length, size = 0;
+  central.forEach(function(c){ push(c); size += c.length; });
+  var end = []; le(end, 0x06054b50, 4); le(end, 0, 2); le(end, 0, 2); le(end, files.length, 2); le(end, files.length, 2); le(end, size, 4); le(end, start, 4); le(end, 0, 2);
+  push(end);
+  return typeof Uint8Array !== "undefined" ? new Uint8Array(out) : out;
+}
+var B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+function base64(bytes){
+  var s = "", i, n;
+  for (i = 0; i < bytes.length; i += 3){
+    n = bytes[i] << 16 | (i + 1 < bytes.length ? bytes[i + 1] << 8 : 0) | (i + 2 < bytes.length ? bytes[i + 2] : 0);
+    s += B64[n >> 18 & 63] + B64[n >> 12 & 63] + (i + 1 < bytes.length ? B64[n >> 6 & 63] : "=") + (i + 2 < bytes.length ? B64[n & 63] : "=");
+  }
+  return s;
+}
+function xmlEsc(s){ return String(s === undefined || s === null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ""); }
+var XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+function coreProps(title){
+  return XML_HEAD + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>' + xmlEsc(title) + "</dc:title><dc:creator>Handover</dc:creator></cp:coreProperties>";
+}
+
+function docDocx(doc){
+  var links = [];
+  function run(text, o){
+    o = o || {};
+    var rpr = (o.bold ? "<w:b/>" : "") + (o.italic ? "<w:i/>" : "") + (o.color ? '<w:color w:val="' + o.color + '"/>' : "") + (o.size ? '<w:sz w:val="' + o.size + '"/><w:szCs w:val="' + o.size + '"/>' : "");
+    return "<w:r>" + (rpr ? "<w:rPr>" + rpr + "</w:rPr>" : "") + '<w:t xml:space="preserve">' + xmlEsc(text) + "</w:t></w:r>";
+  }
+  /* Inline Markdown to runs: **bold**, links (external ones stay links), TODO markers */
+  function runs(md, o){
+    o = o || {};
+    var text = oneLine(md).replace(/\{TODO:\s*([^}]*)\}/g, "[to fill in: $1]").replace(/(^|\s)TODO:\s*(.*)$/, "$1[to fill in: $2]").replace(/`([^`]+)`/g, "$1");
+    var out = "", re = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)\s]+)\)/g, last = 0, m;
+    while ((m = re.exec(text))){
+      if (m.index > last) out += run(text.slice(last, m.index).replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1$2"), o);
+      if (m[1] !== undefined) out += run(m[1], {bold: true, color: o.color, size: o.size, italic: o.italic});
+      else if (/^https?:/.test(m[3])){ links.push(m[3]); out += '<w:hyperlink r:id="rIdL' + links.length + '" w:history="1">' + run(m[2], {color: "3B2A8A", size: o.size, bold: o.bold}).replace("</w:rPr>", '<w:u w:val="single"/></w:rPr>') + "</w:hyperlink>"; }
+      else out += run(m[2], o);
+      last = re.lastIndex;
+    }
+    if (last < text.length) out += run(text.slice(last).replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1$2"), o);
+    return out;
+  }
+  function p(style, body, extra){ return "<w:p><w:pPr>" + (style ? '<w:pStyle w:val="' + style + '"/>' : "") + (extra || "") + "</w:pPr>" + body + "</w:p>"; }
+  var body = [];
+  body.push(p("Title", run(plainText(doc.title))));
+  body.push(p("Subtitle", run(plainText(doc.subtitle))));
+  doc.parts.forEach(function(pt){
+    body.push(p("Heading1", run(pt.title)));
+    pt.groups.forEach(function(g){
+      if (g.title) body.push(p("Heading2", run(g.title)));
+      g.items.forEach(function(it){
+        body.push(p("ListParagraph", /\*\*/.test(it.title) ? runs(it.title) : runs(it.title, {bold: true}), '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:spacing w:before="80" w:after="0"/>'));
+        if (it.meta.length) body.push(p("Meta", runs(it.meta.join(" · "))));
+        if (it.note) body.push(p("Note", runs(it.note)));
+      });
+    });
+  });
+  var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  var documentXml = XML_HEAD + "<w:document " + W + "><w:body>" + body.join("") +
+    '<w:sectPr><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
+  var font = '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial" w:eastAsia="Arial"/>';
+  function style(id, name, ppr, rpr, based){ return '<w:style w:type="paragraph" w:styleId="' + id + '"><w:name w:val="' + name + '"/>' + (based ? '<w:basedOn w:val="' + based + '"/>' : "") + '<w:qFormat/><w:pPr>' + (ppr || "") + "</w:pPr><w:rPr>" + (rpr || "") + "</w:rPr></w:style>"; }
+  var stylesXml = XML_HEAD + "<w:styles " + W + "><w:docDefaults><w:rPrDefault><w:rPr>" + font + '<w:color w:val="1D1D1F"/><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="80" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+    style("Normal", "Normal") +
+    style("Title", "Title", '<w:spacing w:after="40"/>', '<w:b/><w:sz w:val="40"/><w:szCs w:val="40"/>', "Normal") +
+    style("Subtitle", "Subtitle", '<w:spacing w:after="240"/>', '<w:i/><w:color w:val="5F645C"/><w:sz w:val="20"/><w:szCs w:val="20"/>', "Normal") +
+    style("Heading1", "heading 1", '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="DEDAD0"/></w:pBdr><w:spacing w:before="320" w:after="80"/><w:outlineLvl w:val="0"/>', '<w:b/><w:sz w:val="28"/><w:szCs w:val="28"/>', "Normal") +
+    style("Heading2", "heading 2", '<w:keepNext/><w:spacing w:before="200" w:after="40"/><w:outlineLvl w:val="1"/>', '<w:b/><w:color w:val="5F645C"/><w:sz w:val="22"/>', "Normal") +
+    style("ListParagraph", "List Paragraph", '<w:ind w:left="360" w:hanging="240"/>', "", "Normal") +
+    style("Meta", "Item details", '<w:keepLines/><w:spacing w:after="0"/><w:ind w:left="360"/>', '<w:color w:val="5F645C"/><w:sz w:val="18"/>', "Normal") +
+    style("Note", "Item note", '<w:spacing w:after="40"/><w:ind w:left="360"/>', "", "Normal") +
+    "</w:styles>";
+  var numberingXml = XML_HEAD + "<w:numbering " + W + '><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="240"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+  var rels = '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
+    links.map(function(u, i){ return '<Relationship Id="rIdL' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(u) + '" TargetMode="External"/>'; }).join("");
+  return zip([
+    {name: "[Content_Types].xml", text: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>'},
+    {name: "_rels/.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>'},
+    {name: "docProps/core.xml", text: coreProps(plainText(doc.title))},
+    {name: "word/document.xml", text: documentXml},
+    {name: "word/styles.xml", text: stylesXml},
+    {name: "word/numbering.xml", text: numberingXml},
+    {name: "word/_rels/document.xml.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' + rels + "</Relationships>"}
+  ]);
+}
+
+/* One sheet per kind of item, with a header row, filters and frozen headers */
+function docXlsx(doc){
+  function col(n){ var s = ""; n++; while (n){ var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+  function cellXml(ref, v, st){ return '<c r="' + ref + '" t="inlineStr"' + (st ? ' s="' + st + '"' : "") + '><is><t xml:space="preserve">' + xmlEsc(v) + "</t></is></c>"; }
+  var used = {}, sheets = doc.parts.map(function(pt, i){
+    var name = pt.title.replace(/[\[\]:*?\/\\]/g, " ").slice(0, 31), n = 2; while (used[name.toLowerCase()]) name = name.slice(0, 28) + " " + n++; used[name.toLowerCase()] = true;
+    var head = pt.columns || ["Item"], rows = [];
+    pt.groups.forEach(function(g){ g.items.forEach(function(it){ rows.push(it.row && it.row.length ? it.row.map(plainText) : [plainText(it.title)]); }); });
+    var widths = head.map(function(hd, c){ var w = hd.length; rows.forEach(function(r){ w = Math.max(w, String(r[c] || "").length); }); return Math.min(Math.max(w + 2, 10), 60); });
+    var last = col(head.length - 1) + (rows.length + 1);
+    var xml = XML_HEAD + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+      '<sheetViews><sheetView workbookViewId="0"' + (i === 0 ? ' tabSelected="1"' : "") + '><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+      "<cols>" + widths.map(function(w, c){ return '<col min="' + (c + 1) + '" max="' + (c + 1) + '" width="' + w + '" customWidth="1"/>'; }).join("") + "</cols><sheetData>" +
+      '<row r="1">' + head.map(function(hd, c){ return cellXml(col(c) + "1", hd, 1); }).join("") + "</row>" +
+      rows.map(function(r, ri){ return '<row r="' + (ri + 2) + '">' + head.map(function(hd, c){ return cellXml(col(c) + (ri + 2), r[c] || "", 2); }).join("") + "</row>"; }).join("") +
+      '</sheetData><autoFilter ref="A1:' + last + '"/></worksheet>';
+    return {name: name, xml: xml};
+  });
+  var files = [
+    {name: "[Content_Types].xml", text: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+      sheets.map(function(sh, i){ return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") + "</Types>"},
+    {name: "_rels/.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>'},
+    {name: "docProps/core.xml", text: coreProps(plainText(doc.title))},
+    {name: "xl/workbook.xml", text: XML_HEAD + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      sheets.map(function(sh, i){ return '<sheet name="' + xmlEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join("") + "</sheets>" +
+      (sheets.length ? "<definedNames>" + sheets.map(function(sh, i){ return '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">\'' + xmlEsc(sh.name.replace(/'/g, "''")) + "'!" + sh.xml.match(/autoFilter ref="([^"]+)"/)[1].replace(/([A-Z]+)(\d+)/g, "$$$1$$$2") + "</definedName>"; }).join("") + "</definedNames>" : "") + "</workbook>"},
+    {name: "xl/_rels/workbook.xml.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      sheets.map(function(sh, i){ return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
+      '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
+    {name: "xl/styles.xml", text: XML_HEAD + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFEDE6"/><bgColor indexed="64"/></patternFill></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>' +
+      '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>'}
+  ];
+  sheets.forEach(function(sh, i){ files.push({name: "xl/worksheets/sheet" + (i + 1) + ".xml", text: sh.xml}); });
+  return zip(files);
+}
+
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
-  canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME};
+  canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

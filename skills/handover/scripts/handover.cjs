@@ -10,6 +10,8 @@
 //                                              export for sharing: newcomer (default) drops progress,
 //                                              process state and anything the audience may not see
 //   node handover.cjs render <file> [out]      write the sections for 1.0 readers again from the 1.1 data
+//   node handover.cjs export <file> [out] [--items jobs,tasks] [--format pdf|docx|xlsx|md|html] [--title "…"]
+//                                              chosen items as a document; the format defaults to out's extension
 //   node handover.cjs merge <file> <other> [out]
 //                                              merge the progress in <other> into <file>
 "use strict";
@@ -120,6 +122,22 @@ switch (cmd) {
     write(C.withRendered(h), args[1]);
     break;
   }
+  case "export": {
+    const kinds = flag("--items", "jobs,tasks").split(",").map(s => s.trim()).filter(Boolean);
+    let format = flag("--format", ""); const title = flag("--title", "");
+    const h = read(args[0]); requireValid(h, args[0]);
+    const known = C.exportKinds(h, {closed: true, private: true}).map(k => k.key);
+    const bad = kinds.filter(k => known.indexOf(k) < 0);
+    if (bad.length) die(`Nothing to export for: ${bad.join(", ")}. This file has: ${known.join(", ") || "nothing"}.`);
+    if (!format) format = args[1] ? path.extname(args[1]).slice(1).toLowerCase() || "md" : "md";
+    const FORMATS = ["pdf", "docx", "xlsx", "md", "html"];
+    if (FORMATS.indexOf(format) < 0) die("--format is one of " + FORMATS.join(", "));
+    if ((format === "docx" || format === "xlsx") && !args[1]) die(`Give an output file for ${format}, e.g. items.${format}`);
+    const doc = C.itemsDocument(h, {kinds, title: title || undefined, date: C.zoneParts(h.timezone).date});
+    const out = {pdf: () => C.docPdf(doc, {timezone: h.timezone}), docx: () => Buffer.from(C.docDocx(doc)), xlsx: () => Buffer.from(C.docXlsx(doc)), md: () => C.docMarkdown(doc), html: () => C.docHtml(doc)}[format]();
+    if (args[1]) { fs.writeFileSync(args[1], out); console.error("Wrote " + args[1]); } else process.stdout.write(out);
+    break;
+  }
   case "merge": {
     const a = read(args[0]), b = read(args[1]);
     requireValid(a, args[0]); requireValid(b, args[1]);
@@ -131,6 +149,6 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 12).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
+    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 16).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
     process.exit(cmd ? 2 : 0);
 }
