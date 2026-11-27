@@ -452,10 +452,9 @@ final class Updater {
         host.showWindow()
         let a = NSAlert()
         a.messageText = "Handover \(version) is available"
-        var info = "You have \(current)."
+        a.informativeText = "You have \(current)."
         let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { info += "\n\n" + (trimmed.count > 700 ? String(trimmed.prefix(700)) + "…" : trimmed) }
-        a.informativeText = info
+        if !trimmed.isEmpty { a.accessoryView = notesView(trimmed) }
         a.addButton(withTitle: dmg != nil ? "Install and Relaunch" : "Open Download Page")
         a.addButton(withTitle: "Later")
         if !userInitiated { a.addButton(withTitle: "Skip This Version") }
@@ -467,6 +466,58 @@ final class Updater {
             default: break
             }
         }
+    }
+
+    /// Release notes are Markdown: bullets, **bold**, *italic*, `code` and links. Shown formatted, in a scrolling box.
+    func notesView(_ md: String) -> NSView {
+        let size = NSFont.smallSystemFontSize, base = NSFont.systemFont(ofSize: size)
+        let out = NSMutableAttributedString()
+        let lines = md.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        for (i, raw) in lines.enumerated() {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            let para = NSMutableParagraphStyle(); para.paragraphSpacing = 8
+            var prefix = ""
+            if let r = line.range(of: #"^([-*+]|\d+[.)])\s+"#, options: .regularExpression) {
+                let marker = line[r].trimmingCharacters(in: .whitespaces)
+                prefix = (marker.first?.isNumber == true ? marker : "•") + "\t"
+                line = String(line[r.upperBound...])
+                para.headIndent = 14; para.tabStops = [NSTextTab(textAlignment: .left, location: 14)]
+            } else if let r = line.range(of: #"^#{1,6}\s+"#, options: .regularExpression) {
+                line = "**" + line[r.upperBound...] + "**"
+            }
+            let piece = NSMutableAttributedString(string: prefix, attributes: [.font: base])
+            let parsed = (try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(line)
+            for run in parsed.runs {
+                let text = String(parsed[run.range].characters)
+                var font = base
+                if let intent = run.inlinePresentationIntent {
+                    if intent.contains(.code) { font = .monospacedSystemFont(ofSize: size, weight: .regular) }
+                    var traits: NSFontDescriptor.SymbolicTraits = []
+                    if intent.contains(.stronglyEmphasized) { traits.insert(.bold) }
+                    if intent.contains(.emphasized) { traits.insert(.italic) }
+                    if !traits.isEmpty { font = NSFont(descriptor: font.fontDescriptor.withSymbolicTraits(traits), size: size) ?? font }
+                }
+                var attrs: [NSAttributedString.Key: Any] = [.font: font]
+                if let link = run.link { attrs[.link] = link }
+                piece.append(NSAttributedString(string: text, attributes: attrs))
+            }
+            if i < lines.count - 1 { piece.append(NSAttributedString(string: "\n", attributes: [.font: base])) }
+            piece.addAttributes([.paragraphStyle: para, .foregroundColor: NSColor.labelColor], range: NSRange(location: 0, length: piece.length))
+            piece.enumerateAttribute(.link, in: NSRange(location: 0, length: piece.length)) { v, r, _ in if v != nil { piece.addAttribute(.foregroundColor, value: NSColor.linkColor, range: r) } }
+            out.append(piece)
+        }
+        let width: CGFloat = 340
+        let text = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 10))
+        text.isEditable = false; text.isSelectable = true; text.drawsBackground = false
+        text.textContainerInset = NSSize(width: 0, height: 2); text.textContainer?.lineFragmentPadding = 0
+        text.textStorage?.setAttributedString(out)
+        text.layoutManager?.ensureLayout(for: text.textContainer!)
+        let needed = ceil((text.layoutManager?.usedRect(for: text.textContainer!).height ?? 100) + 6)
+        text.frame.size.height = needed; text.isVerticallyResizable = true; text.autoresizingMask = [.width]
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width, height: min(needed, 240)))
+        scroll.hasVerticalScroller = needed > 240; scroll.drawsBackground = false; scroll.borderType = .noBorder
+        scroll.documentView = text
+        return scroll
     }
 
     /// The running app's developer team, from its own code signature. nil for local (ad hoc) builds.
