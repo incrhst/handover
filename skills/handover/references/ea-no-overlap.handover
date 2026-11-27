@@ -1,6 +1,6 @@
 {
   "$schema": "https://incrhst.github.io/handover/schema/v1.json",
-  "handover": "1.1",
+  "handover": "1.2",
   "id": "example-holdings-ea-to-ceo",
   "title": "Executive assistant to the CEO",
   "summary": "How to run Dana Whitfield's desk at Example Holdings. Priya left on 25 September and Marcus started on 5 October, so there was no overlap: Dana held the desk in between. Start with the path for your first weeks, keep the daily list open, and check **Needs attention** every morning.",
@@ -16,6 +16,16 @@
   "timezone": "America/Jamaica",
   "audience": ["outgoing", "owner"],
   "profile": "record",
+  "role": {
+    "organisation": "Example Holdings",
+    "purpose": "Runs Dana Whitfield's desk so she can spend her time on the business: her diary, correspondence, travel, expenses and the board calendar. The role is the first point of contact for anyone who needs the CEO.",
+    "location": "Head office, in person",
+    "hours": "Weekdays 8:00 to 5:00, with some evening events",
+    "travel": "Rarely: Dana travels, and the desk runs from the office",
+    "manages": "No direct reports. Books the company driver for Dana",
+    "skills": "- Running a senior executive's diary, inbox and travel\n- Discretion with board papers and personal information\n- Accurate expense claims and card reconciliations\n- Clear, polite writing to board members and outside guests",
+    "measures": "- Expense claims reach Finance by Thursday noon every week\n- Board packs go out through the portal on time, never by email\n- Dana agrees the next week's diary every Friday"
+  },
   "people": [
     { "id": "priya", "name": "Priya Nair", "roles": ["outgoing", "owner"], "contact": "priya.nair@example.com until 25 September" },
     { "id": "marcus", "name": "Marcus Hale", "roles": ["incoming"], "contact": "marcus.hale@example.com" },
@@ -135,26 +145,52 @@
     }
   ],
   "recurring": [
-    { "id": "inbox", "text": "Triage Dana's inbox and flag anything for today", "every": "weekday", "time": "08:00" },
+    { "id": "inbox", "text": "Triage Dana's inbox and flag anything for today", "area": "Diary and correspondence", "every": "weekday", "time": "08:00" },
     {
       "id": "expense-approvals",
       "text": "Submit Dana's expense claims for approval",
+      "area": "Expenses",
       "every": "week",
       "on": "thu",
       "time": "11:00",
       "detail": "Finance pays claims submitted by Thursday noon in the same week. Miss it and Dana's card statement goes unpaid for a week."
     },
-    { "id": "diary-review", "text": "Review next week's diary with Dana", "every": "week", "on": "fri", "time": "15:00" },
-    { "id": "card-reconcile", "text": "Reconcile Dana's company card statement", "every": "month", "day": 5 },
+    { "id": "diary-review", "text": "Review next week's diary with Dana", "area": "Diary and correspondence", "every": "week", "on": "fri", "time": "15:00" },
+    { "id": "card-reconcile", "text": "Reconcile Dana's company card statement", "area": "Expenses", "every": "month", "day": 5 },
     {
       "id": "board-pack",
       "text": "Circulate the board pack through the portal",
+      "area": "Board / Board meetings",
       "every": "quarter",
       "day": 7,
       "monthOfQuarter": 3,
       "detail": "Board meets in the third week of March, June, September and December. Joy confirms the agenda a week before."
     },
-    { "id": "agm", "text": "Book the AGM venue and send proxy forms", "every": "year", "date": "05-15" }
+    { "id": "agm", "text": "Book the AGM venue and send proxy forms", "area": "Board / AGM", "every": "year", "date": "05-15" }
+  ],
+  "asNeeded": [
+    {
+      "id": "meeting-requests",
+      "text": "Answer meeting requests for Dana",
+      "area": "Diary and correspondence",
+      "when": "When a request comes in",
+      "detail": "Accept or decline internal requests yourself. Requests to the board chair go through Dana, using the template in the documents list.",
+      "see": "how-dana-works"
+    },
+    {
+      "id": "book-travel",
+      "text": "Book Dana's travel, and rebook when a trip changes",
+      "area": "Travel",
+      "when": "When Dana plans a trip",
+      "detail": "Through the Northstar Travel desk. Book alone up to USD 2,000; above that, check with Ravi Campbell first."
+    },
+    {
+      "id": "visa-letters",
+      "text": "Draft visa invitation letters for overseas guests",
+      "area": "Travel",
+      "when": "When an overseas guest is invited",
+      "detail": "TODO: the wording Priya used, and who signs them"
+    }
   ],
   "questions": [
     {
@@ -193,6 +229,16 @@
       "id": "confidentiality",
       "title": "Confidentiality",
       "body": "- Board papers go through the portal only, never as email attachments.\n- The personal calendar is for Dana, Sam and you. Nobody else sees it.\n\n!> Never forward a board pack, even internally."
+    },
+    {
+      "id": "handover-role",
+      "title": "About the role",
+      "body": "Runs Dana Whitfield's desk so she can spend her time on the business: her diary, correspondence, travel, expenses and the board calendar. The role is the first point of contact for anyone who needs the CEO.\n\n| About the role | Details |\n|---|---|\n| Organisation | Example Holdings |\n| Location | Head office, in person |\n| Hours | Weekdays 8:00 to 5:00, with some evening events |\n| Travel | Rarely: Dana travels, and the desk runs from the office |\n| Manages | No direct reports. Books the company driver for Dana |\n\n### Skills and experience the work calls for\n\n- Running a senior executive's diary, inbox and travel\n- Discretion with board papers and personal information\n- Accurate expense claims and card reconciliations\n- Clear, polite writing to board members and outside guests\n\n### What good looks like\n\n- Expense claims reach Finance by Thursday noon every week\n- Board packs go out through the portal on time, never by email\n- Dana agrees the next week's diary every Friday"
+    },
+    {
+      "id": "handover-as-needed",
+      "title": "Jobs done as needed",
+      "body": "| Job | When | Area | Details |\n|---|---|---|---|\n| Answer meeting requests for Dana | When a request comes in | Diary and correspondence | Accept or decline internal requests yourself. Requests to the board chair go through Dana, using the template in the documents list. |\n| Book Dana's travel, and rebook when a trip changes | When Dana plans a trip | Travel | Through the Northstar Travel desk. Book alone up to USD 2,000; above that, check with Ravi Campbell first. |\n| Draft visa invitation letters for overseas guests | When an overseas guest is invited | Travel | TODO: the wording Priya used, and who signs them |"
     },
     {
       "id": "handover-people",
@@ -898,5 +944,5 @@
     },
     { "id": "h-countersigned", "at": "2026-10-19T08:05:00-05:00", "role": "principal", "source": "app", "text": "Dana countersigned. Record frozen." }
   ],
-  "rendered": ["handover-people", "handover-access", "handover-knowledge", "handover-open", "handover-decide", "handover-plan"]
+  "rendered": ["handover-role", "handover-as-needed", "handover-people", "handover-access", "handover-knowledge", "handover-open", "handover-decide", "handover-plan"]
 }

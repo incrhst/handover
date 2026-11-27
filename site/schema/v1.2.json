@@ -1,0 +1,752 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://incrhst.github.io/handover/schema/v1.2.json",
+  "title": "Handover file, format version 1.2 (frozen)",
+  "description": "A role handover: a first-month path, recurring duties, answers to common questions and reference material, (since 1.1) the record of an assistant handover as it is run, and (since 1.2) the role itself and the jobs done as needed, for a job description. Files use the .handover extension and contain UTF-8 JSON. This schema always describes the newest 1.x; every older 1.x file is valid against it. Frozen copies: v1.0.json, v1.1.json, v1.2.json. Spec: https://github.com/incrhst/handover/blob/main/spec/SPEC.md",
+  "type": "object",
+  "required": ["handover", "id", "title"],
+  "additionalProperties": false,
+  "patternProperties": { "^x-": true },
+  "properties": {
+    "$schema": { "type": "string", "description": "Optional. URL of this schema, for editors and validators." },
+    "handover": {
+      "type": "string",
+      "enum": ["1.0", "1.1", "1.2"],
+      "description": "Format version. This frozen schema accepts 1.0, 1.1 and 1.2 files."
+    },
+    "id": { "$ref": "#/$defs/id", "description": "Stable identifier for this handover. Keep it the same across versions so progress carries over." },
+    "title": { "$ref": "#/$defs/line" },
+    "summary": { "$ref": "#/$defs/markdown", "description": "Introduction shown at the top." },
+    "from": {
+      "type": "object",
+      "description": "The person handing over.",
+      "required": ["name"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "name": { "$ref": "#/$defs/line" },
+        "role": { "$ref": "#/$defs/line" },
+        "contact": { "$ref": "#/$defs/line", "description": "How to reach them (after their last day, the channel to use). Never a password." },
+        "availableUntil": { "$ref": "#/$defs/date", "description": "Last day they can answer questions: the end of the contact period." },
+        "hours": { "$ref": "#/$defs/line", "description": "1.1. When they can be contacted after their last day, e.g. weekdays 9 to 5." },
+        "paid": { "type": "boolean", "description": "1.1. Whether contact time after the last day is paid." }
+      }
+    },
+    "updated": { "$ref": "#/$defs/date", "description": "When the content was last changed." },
+    "timezone": {
+      "type": "string",
+      "description": "IANA time zone used to work out which day it is, e.g. \"Europe/London\". Defaults to the reader's own time zone."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": { "dailyExportTime": {"$ref": "#/$defs/time", "description": "When a tool should write the day's task sheet. Default 07:00."} }
+    },
+    "path": { "type": "array", "description": "Stages of the first weeks, in order. One is shown at a time.", "items": {"$ref": "#/$defs/stage"} },
+    "recurring": { "type": "array", "description": "Duties that repeat on a schedule.", "items": {"$ref": "#/$defs/recurring"} },
+    "questions": { "type": "array", "description": "Common questions with short answers.", "items": {"$ref": "#/$defs/question"} },
+    "sections": { "type": "array", "description": "Reference material, one topic per section.", "items": {"$ref": "#/$defs/section"} },
+    "audience": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/role" },
+      "description": "1.1. The roles this file was exported for. Items they may not all see are left out."
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["newcomer", "record"],
+      "description": "1.1. The export profile used: newcomer (knowledge, no process state) or record (the full record)."
+    },
+    "people": { "type": "array", "description": "1.1. Who holds each role. Each role is held by at most one person.", "items": {"$ref": "#/$defs/person"} },
+    "stakeholders": { "type": "array", "description": "1.1. People the newcomer must know.", "items": {"$ref": "#/$defs/stakeholder"} },
+    "plan": { "$ref": "#/$defs/plan", "description": "1.1. How the handover itself is run." },
+    "asks": { "type": "array", "description": "1.1. The seven questions for the principal.", "items": {"$ref": "#/$defs/ask"} },
+    "gaps": { "type": "array", "description": "1.1. Gaps list: things someone couldn't find or that were unclear.", "items": {"$ref": "#/$defs/gap"} },
+    "inProgress": {
+      "type": "array",
+      "description": "1.1. Things in progress: actions and commitments with an owner and a date.",
+      "items": { "$ref": "#/$defs/inProgress" }
+    },
+    "rules": { "type": "array", "description": "1.1. \"When this happens\" rules: If X, then Y.", "items": {"$ref": "#/$defs/rule"} },
+    "decisions": { "type": "array", "description": "1.1. Decision log.", "items": {"$ref": "#/$defs/decision"} },
+    "risks": { "type": "array", "description": "1.1. Risk list.", "items": {"$ref": "#/$defs/risk"} },
+    "systems": {
+      "type": "array",
+      "description": "1.1. Systems, with where credentials are kept and who grants access. Never the credential.",
+      "items": { "$ref": "#/$defs/system" }
+    },
+    "documents": { "type": "array", "description": "1.1. Links to documents. Never their content.", "items": {"$ref": "#/$defs/document"} },
+    "decide": { "$ref": "#/$defs/decide", "description": "1.1. Who decides what, with spending limits." },
+    "finalCheck": { "type": "array", "maxItems": 7, "description": "1.1. The seven final checks.", "items": {"$ref": "#/$defs/finalCheck"} },
+    "signoff": { "$ref": "#/$defs/signoff", "description": "1.1. Signatures and the frozen record." },
+    "followUps": { "type": "array", "maxItems": 2, "description": "1.1. The two follow-up checks after the handover.", "items": {"$ref": "#/$defs/followUp"} },
+    "catchUps": { "type": "array", "description": "1.1. Daily catch-ups that were held.", "items": {"$ref": "#/$defs/catchUp"} },
+    "history": { "type": "array", "description": "1.1. The change log.", "items": {"$ref": "#/$defs/historyEntry"} },
+    "rendered": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/id" },
+      "description": "1.1. Ids of sections written for 1.0 readers from the structured data. Readers that show the data hide these."
+    },
+    "role": { "$ref": "#/$defs/jobRole" },
+    "asNeeded": { "type": "array", "description": "1.2. Jobs with no schedule, done when something calls for them. They never appear on the daily list.", "items": {"$ref": "#/$defs/asNeeded"} },
+    "progress": { "$ref": "#/$defs/progress" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+    "line": { "type": "string", "minLength": 1 },
+    "markdown": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Text in the handover Markdown subset. Start with \"TODO:\" or use {TODO: ...} to mark information still to be filled in."
+    },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "datetime": { "type": "string", "description": "ISO 8601 date and time." },
+    "time": { "type": "string", "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$" },
+    "weekday": { "type": "string", "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] },
+    "stage": {
+      "type": "object",
+      "required": ["id", "title", "tasks"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/line" },
+        "summary": { "$ref": "#/$defs/markdown" },
+        "tip": {
+          "type": "object",
+          "required": ["text"],
+          "additionalProperties": false,
+          "patternProperties": { "^x-": true },
+          "properties": { "title": {"$ref": "#/$defs/line"}, "text": {"$ref": "#/$defs/markdown"} }
+        },
+        "tasks": { "type": "array", "minItems": 1, "items": {"$ref": "#/$defs/task"} }
+      }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": { "id": {"$ref": "#/$defs/id"}, "text": {"$ref": "#/$defs/markdown"}, "detail": {"$ref": "#/$defs/markdown"} }
+    },
+    "recurring": {
+      "type": "object",
+      "required": ["id", "text", "every"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "area": { "$ref": "#/$defs/area" },
+        "every": { "type": "string", "enum": ["day", "weekday", "week", "month", "quarter", "year"] },
+        "on": {
+          "description": "For every: week. Day or days of the week. Default mon.",
+          "oneOf": [{"$ref": "#/$defs/weekday"},{"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/weekday"}}]
+        },
+        "day": {
+          "description": "For every: month or quarter. Day of the month, or \"last\". Days past the end of a short month fall on its last day. Default 1.",
+          "oneOf": [{"type": "integer", "minimum": 1, "maximum": 31},{"const": "last"}]
+        },
+        "monthOfQuarter": { "type": "integer", "minimum": 1, "maximum": 3, "description": "For every: quarter. 1 = Jan/Apr/Jul/Oct. Default 1." },
+        "date": { "type": "string", "pattern": "^\\d{2}-\\d{2}$", "description": "For every: year. Month and day, MM-DD." },
+        "time": { "$ref": "#/$defs/time" },
+        "start": { "$ref": "#/$defs/date" },
+        "end": { "$ref": "#/$defs/date" },
+        "detail": { "$ref": "#/$defs/markdown" },
+        "see": { "$ref": "#/$defs/id", "description": "id of a section with more detail." }
+      }
+    },
+    "area": { "type": "string", "minLength": 1, "description": "1.2. The part of the role a job belongs to, e.g. \"Finance\". \" / \" (a slash with a space each side) puts it under a larger area: \"Villa / Bookings\"." },
+    "asNeeded": {
+      "type": "object",
+      "description": "1.2. A job with no schedule, done when something calls for it.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/line", "description": "What the job is." },
+        "area": { "$ref": "#/$defs/area" },
+        "when": { "$ref": "#/$defs/line", "description": "What calls for it, e.g. \"When a new member of staff joins\". Absent: as needed." },
+        "detail": { "$ref": "#/$defs/markdown" },
+        "see": { "$ref": "#/$defs/id", "description": "id of a section with more detail." }
+      }
+    },
+    "jobRole": {
+      "type": "object",
+      "description": "1.2. The role itself, for a job description. Never pay or other personal financial details.",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "organisation": { "$ref": "#/$defs/line", "description": "The organisation the role is in, as it should appear on a job description." },
+        "purpose": { "$ref": "#/$defs/markdown", "description": "Why the role exists, in two or three sentences." },
+        "location": { "$ref": "#/$defs/line", "description": "Where the work is done, e.g. \"Kingston office, two days a week from home\"." },
+        "hours": { "$ref": "#/$defs/line", "description": "The working pattern, e.g. \"Weekdays 8:30 to 5, some evening events\"." },
+        "travel": { "$ref": "#/$defs/line", "description": "How much travel the role involves." },
+        "manages": { "$ref": "#/$defs/line", "description": "Who the role manages or directs, if anyone." },
+        "skills": { "$ref": "#/$defs/markdown", "description": "The skills and experience the work calls for, usually a list." },
+        "measures": { "$ref": "#/$defs/markdown", "description": "What good looks like: how anyone can tell the role is done well." }
+      }
+    },
+    "question": {
+      "type": "object",
+      "required": ["q", "a"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "q": { "$ref": "#/$defs/line" },
+        "a": { "$ref": "#/$defs/markdown" },
+        "tag": { "$ref": "#/$defs/line" },
+        "see": { "$ref": "#/$defs/id", "description": "id of a section with more detail." }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["id", "title", "body"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": { "id": {"$ref": "#/$defs/id"}, "title": {"$ref": "#/$defs/line"}, "body": {"$ref": "#/$defs/markdown"} }
+    },
+    "progress": {
+      "type": "object",
+      "description": "Optional. One reader's progress, included when a file is exported with progress.",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "updated": { "$ref": "#/$defs/datetime" },
+        "firstSeen": { "$ref": "#/$defs/date", "description": "First day the reader opened this handover. Recurring duties before it are never overdue." },
+        "tasks": { "type": "object", "description": "Completed path tasks: task id → when it was done.", "additionalProperties": {"$ref": "#/$defs/datetime"} },
+        "recurring": {
+          "type": "object",
+          "description": "Completed occurrences: \"<recurring id>@<YYYY-MM-DD>\" → when it was done.",
+          "propertyNames": { "pattern": "^[a-z0-9][a-z0-9-]{0,63}@\\d{4}-\\d{2}-\\d{2}$" },
+          "additionalProperties": { "$ref": "#/$defs/datetime" }
+        },
+        "notes": { "type": "string", "description": "The reader's own notes and questions." }
+      }
+    },
+    "role": { "type": "string", "enum": ["outgoing", "incoming", "principal", "owner", "facilitator"] },
+    "closed": {
+      "type": "object",
+      "description": "Present when the item is closed.",
+      "required": ["how"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "how": {
+          "type": "string",
+          "enum": ["fixed", "answered", "principal", "done", "dropped"],
+          "description": "fixed, answered in a log, handed to the principal, done (a thing in progress) or dropped."
+        },
+        "at": { "$ref": "#/$defs/datetime" },
+        "by": { "$ref": "#/$defs/role" },
+        "fix": { "$ref": "#/$defs/line", "description": "For fixed: the link or document that now answers it." }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "description": "Access-check results.",
+      "required": [],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "opens": {
+          "type": "object",
+          "description": "The incoming assistant can open it.",
+          "required": ["result"],
+          "additionalProperties": false,
+          "patternProperties": { "^x-": true },
+          "properties": {
+            "result": { "type": "string", "enum": ["pass", "fail"] },
+            "note": { "$ref": "#/$defs/line", "description": "What failed, or anything worth knowing." },
+            "at": { "$ref": "#/$defs/datetime" }
+          }
+        },
+        "create": {
+          "type": "object",
+          "description": "They can create or change something test-safe in it.",
+          "required": ["result"],
+          "additionalProperties": false,
+          "patternProperties": { "^x-": true },
+          "properties": {
+            "result": { "type": "string", "enum": ["pass", "fail"] },
+            "note": { "$ref": "#/$defs/line", "description": "What failed, or anything worth knowing." },
+            "at": { "$ref": "#/$defs/datetime" }
+          }
+        },
+        "level": {
+          "type": "object",
+          "description": "Their access level is right.",
+          "required": ["result"],
+          "additionalProperties": false,
+          "patternProperties": { "^x-": true },
+          "properties": {
+            "result": { "type": "string", "enum": ["pass", "fail"] },
+            "note": { "$ref": "#/$defs/line", "description": "What failed, or anything worth knowing." },
+            "at": { "$ref": "#/$defs/datetime" }
+          }
+        }
+      }
+    },
+    "money": {
+      "type": "object",
+      "description": "A business spending limit. Never a balance or account detail.",
+      "required": ["amount", "currency"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "amount": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 code, e.g. USD." }
+      }
+    },
+    "person": {
+      "type": "object",
+      "description": "Someone holding one or more roles.",
+      "required": ["id", "name", "roles"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/line" },
+        "roles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "The roles they hold, e.g. outgoing and owner."
+        },
+        "contact": { "$ref": "#/$defs/line", "description": "How to reach them. Never a password." }
+      }
+    },
+    "stakeholder": {
+      "type": "object",
+      "description": "Someone the newcomer must know.",
+      "required": ["id", "name", "relationship"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/line" },
+        "relationship": { "$ref": "#/$defs/line", "description": "Who they are to the principal or the role. Never a health or personal financial detail." },
+        "involve": { "$ref": "#/$defs/markdown", "description": "When to involve them." },
+        "contact": { "$ref": "#/$defs/line", "description": "How to reach them." },
+        "contactVisibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see the contact."
+        },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "plan": {
+      "type": "object",
+      "description": "1.1. How the handover itself is run. Overlap, phases, working days and step dates are worked out, not stored.",
+      "required": ["prepStart", "lastDay"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "prepStart": { "$ref": "#/$defs/date", "description": "When preparation starts." },
+        "firstDay": { "$ref": "#/$defs/date", "description": "The incoming assistant's first day. After lastDay means no overlap." },
+        "lastDay": { "$ref": "#/$defs/date", "description": "The outgoing assistant's last day." },
+        "track": { "type": "string", "enum": ["light", "full"], "description": "How much of the principal's time the plan uses. Default light." },
+        "practice": { "type": "boolean", "description": "True for a practice run: nothing in it was sent to anyone." },
+        "template": { "$ref": "#/$defs/line", "description": "The plan template and version the steps come from, e.g. handover-desk/2026-11." },
+        "steps": { "type": "array", "description": "The steps, for named roles.", "items": {"$ref": "#/$defs/step"} }
+      }
+    },
+    "step": {
+      "type": "object",
+      "description": "A step in the plan.",
+      "required": ["id", "role", "phase", "title", "status"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "role": { "$ref": "#/$defs/role" },
+        "phase": {
+          "type": "string",
+          "enum": ["prepare", "shadow", "swap", "after"],
+          "description": "With no overlap, shadow is \"Incoming starts\" and swap is \"Incoming takes over\"."
+        },
+        "title": { "$ref": "#/$defs/line" },
+        "why": { "$ref": "#/$defs/line", "description": "One sentence on why it matters." },
+        "status": { "type": "string", "enum": ["open", "done", "na"], "description": "na: not applicable, with a reason." },
+        "reason": { "$ref": "#/$defs/line", "description": "Required when status is na." },
+        "gate": {
+          "type": "string",
+          "enum": ["ready", "done", "sign"],
+          "description": "The gate it counts toward: ready for the principal, final check, or sign-off."
+        },
+        "ask": { "$ref": "#/$defs/askId", "description": "The ask this step waits on. Must be in asks." }
+      }
+    },
+    "askId": { "type": "string", "enum": ["breaks", "profile", "access", "limits", "confid", "emergency", "signoff"] },
+    "ask": {
+      "type": "object",
+      "description": "A question for the principal, answered from a link in their own channel.",
+      "required": ["id", "status"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/askId" },
+        "minutes": { "type": "integer", "minimum": 0, "description": "The estimate the principal was given." },
+        "draft": { "$ref": "#/$defs/markdown", "description": "The message as drafted." },
+        "replyBy": { "$ref": "#/$defs/date" },
+        "default": { "$ref": "#/$defs/markdown", "description": "What applies if they don't reply." },
+        "status": { "type": "string", "enum": ["draft", "sent", "confirmed", "corrected", "defaulted"] },
+        "correction": { "$ref": "#/$defs/markdown", "description": "Required when status is corrected." },
+        "sent": { "$ref": "#/$defs/datetime" },
+        "answered": { "$ref": "#/$defs/datetime" }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "description": "Something someone couldn't find, or that was unclear.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "blocks": { "type": "boolean", "description": "It blocks work today." },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "inProgress": {
+      "type": "object",
+      "description": "A thing in progress.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "owner": { "$ref": "#/$defs/role" },
+        "due": { "$ref": "#/$defs/date" },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "description": "A \"when this happens\" rule.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown", "description": "If X, then Y." },
+        "situation": { "$ref": "#/$defs/line", "description": "The named situation it belongs to." },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "description": "A decision and its reason.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "reason": { "$ref": "#/$defs/markdown" },
+        "date": { "$ref": "#/$defs/date", "description": "When it was decided." },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "description": "An item on the risk list.",
+      "required": ["id", "text", "list"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "list": {
+          "type": "string",
+          "enum": ["weekly", "occasional", "spof"],
+          "description": "Weekly recurring work, occasional flows, or single points of failure."
+        },
+        "severity": { "type": "string", "enum": ["high", "medium", "low"], "description": "How much it hurts if it fails." },
+        "treatment": { "type": "string", "enum": ["record", "write", "brief"], "description": "Record someone doing it, write it down, or a line in the brief." },
+        "evidence": {
+          "type": "object",
+          "description": "What the history shows.",
+          "required": [],
+          "additionalProperties": false,
+          "patternProperties": { "^x-": true },
+          "properties": {
+            "cadence": { "type": "string", "enum": ["daily", "weekly", "monthly", "quarterly", "annual", "rare"] },
+            "occurrences": { "type": "integer", "minimum": 0, "description": "Times it appears in the history." },
+            "hours": { "type": "number", "minimum": 0, "description": "Total hours tracked." },
+            "firstSeen": { "$ref": "#/$defs/date" },
+            "lastSeen": { "$ref": "#/$defs/date" },
+            "source": { "$ref": "#/$defs/line", "description": "Where the evidence came from." }
+          }
+        },
+        "recurring": { "$ref": "#/$defs/id", "description": "id of the recurring duty that holds its exact schedule." },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "system": {
+      "type": "object",
+      "description": "A system the role uses.",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "$ref": "#/$defs/line" },
+        "purpose": { "$ref": "#/$defs/line" },
+        "credentialLocation": { "$ref": "#/$defs/line", "description": "Where the credential is kept. Never the credential itself." },
+        "grantedBy": { "$ref": "#/$defs/line", "description": "Who grants access." },
+        "checks": { "$ref": "#/$defs/checks" },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "document": {
+      "type": "object",
+      "description": "A link to a document. Never its content.",
+      "required": ["id", "title"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "title": { "$ref": "#/$defs/line" },
+        "url": { "type": "string", "minLength": 1, "description": "Link to it in the organisation's own drive." },
+        "location": { "$ref": "#/$defs/line", "description": "Where it is kept, for a protected file." },
+        "type": { "type": "string", "enum": ["folder", "brief", "profile", "recording", "guide", "template", "protected", "other"] },
+        "status": { "type": "string", "enum": ["draft", "final"] },
+        "owner": { "$ref": "#/$defs/role" },
+        "checks": { "$ref": "#/$defs/checks" },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      },
+      "anyOf": [{"required": ["url"]},{"required": ["location"]}]
+    },
+    "decide": {
+      "type": "object",
+      "description": "1.1. Who decides what.",
+      "required": [],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "confirmed": { "type": "boolean", "description": "The principal confirmed the board." },
+        "confirmedAt": { "$ref": "#/$defs/datetime" },
+        "cards": { "type": "array", "description": "Decisions, each in one column.", "items": {"$ref": "#/$defs/card"} }
+      }
+    },
+    "card": {
+      "type": "object",
+      "description": "A decision on the who-decides board.",
+      "required": ["id", "text", "column"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/markdown" },
+        "column": { "type": "string", "enum": ["alone", "check", "principal"], "description": "Decide alone, check first, or always the principal." },
+        "movedByPrincipal": { "type": "boolean", "description": "The principal moved it to this column." },
+        "limit": { "$ref": "#/$defs/money" },
+        "approver": {
+          "description": "Who approves.",
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "A role.",
+              "required": ["role"],
+              "additionalProperties": false,
+              "patternProperties": { "^x-": true },
+              "properties": { "role": {"$ref": "#/$defs/role"} }
+            },
+            {
+              "type": "object",
+              "description": "A stakeholder.",
+              "required": ["stakeholder"],
+              "additionalProperties": false,
+              "patternProperties": { "^x-": true },
+              "properties": { "stakeholder": {"$ref": "#/$defs/id"} }
+            }
+          ]
+        },
+        "added": { "$ref": "#/$defs/datetime", "description": "When it was added." },
+        "addedBy": { "$ref": "#/$defs/role", "description": "Who added it." },
+        "aiDrafted": { "type": "boolean", "description": "True if an AI drafted it." },
+        "visibleTo": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/role" },
+          "description": "Only these roles may see it. Absent: anyone the file is shared with. Must include every role in the file's audience."
+        },
+        "closed": { "$ref": "#/$defs/closed" }
+      }
+    },
+    "finalCheck": {
+      "type": "object",
+      "description": "One of the seven final checks.",
+      "required": ["id", "result"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "type": "string", "enum": ["recurring", "in-progress", "decisions", "context", "access", "exceptions", "decide"] },
+        "result": { "type": "string", "enum": ["pass", "fail"] },
+        "owner": { "$ref": "#/$defs/role", "description": "Required for fail." },
+        "due": { "$ref": "#/$defs/date", "description": "Required for fail." },
+        "note": { "$ref": "#/$defs/markdown" },
+        "at": { "$ref": "#/$defs/datetime" }
+      }
+    },
+    "signoff": {
+      "type": "object",
+      "description": "1.1. Signatures and the frozen record.",
+      "required": [],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "outgoing": { "$ref": "#/$defs/datetime" },
+        "incoming": { "$ref": "#/$defs/datetime" },
+        "principal": { "$ref": "#/$defs/datetime" },
+        "frozen": { "$ref": "#/$defs/date", "description": "When the record was frozen." },
+        "notes": {
+          "type": "array",
+          "description": "Notes added to the frozen record.",
+          "items": {
+            "type": "object",
+            "description": "A note on the frozen record.",
+            "required": ["id", "text", "at"],
+            "additionalProperties": false,
+            "patternProperties": { "^x-": true },
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "text": { "$ref": "#/$defs/markdown" },
+              "role": { "$ref": "#/$defs/role" },
+              "at": { "$ref": "#/$defs/datetime" }
+            }
+          }
+        }
+      }
+    },
+    "followUp": {
+      "type": "object",
+      "description": "A follow-up check after the handover.",
+      "required": ["id"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "type": "string", "enum": ["f1", "f2"] },
+        "answers": { "type": "array", "maxItems": 3, "items": {"$ref": "#/$defs/markdown"}, "description": "Answers to the three fixed questions, in order." },
+        "gapsFound": { "type": "integer", "minimum": 0, "description": "Gaps found." },
+        "gapsFixed": { "type": "integer", "minimum": 0, "description": "Of those, already fixed." },
+        "at": { "$ref": "#/$defs/datetime" }
+      }
+    },
+    "catchUp": {
+      "type": "object",
+      "description": "A daily catch-up that was held.",
+      "required": ["id", "at"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": { "id": {"$ref": "#/$defs/id"}, "at": {"$ref": "#/$defs/datetime"} }
+    },
+    "historyEntry": {
+      "type": "object",
+      "description": "One change-log entry.",
+      "required": ["id", "at", "source", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "at": { "$ref": "#/$defs/datetime" },
+        "role": { "$ref": "#/$defs/role" },
+        "source": { "type": "string", "enum": ["app", "ai"], "description": "A person through a tool, or an AI." },
+        "text": { "$ref": "#/$defs/markdown" }
+      }
+    }
+  }
+}

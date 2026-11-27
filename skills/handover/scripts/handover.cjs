@@ -12,6 +12,8 @@
 //   node handover.cjs render <file> [out]      write the sections for 1.0 readers again from the 1.1 data
 //   node handover.cjs export <file> [out] [--items jobs,tasks] [--format pdf|docx|xlsx|md|html] [--title "…"]
 //                                              chosen items as a document; the format defaults to out's extension
+//   node handover.cjs report <file> [out] [--kind jd|working|jobs|needs] [--since YYYY-MM-DD] [--format pdf|docx|md|html]
+//                                              a document for the principal; jd (the default) is a job description
 //   node handover.cjs merge <file> <other> [out]
 //                                              merge the progress in <other> into <file>
 "use strict";
@@ -88,7 +90,9 @@ switch (cmd) {
     const tasks = (h.path || []).reduce((n, s) => n + s.tasks.length, 0);
     console.log(JSON.stringify({
       id: h.id, title: h.title, version: h.handover,
-      stages: (h.path || []).length, tasks, recurring: (h.recurring || []).length,
+      stages: (h.path || []).length, tasks, recurring: (h.recurring || []).length, asNeeded: (h.asNeeded || []).length,
+      areas: [...new Set((h.recurring || []).concat(h.asNeeded || []).map(j => j.area).filter(Boolean))],
+      role: h.role ? Object.keys(h.role).filter(k => k.indexOf("x-") !== 0) : undefined,
       questions: (h.questions || []).length, sections: (h.sections || []).length,
       gaps: gaps(h).length, hasProgress: !!h.progress,
       ...(h.handover !== "1.0" || h.plan ? {
@@ -138,6 +142,21 @@ switch (cmd) {
     if (args[1]) { fs.writeFileSync(args[1], out); console.error("Wrote " + args[1]); } else process.stdout.write(out);
     break;
   }
+  case "report": {
+    const kind = flag("--kind", "jd"), since = flag("--since", undefined);
+    let format = flag("--format", "");
+    const h = read(args[0]); requireValid(h, args[0]);
+    const kinds = C.reports.map(r => r.key);
+    if (kinds.indexOf(kind) < 0) die("--kind is one of " + kinds.join(", "));
+    if (!format) format = args[1] ? path.extname(args[1]).slice(1).toLowerCase() || "md" : "md";
+    const FORMATS = ["pdf", "docx", "md", "html"];
+    if (FORMATS.indexOf(format) < 0) die("--format is one of " + FORMATS.join(", "));
+    if (format === "docx" && !args[1]) die("Give an output file for docx, e.g. job-description.docx");
+    const doc = C.principalReport(h, kind, {date: C.zoneParts(h.timezone).date, since});
+    const out = {pdf: () => C.docPdf(doc, {timezone: h.timezone}), docx: () => Buffer.from(C.docDocx(doc)), md: () => C.docMarkdown(doc), html: () => C.docHtml(doc)}[format]();
+    if (args[1]) { fs.writeFileSync(args[1], out); console.error("Wrote " + args[1]); } else process.stdout.write(out);
+    break;
+  }
   case "merge": {
     const a = read(args[0]), b = read(args[1]);
     requireValid(a, args[0]); requireValid(b, args[1]);
@@ -149,6 +168,6 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 16).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
+    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 18).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
     process.exit(cmd ? 2 : 0);
 }

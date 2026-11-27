@@ -1,6 +1,6 @@
 # Handover
 
-Take over a role, one step at a time. **Handover** is a free Mac app that turns one file into a guided first month, a daily list of what's due and a reference you can search. The file is an open format that you can write with any AI chat.
+Take over a role, one step at a time. **Handover** is a free Mac app that turns one file into a guided first month, a daily list of what's due and a reference you can search. The file is an open format that you can write with any AI chat. Two people can work on the same handover through a shared iCloud Drive, Google Drive or Dropbox folder.
 
 **[Download for Mac](https://github.com/incrhst/handover/releases/latest/download/Handover.dmg)** · [Website](https://incrhst.github.io/handover/) · [The format](spec/SPEC.md)
 
@@ -11,9 +11,9 @@ Take over a role, one step at a time. **Handover** is a free Mac app that turns 
 3. Save the answer as `role.handover` and open it in Handover.
 4. Follow the first-month path, tick off today's duties and search when you need an answer.
    Anything the AI couldn't fill in shows as a gap. Click **N gaps to fill**, or any gap on the page, and type what's missing. The app saves it to the file and refuses passwords, PINs, codes and card or bank numbers.
-   Work through **Needs attention** and the records: **Close…** marks an item fixed, done, handed to the principal or no longer needed, and **Reopen** undoes it. **Add…** records something new as you find it: a thing in progress, a gap, a rule, a decision, a risk, a system and who grants access to it, a document or a who-decides card (format 1.1 files). **Edit…** corrects anything that isn't accurate: a record, a task in the first weeks, or a regular job, including how often it happens (**All regular jobs** under Today lists every job). The item keeps its place and its ticks, and the change goes in the change log.
-   **Report for …** makes a short, plain report for the principal at any point: *What we're working on*, *The assistant's jobs* or *What needs you*. Each opens with a summary worked out from the file, never claiming more than it shows, and leaves out anything the principal may not see. Preview it, then save it as PDF, Word or Markdown to send.
-5. Share the file with the next person (**Share & export › Share handover file**), or export it with your progress to move it to another Mac or tool.
+   Work through **Needs attention** and the records: **Close…** marks an item fixed, done, handed to the principal or no longer needed, and **Reopen** undoes it. **Add…** records something new as you find it: a thing in progress, a gap, a rule, a decision, a risk, a system and who grants access to it, a document or a who-decides card (format 1.1 files). **Edit…** corrects anything that isn't accurate: a record, a task in the first weeks, or a job, including how often it happens and its area of work (**All jobs** under Today lists every job, including the ones done as needed, where you can also add and delete them). The item keeps its place and its ticks, and the change goes in the change log. **About the role** holds what a job description is made from: the purpose, location, hours, travel, skills and what good looks like; **Edit…** there changes it.
+   **Report for …** makes a short, plain report for the principal at any point: *What we're working on*, *The assistant's jobs*, *What needs you* or a *Job description*. Each opens with a summary worked out from the file, never claiming more than it shows, and leaves out anything the principal may not see. The job description groups the jobs by area of work and adds the authority and limits, working relationships, systems, and the skills and measures in the file; it leaves out anything marked for some people only, and every contact. Preview it, then save it as PDF, Word or Markdown to send.
+5. Share the file with the next person (**Share & export › Share handover file**), or export it with your progress to move it to another Mac or tool. To work on it together, share the data folder instead (see [Working on a handover together](#working-on-a-handover-together)).
 6. For someone who won't use the app, such as the principal, use **Share & export › Export items as a document…**, or the **Export…** button on any panel: pick the parts to share (the overview, who's who, jobs, tasks, records, reference sections, the handover plan, sign-off and more, down to single items) and save them as PDF, Word or Excel.
 
 The app keeps its files in `~/Documents/Handover` (you can choose another folder, such as one in iCloud Drive, Google Drive or Dropbox):
@@ -41,9 +41,9 @@ The app checks GitHub for a new release once a day (or **Handover › Check for 
 
 ## The format
 
-A `.handover` file is UTF-8 JSON: a `path` of stages and tasks, `recurring` duties on a schedule, `questions` with short answers and reference `sections`. Version 1.1 adds the full record of an assistant handover: people and stakeholders, the plan and the questions for the principal, gaps, rules, decisions, risks, systems and documents, who decides what (with limits and approvers), the final check, sign-off and check-ins. Every 1.0 file is still a valid 1.1 file.
+A `.handover` file is UTF-8 JSON: a `path` of stages and tasks, `recurring` duties on a schedule, `questions` with short answers and reference `sections`. Version 1.2 adds the role itself (purpose, location, hours, skills and what good looks like), an area of work on each job and the jobs done as needed, so a file can produce a job description. Version 1.1 adds the full record of an assistant handover: people and stakeholders, the plan and the questions for the principal, gaps, rules, decisions, risks, systems and documents, who decides what (with limits and approvers), the final check, sign-off and check-ins. Every 1.0 file is still a valid 1.1 file.
 
-See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) (frozen copies: [1.0](site/schema/v1.0.json), [1.1](site/schema/v1.1.json)) and two examples: [an executive assistant handover with no overlap](site/examples/ea-no-overlap.handover) (1.1, the reference case) and [a simpler operations lead handover](site/examples/sample.handover) (1.0). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
+See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) (frozen copies: [1.0](site/schema/v1.0.json), [1.1](site/schema/v1.1.json), [1.2](site/schema/v1.2.json)) and two examples: [an executive assistant handover with no overlap](site/examples/ea-no-overlap.handover) (1.2, the reference case) and [a simpler operations lead handover](site/examples/sample.handover) (1.0). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
 
 Never put passwords or keys in a handover file. Say where they're kept instead.
 
@@ -55,7 +55,7 @@ The [handover skill](skills/handover/SKILL.md) teaches Claude Code and other age
 npx skills add incrhst/handover
 ```
 
-It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… export` (items as PDF, Word or Excel), `… merge`.
+It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… export` (items as PDF, Word or Excel), `… report` (a job description or a report for the principal), `… merge`.
 
 ## Repository
 
@@ -64,9 +64,9 @@ It includes a validator and schedule preview: `node scripts/handover.cjs check r
 | `spec/SPEC.md` | The format specification |
 | `site/` | The website, schema, example and AI prompt (published to GitHub Pages) |
 | `app/web/` | The dashboard page (`index.html`) and the shared format logic (`core.js`) |
-| `app/macos/` | The Mac app: a native window around the page, plus files, scheduling and backups |
+| `app/macos/` | The Mac app: a native window around the page, plus files, scheduling, backups and shared-folder sync |
 | `skills/handover/` | The agent skill. Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, examples or prompt |
-| `test/` | Format tests: `node --test test/*.test.cjs` |
+| `test/` | Format and merge tests: `node --test test/*.test.cjs` |
 | `scripts/` | Icon, build, notarisation and DMG scripts |
 
 ### Build it yourself
@@ -82,15 +82,26 @@ To try the page in a browser without the app, serve the repo and open `app/web/i
 
 ### Releasing
 
-Releases are Developer ID-signed and notarised, so they open with no warning. Locally:
+Releases are Developer ID-signed and notarised, so they open with no warning. The release's `Handover.dmg` is what the website's download button points to, and the app's updater checks it against `Handover.dmg.sha256` (it skips that check if the file is missing), so always attach both.
+
+**From a Mac** (how releases are made today). Save the notarisation credentials once:
 
 ```bash
 xcrun notarytool store-credentials handover --apple-id you@example.com --team-id TEAMID
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-app.sh 0.1.0
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-dmg.sh
 ```
 
-In GitHub Actions, add the secrets listed at the top of [`.github/workflows/release.yml`](.github/workflows/release.yml), then push a tag: `git tag v0.1.0 && git push origin v0.1.0`. The release's `Handover.dmg` is what the website's download button points to.
+Then tag `main`, build, and publish both files with release notes:
+
+```bash
+git tag -a v0.9.0 -m "Handover 0.9.0" && git push origin v0.9.0
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-app.sh 0.9.0
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-dmg.sh
+gh release create v0.9.0 dist/Handover.dmg dist/Handover.dmg.sha256 --verify-tag --title "Handover 0.9.0" --notes-file notes.md
+```
+
+If `security find-identity -v -p codesigning` lists more than one certificate with the same name, `codesign` refuses the name as ambiguous: set `SIGN_IDENTITY` to the certificate's SHA-1 hash from that list instead. Notarising the app and the DMG takes a few minutes.
+
+**From GitHub Actions.** Add the secrets listed at the top of [`.github/workflows/release.yml`](.github/workflows/release.yml), then push a tag. Without those secrets the workflow skips itself, so a release published from a Mac is never overwritten.
 
 ## Licence
 
