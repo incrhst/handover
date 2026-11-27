@@ -411,7 +411,7 @@ test("reports for the principal: summaries say only what the file shows", () => 
   assert.deepEqual(w.parts.map(p => p.title).slice(0, 1), ["Under way"]);
   // A thing with no date is reported as such, not as covered
   const nodate = JSON.parse(JSON.stringify(h)); delete nodate.inProgress.find(x => !x.closed).due;
-  assert.match(C.principalReport(nodate, "working", o).intro[0], /of them (has|have) an owner and a date; the list below shows what the others still need/);
+  assert.match(C.principalReport(nodate, "working", o).intro[0], /of them (has|have) an owner and a date; the table shows what the others still need/);
   // Finished lately: a gap closed yesterday shows; one handed to the principal goes to "What needs you" instead
   const g = h.gaps.find(x => !x.closed);
   const fixed = C.closeItem(h, "gaps", g.id, {how: "fixed", date: "2026-11-26", at: "2026-11-26T09:00:00Z"});
@@ -445,7 +445,11 @@ test("reports for the principal: summaries say only what the file shows", () => 
 
   // Every format carries the summary
   assert.ok(C.docMarkdown(j).includes(j.intro[0]));
-  assert.ok(C.docHtml(j).includes('class="intro"'));
+  assert.ok(C.docHtml(j).includes('class="summary"') && C.docHtml(j).includes(j.intro[1]));
+  assert.ok(j.figures.length >= 1 && j.figures.every(f => f.value && f.label));
+  const unzipNames = buf => { const names = []; const b = Buffer.from(buf); for (let i = 0; i + 4 < b.length; i++) if (b.readUInt32LE(i) === 0x04034b50){ const n = b.readUInt16LE(i + 26); names.push(b.slice(i + 30, i + 30 + n).toString()); } return names; };
+  assert.ok(unzipNames(C.docDocx(j)).includes("word/footer1.xml"), "reports get a footer with page numbers");
+  assert.ok(!unzipNames(C.docDocx(C.itemsDocument(h, {kinds: ["jobs"]}))).includes("word/footer1.xml"), "plain exports are unchanged");
   assert.match(C.docPdf(j), /^%PDF-1\.4/);
   assert.ok(C.docDocx(j).length > 1000);
   assert.throws(() => C.principalReport(h, "gossip", o), /No report/);
