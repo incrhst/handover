@@ -1,6 +1,7 @@
 // Handover for macOS: a window around app/web/index.html, plus the parts a web
 // page can't do reliably on its own: real files on disk, a clock that keeps
-// running, the daily task sheet, reminders as notifications, nightly backups and opening at login.
+// running, the daily task sheet, reminders as notifications, the jobs in Apple Reminders, nightly backups
+// and opening at login.
 //
 // Data folder (default ~/Documents/Handover, or $HANDOVER_DATA):
 //   handovers/<id>.handover   the content of each handover, as loaded
@@ -16,6 +17,7 @@
 
 import AppKit
 import CryptoKit
+import EventKit
 import ServiceManagement
 import UniformTypeIdentifiers
 import UserNotifications
@@ -179,6 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     let store = Store()
     let updater = Updater()
     let reminders = Reminders()
+    let todo = TodoSync()
     var window: NSWindow!
     var web: WKWebView!
     var ready = false
@@ -193,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var webDir: URL { Bundle.main.resourceURL!.appendingPathComponent("web", isDirectory: true) }
 
     // Set before launch finishes, so a click on a reminder that opened the app isn't missed.
-    func applicationWillFinishLaunching(_ n: Notification) { reminders.host = self; reminders.setUp() }
+    func applicationWillFinishLaunching(_ n: Notification) { reminders.host = self; reminders.setUp(); todo.host = self; todo.setUp() }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         buildMenu()
@@ -314,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
         switch action {
         case "init":
-            var r: [String: Any] = ["library": store.library(), "dataFolder": store.root.path, "loginItem": SMAppService.mainApp.status == .enabled, "version": updater.current, "autoUpdate": updater.auto, "reminders": reminders.prefs]
+            var r: [String: Any] = ["library": store.library(), "dataFolder": store.root.path, "loginItem": SMAppService.mainApp.status == .enabled, "version": updater.current, "autoUpdate": updater.auto, "reminders": reminders.prefs, "todoSync": todo.enabled]
             if let id = store.last, let src = store.source(id) { r["source"] = src; r["state"] = store.state(id) ?? NSNull() }
             reply(r)
         case "adopt":
@@ -426,6 +429,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             reminders.prefs = ["morning": payload["morning"] as? Bool ?? true, "jobs": payload["jobs"] as? Bool ?? true]; reply(["ok": true])
         case "notificationSettings":
             reminders.openSettings(); reply(["ok": true])
+        case "setTodoSync":
+            todo.setEnabled(payload["on"] as? Bool ?? false) { status in reply(["enabled": self.todo.enabled, "status": status]) }
+        case "todoRead":
+            todo.read(handover: str("handover"), title: str("title")) { reply($0) }
+        case "todoApply":
+            todo.apply(handover: str("handover"), title: str("title"), timezone: str("timezone"), plan: payload) { reply(["ok": $0]) }
+        case "remindersSettings":
+            todo.openSettings(); reply(["ok": true])
         case "log":
             NSLog("Handover page: \(str("msg"))"); reply(nil)
         default:
@@ -659,6 +670,161 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         host.callJS("handoverReminder", args)
     }
     func flush() { let q = queued; queued = []; q.forEach(send) }
+}
+
+// MARK: Apple Reminders
+// With Settings › Keep my jobs in Apple Reminders on, the open handover's regular jobs are kept in a Reminders list
+// named after it, so they can be ticked off on an iPhone too. The page works out what the list should hold and what to
+// change (core.js todoList and todoPlan); this reads the list and makes the changes. A reminder's URL,
+// handover://<handover id>/<job id>@<date>, says which job and date it is for (and its external identifier, in case a
+// device drops the URL). When anything changes in Reminders, the page is told, so it can take ticks made there.
+// Per handover, UserDefaults keeps the list's identifier and what the page last agreed with the list (seen, written).
+
+final class TodoSync {
+    weak var host: AppDelegate?
+    let store = EKEventStore()
+    let defaults = UserDefaults.standard
+    var pending: DispatchWorkItem?
+
+    var enabled: Bool {
+        get { defaults.bool(forKey: "todoSync") }
+        set { defaults.set(newValue, forKey: "todoSync") }
+    }
+
+    /// "authorized", "denied" or "notDetermined". Full access is rawValue 3 (authorized before macOS 14); write-only isn't enough to read ticks.
+    static var status: String {
+        switch EKEventStore.authorizationStatus(for: .reminder).rawValue { case 0: return "notDetermined"; case 3: return "authorized"; default: return "denied" }
+    }
+
+    func setUp() {
+        NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in self?.changed() }
+    }
+
+    /// Something changed in Reminders (in the app, on another device, or our own save): once it settles, the page reads the list again.
+    func changed() {
+        guard enabled else { return }
+        pending?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let host = self?.host, host.ready else { return }
+            host.callJS("handoverTodoChanged", [])
+        }
+        pending = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: w)
+    }
+
+    /// Turning it on asks macOS for access to Reminders the first time. Replies with the status.
+    func setEnabled(_ on: Bool, done: @escaping (String) -> Void) {
+        guard on else { enabled = false; done(TodoSync.status); return }
+        let finish = { (ok: Bool) in
+            DispatchQueue.main.async {
+                if ok { self.store.reset() }
+                self.enabled = ok
+                done(ok ? "authorized" : "denied")
+            }
+        }
+        if TodoSync.status == "authorized" { finish(true); return }
+        if #available(macOS 14.0, *) { store.requestFullAccessToReminders { ok, _ in finish(ok) } }
+        else { store.requestAccess(to: .reminder) { ok, _ in finish(ok) } }
+    }
+
+    func openSettings() {
+        let deep = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")!
+        if !NSWorkspace.shared.open(deep) { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security")!) }
+    }
+
+    func saved(_ name: String, _ handover: String) -> [String: Any] { defaults.dictionary(forKey: "todo." + name + "." + handover) ?? [:] }
+    func save(_ name: String, _ handover: String, _ value: [String: Any]) { defaults.set(value, forKey: "todo." + name + "." + handover) }
+
+    /// The handover's list, made in the default Reminders account the first time (or again if it was deleted).
+    func list(_ handover: String, title: String) -> EKCalendar? {
+        var lists = defaults.dictionary(forKey: "todo.lists") as? [String: String] ?? [:]
+        if let id = lists[handover], let c = store.calendar(withIdentifier: id) { return c }
+        guard let source = store.defaultCalendarForNewReminders()?.source ?? store.sources.first(where: { !$0.calendars(for: .reminder).isEmpty }) else { return nil }
+        let c = EKCalendar(for: .reminder, eventStore: store)
+        c.title = title.isEmpty ? "Handover" : title
+        c.source = source
+        do { try store.saveCalendar(c, commit: true) } catch { NSLog("Handover: couldn't make the Reminders list: \(error)"); return nil }
+        lists[handover] = c.calendarIdentifier
+        defaults.set(lists, forKey: "todo.lists")
+        return c
+    }
+
+    func url(_ handover: String, _ key: String) -> URL? {
+        var c = URLComponents(); c.scheme = "handover"; c.host = handover; c.path = "/" + key
+        return c.url
+    }
+    func key(_ r: EKReminder, _ handover: String, _ byExternal: [String: Any]) -> String? {
+        if let u = r.url, u.scheme == "handover", u.host == handover {
+            let k = String(u.path.dropFirst()); if !k.isEmpty { return k }
+        }
+        return r.calendarItemExternalIdentifier.flatMap { byExternal[$0] as? String }
+    }
+
+    /// The list's reminders for this handover, as {id, key, done}: every open one, and those ticked in the last 60 days.
+    func read(handover: String, title: String, done: @escaping ([String: Any]) -> Void) {
+        guard enabled, validID(handover) else { done(["status": "off"]); return }
+        guard TodoSync.status == "authorized" else { done(["status": TodoSync.status]); return }
+        guard let cal = list(handover, title: title) else { done(["status": "noList"]); return }
+        let open = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: [cal])
+        let closed = store.predicateForCompletedReminders(withCompletionDateStarting: Date().addingTimeInterval(-60 * 86400), ending: nil, calendars: [cal])
+        store.fetchReminders(matching: open) { a in
+            self.store.fetchReminders(matching: closed) { b in
+                DispatchQueue.main.async {
+                    let ext = self.saved("keys", handover)
+                    let have: [[String: Any]] = ((a ?? []) + (b ?? [])).compactMap { r in
+                        guard let k = self.key(r, handover, ext) else { return nil }
+                        return ["id": r.calendarItemIdentifier, "key": k, "done": r.isCompleted]
+                    }
+                    done(["status": "authorized", "reminders": have, "seen": self.saved("seen", handover), "written": self.saved("written", handover)])
+                }
+            }
+        }
+    }
+
+    static func components(_ day: String, _ time: String, _ tz: TimeZone?) -> DateComponents? {
+        let d = day.split(separator: "-").compactMap { Int($0) }
+        guard d.count == 3 else { return nil }
+        var c = DateComponents()
+        c.calendar = Calendar(identifier: .gregorian); c.year = d[0]; c.month = d[1]; c.day = d[2]
+        let t = time.split(separator: ":").compactMap { Int($0) }
+        if t.count == 2 { c.hour = t[0]; c.minute = t[1]; c.timeZone = tz }
+        return c
+    }
+
+    /// Make the changes the page worked out (core.js todoPlan), then keep what the page and the list now agree on.
+    func apply(handover: String, title: String, timezone: String, plan: [String: Any], done: @escaping (Bool) -> Void) {
+        guard enabled, validID(handover), TodoSync.status == "authorized", let cal = list(handover, title: title) else { done(false); return }
+        let tz = TimeZone(identifier: timezone)
+        var failed = false, made: [(EKReminder, String)] = []
+        func find(_ id: Any?) -> EKReminder? { (id as? String).flatMap { store.calendarItem(withIdentifier: $0) as? EKReminder } }
+        func fill(_ r: EKReminder, _ it: [String: Any]) {
+            r.title = it["title"] as? String ?? ""
+            r.notes = it["notes"] as? String
+            r.dueDateComponents = TodoSync.components(it["due"] as? String ?? "", it["time"] as? String ?? "", tz)
+            r.startDateComponents = TodoSync.components(it["starts"] as? String ?? "", "", tz)
+        }
+        func keep(_ r: EKReminder) { do { try store.save(r, commit: false) } catch { failed = true; NSLog("Handover: couldn't save a reminder: \(error)") } }
+        for it in plan["create"] as? [[String: Any]] ?? [] {
+            guard let key = it["key"] as? String else { continue }
+            let r = EKReminder(eventStore: store)
+            r.calendar = cal; r.url = url(handover, key); fill(r, it); keep(r)
+            made.append((r, key))
+        }
+        for it in plan["update"] as? [[String: Any]] ?? [] { if let r = find(it["id"]) { fill(r, it); keep(r) } }
+        for s in plan["set"] as? [[String: Any]] ?? [] { if let r = find(s["id"]) { r.isCompleted = s["done"] as? Bool ?? false; keep(r) } }
+        for id in plan["remove"] as? [String] ?? [] {
+            if let r = find(id) { do { try store.remove(r, commit: false) } catch { failed = true; NSLog("Handover: couldn't remove a reminder: \(error)") } }
+        }
+        do { try store.commit() } catch { failed = true; NSLog("Handover: couldn't save to Reminders: \(error)") }
+        if failed { store.reset(); done(false); return }
+        let seen = plan["seen"] as? [String: Any] ?? [:]
+        var ext = saved("keys", handover).filter { seen[$0.value as? String ?? ""] != nil }
+        for (r, key) in made { if let e = r.calendarItemExternalIdentifier { ext[e] = key } }
+        save("keys", handover, ext)
+        save("seen", handover, seen)
+        save("written", handover, plan["written"] as? [String: Any] ?? [:])
+        done(true)
+    }
 }
 
 // MARK: Updates

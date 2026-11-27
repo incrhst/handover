@@ -501,6 +501,9 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <div class="row native-only"><label class="switch"><input type="checkbox" id="remindMorning" checked> Remind me each morning of what's to do</label></div>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="remindJobs" checked> Remind me when a job with a time is due</label></div>
           <p class="native-only" id="remindOff" hidden style="margin:.2rem 0 .8rem">Notifications are turned off for Handover, so no reminders will show. <button class="btn" type="button" data-cmd="notificationSettings">Open System Settings</button></p>
+          <div class="row native-only"><label class="switch"><input type="checkbox" id="todoSync"> Keep my jobs in Apple Reminders</label></div>
+          <p class="native-only" style="margin:.2rem 0 .8rem">Each regular job shows in a Reminders list named after the handover, a week before it's due (or when its work has to start). Tick it there, on your iPhone or here: a tick in one place shows in the other. Only the handover that is open is kept up to date.</p>
+          <p class="native-only" id="todoOff" hidden style="margin:.2rem 0 .8rem">Handover isn't allowed to use Reminders, so the list isn't kept up to date. <button class="btn" type="button" data-cmd="remindersSettings">Open System Settings</button></p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="autoUpdate"> Check for updates automatically</label> <button class="btn" type="button" data-cmd="checkUpdates">Check now</button> <span class="muted" id="appVersion"></span></div>
           <div class="row kit-only">Your ticks and notes are kept in this browser only. To carry on in the Handover app, use Share &amp; export, Export with my progress, and open that file in the app.</div>
           <div class="row browser-only">Running in a browser: progress is saved in this browser only. Install the Mac app for files on disk, backups and the daily sheet.</div>
@@ -754,6 +757,7 @@ var REMIND = {morning: true, jobs: true}, sentReminders = null, remindTimer = nu
    one already shown can be brought up to date. Nothing is sent when nothing changed. */
 function syncReminders(){
   if (!native) return;
+  syncTodo();
   clearTimeout(remindTimer);
   remindTimer = setTimeout(function(){
     var items = H ? C.reminders(H, S, Date.now(), REMIND).map(function(r){ return {id: r.id, at: new Date(r.at).toISOString().replace(/\.\d+Z$/, "Z"), kind: r.kind, key: r.key, title: r.title, subtitle: r.subtitle, body: r.body}; }) : [];
@@ -771,6 +775,65 @@ function setRemind(){
   REMIND = {morning: $("remindMorning").checked, jobs: $("remindJobs").checked};
   call("setReminderPrefs", REMIND).then(function(){ sentReminders = null; syncReminders(); });
   toast(REMIND.morning || REMIND.jobs ? "Reminders on" : "Reminders off");
+}
+/* ================= Apple Reminders: the Mac app keeps the jobs in a Reminders list ================= */
+/* With the setting on, the open handover's jobs go in a Reminders list (core.js todoList). Each round reads the list, works
+   out what to change both ways (core.js todoPlan), takes any ticks made in Reminders and has the app make the rest. A round
+   runs when ticks, edits or the day change, and when the app says Reminders changed. One round at a time. */
+var TODO = false, todoTimer = null, todoSent = null, todoBusy = false, todoAgain = false;
+function syncTodo(force){
+  if (!native || !TODO || !H) return;
+  if (force) todoSent = null;
+  clearTimeout(todoTimer);
+  todoTimer = setTimeout(runTodo, 600);
+}
+function sameMap(a, b){ a = a || {}; b = b || {}; var ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(function(k){ return b.hasOwnProperty(k) && b[k] === a[k]; }); }
+function runTodo(){
+  if (!TODO || !H) return;
+  if (todoBusy){ todoAgain = true; return; }
+  var h = H, want = C.todoList(h, S, zoneParts(h.timezone).date), sig = h.id + JSON.stringify(want);
+  if (sig === todoSent) return;
+  todoBusy = true;
+  var title = plain(h.title);
+  call("todoRead", {handover: h.id, title: title}).then(function(r){
+    if (!r || r.status !== "authorized" || h !== H) return r;
+    var plan = C.todoPlan(want, r.reminders || [], r.seen || {}, r.written || {});
+    var jobs = {}; (h.recurring || []).forEach(function(x){ jobs[x.id] = x; });
+    var ticks = plan.ticks.filter(function(t){ return jobs[t.key.split("@")[0]]; });
+    var work = plan.create.length + plan.update.length + plan.set.length + plan.remove.length;
+    var go = work || !sameMap(plan.seen, r.seen) || !sameMap(plan.written, r.written) ?
+      call("todoApply", {handover: h.id, title: title, timezone: h.timezone || "", create: plan.create, update: plan.update, set: plan.set, remove: plan.remove, seen: plan.seen, written: plan.written}) :
+      Promise.resolve({ok: true});
+    return go.then(function(a){ if (a && a.ok && !ticks.length) todoSent = sig; takeTicks(ticks, jobs); return r; });
+  }).then(function(r){
+    todoBusy = false;
+    $("todoOff").hidden = !(r && r.status === "denied");
+    if (todoAgain){ todoAgain = false; runTodo(); }
+  }, function(){ todoBusy = false; });
+}
+/* Ticks made in Reminders: tick or untick those jobs here too */
+function takeTicks(ticks, jobs){
+  var on = [], off = [];
+  ticks.forEach(function(t){
+    if (t.done && !S.recurring[t.key]){ S.recurring[t.key] = new Date().toISOString(); on.push(t); }
+    else if (!t.done && S.recurring[t.key]){ delete S.recurring[t.key]; off.push(t); }
+  });
+  if (!on.length && !off.length) return;
+  save(); rerenderKeepSearch();
+  function names(l){ return l.map(function(t){ return plain(jobs[t.key.split("@")[0]].text); }).join(", "); }
+  toast((on.length ? "Ticked in Reminders: " + names(on) : "") + (on.length && off.length ? ". " : "") + (off.length ? "Unticked in Reminders: " + names(off) : ""));
+}
+/* Called by the Mac app when something changed in Reminders */
+window.handoverTodoChanged = function(){ syncTodo(true); };
+function setTodo(){
+  var box = $("todoSync");
+  call("setTodoSync", {on: box.checked}).then(function(r){
+    TODO = !!(r && r.enabled); box.checked = TODO;
+    $("todoOff").hidden = true;
+    if (TODO){ syncTodo(true); toast("Your jobs will be kept in Apple Reminders"); }
+    else if (r && r.status === "denied"){ $("todoOff").hidden = false; toast("Handover isn't allowed to use Reminders"); }
+    else toast("Reminders list no longer kept up to date. Delete it in Reminders if you don't want it");
+  });
 }
 /* Called by the Mac app when a reminder is clicked: "done" ticks the job it was for, "open" shows Today */
 window.handoverReminder = function(action, id, key){
@@ -1686,6 +1749,7 @@ function command(c){
     case "reveal": return call("reveal");
     case "checkUpdates": return call("checkUpdates");
     case "notificationSettings": return call("notificationSettings");
+    case "remindersSettings": return call("remindersSettings");
     case "chooseFolder": return call("chooseFolder").then(function(r){ if (r && r.path){ $("dataFolder").textContent = r.path; toast("Data folder changed"); } });
     case "resetProgress": if (!confirm("Clear all your ticks and notes for this handover? This can't be undone.")) return; S = emptyState(TODAY); save(); render(); return toast("Progress cleared");
   }
@@ -1846,6 +1910,7 @@ function boot(res){
   if (res && typeof res.loginItem === "boolean") $("loginItem").checked = res.loginItem;
   if (res && typeof res.autoUpdate === "boolean") $("autoUpdate").checked = res.autoUpdate;
   if (res && res.reminders){ REMIND = {morning: res.reminders.morning !== false, jobs: res.reminders.jobs !== false}; $("remindMorning").checked = REMIND.morning; $("remindJobs").checked = REMIND.jobs; }
+  if (res && typeof res.todoSync === "boolean"){ TODO = res.todoSync; $("todoSync").checked = TODO; }
   if (res && res.version) $("appVersion").textContent = "Version " + res.version;
   if (lib.length > 1){ $("switchRow").hidden = false; $("switchSel").innerHTML = '<option value="">Choose…</option>' + lib.map(function(x){ return '<option value="' + esc(x.id) + '">' + esc(x.title || x.id) + "</option>"; }).join(""); }
   if (res && res.source){
@@ -1860,6 +1925,7 @@ function boot(res){
 }
 $("remindMorning").addEventListener("change", setRemind);
 $("remindJobs").addEventListener("change", setRemind);
+$("todoSync").addEventListener("change", setTodo);
 $("autoUpdate").addEventListener("change", function(){ call("setAutoUpdate", {on: this.checked}).then(function(r){ if (r) toast(r.enabled ? "Will check for updates" : "Won't check for updates"); }); });
 $("loginItem").addEventListener("change", function(){ var on = this.checked; call("setLogin", {on: on}).then(function(r){ if (r && typeof r.enabled === "boolean"){ $("loginItem").checked = r.enabled; toast(r.enabled ? "Will open at login" : "Won't open at login"); if (r.message) toast(r.message); } }); });
 

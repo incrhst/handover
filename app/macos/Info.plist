@@ -18,6 +18,8 @@
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSSupportsAutomaticTermination</key><false/>
 	<key>NSSupportsSuddenTermination</key><false/>
+	<key>NSRemindersFullAccessUsageDescription</key><string>Handover keeps your regular jobs in a Reminders list, so you can tick them off there or on your iPhone, and reads the ticks back.</string>
+	<key>NSRemindersUsageDescription</key><string>Handover keeps your regular jobs in a Reminders list, so you can tick them off there or on your iPhone, and reads the ticks back.</string>
 	<key>NSHumanReadableCopyright</key><string>Open source. The handover format is an open specification.</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
