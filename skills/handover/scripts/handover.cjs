@@ -81,10 +81,20 @@ switch (cmd) {
     const line = o => `  ${C.nice(o.date)}  ${o.r.text}${o.r.time ? " · " + o.r.time : ""}  [${C.cadence(o.r)}]`;
     console.log(`${h.title} · ${C.nice(today, "long")}${h.timezone ? " (" + h.timezone + ")" : ""}`);
     if (sc.overdue.length) { console.log("\nOverdue:"); sc.overdue.forEach(o => console.log(line(o))); }
+    // A job with a lead time (spec section 18) is on the list from its date minus the lead until it is done
+    const open = sc.start.filter(o => !o.done);
+    if (open.length) { console.log("\nStart now:"); open.forEach(o => console.log(`  ${C.nice(o.date)}  ${o.r.text}  (due in ${o.daysLeft} day${o.daysLeft === 1 ? "" : "s"}, on the list since ${C.nice(o.starts)})  [${C.cadence(o.r)}]`)); }
     console.log("\nToday:"); if (sc.due.length) sc.due.forEach(o => console.log(line(o))); else console.log("  Nothing due.");
     const upcoming = [];
-    for (let i = 1; i <= days; i++) { const d = C.addDays(today, i); (h.recurring || []).forEach(r => { if (C.occursOn(r, d)) upcoming.push({r, date: d}); }); }
-    console.log(`\nNext ${days} days:`); if (upcoming.length) upcoming.forEach(o => console.log(line(o))); else console.log("  Nothing.");
+    for (let i = 1; i <= days; i++) {
+      const d = C.addDays(today, i);
+      (h.recurring || []).forEach(r => {
+        if (r.lead) { const due = C.addDays(d, r.lead); if (C.occursOn(r, due)) upcoming.push({r, date: d, starts: true, due}); }
+        else if (C.occursOn(r, d)) upcoming.push({r, date: d});
+      });
+    }
+    const up = o => o.starts ? `  ${C.nice(o.date)}  Start: ${o.r.text}  (due ${C.nice(o.due)})  [${C.cadence(o.r)}]` : line(o);
+    console.log(`\nNext ${days} days:`); if (upcoming.length) upcoming.forEach(o => console.log(up(o))); else console.log("  Nothing.");
     break;
   }
   case "summary": {

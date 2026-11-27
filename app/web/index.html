@@ -843,12 +843,20 @@ function renderHero(){
 }
 function dutyHtml(o, showDate){
   var r = o.r, key = r.id + "@" + o.date, on = !!S.recurring[key];
-  var when = [showDate ? nice(o.date) : "", r.time || "", cadence(r)].filter(Boolean).join(" · ");
+  /* A job with a lead time, under way: when it is due and how long is left (spec section 18) */
+  var ahead = o.daysLeft ? chip(o.daysLeft === 1 ? "1 day left" : o.daysLeft + " days left", o.daysLeft <= 7 ? "warn" : "") + " " : "";
+  var when = [o.daysLeft ? "Due " + nice(o.date) : showDate ? nice(o.date) : "", r.time || "", cadence(r), o.daysLeft && o.starts === TODAY ? "starts today" : ""].filter(Boolean).join(" · ");
   return '<div class="duty' + (on ? " done" : "") + '" data-key="' + esc(key) + '">' +
     '<button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(r.text)) + '">' + TICK + "</button>" +
-    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + editBtn("recurring", r) + "</span>" +
+    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + ahead + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + editBtn("recurring", r) + "</span>" +
     (r.detail ? '<div class="detail">' + md(r.detail) + "</div>" : "") + "</div>";
 }
+/* The day a tick was made, in the handover's zone */
+function dayOf(ts){ try { return new Intl.DateTimeFormat("en-CA", {timeZone: H.timezone || undefined, year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date(ts)); } catch (e){ return String(ts).slice(0, 10); } }
+/* Jobs under way because of their lead time: the open ones, and any ticked today so a tick can be taken back */
+function underWay(sc, date){ return sc.start.filter(function(o){ var t = S.recurring[o.r.id + "@" + o.date]; return !t || dayOf(t) === date; }); }
+/* "Start: …" for a job whose lead time begins on a later day */
+function startsLabel(o){ return o.starts ? "Start: " : ""; }
 function renderToday(){
   var w = $("todayWrap"), att = attention(TODAY);
   if (!(H.recurring || []).length && !(H.asNeeded || []).length && !att.length){ w.innerHTML = ""; return; }
@@ -856,10 +864,12 @@ function renderToday(){
   var cols = "";
   if (att.length) cols += '<div class="col attention"><h3>Needs attention <span class="count">' + att.length + "</span></h3>" + att.map(function(a){ return '<div class="duty plain"><span class="t">' + a.html + '</span><span class="when">' + a.when + (a.close || "") + "</span></div>"; }).join("") + "</div>";
   if (sc.overdue.length) cols += '<div class="col overdue"><h3>Overdue <span class="count">' + sc.overdue.length + "</span></h3>" + sc.overdue.map(function(o){ return dutyHtml(o, true); }).join("") + "</div>";
+  var uw = underWay(sc, TODAY), uwOpen = uw.filter(function(o){ return !isDone(o.r.id, o.date); }).length;
+  if (uw.length) cols += '<div class="col"><h3 title="Jobs that take time: they go on the list their lead time before they are due">Start now <span class="count">' + uwOpen + "</span></h3>" + uw.map(function(o){ return dutyHtml(o, false); }).join("") + "</div>";
   if (!(H.recurring || []).length && (H.asNeeded || []).length) cols += '<div class="col"><h3>Today</h3><div class="empty">No regular jobs. The jobs done as needed are listed below.</div></div>';
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
-  if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
-  var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.date)) + "</span><span>" + inline(o.r.text) + "</span></li>"; }).join("") + "</ul></div>" : "";
+  if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + startsLabel(o) + inline(o.r.text) + '</span><span class="when">' + esc(o.starts ? nice(o.starts) + " · due " + nice(o.date) : [nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
+  var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.starts || o.date)) + "</span><span>" + startsLabel(o) + inline(o.r.text) + (o.starts ? ' <span class="muted">(due ' + esc(nice(o.date)) + ")</span>" : "") + "</span></li>"; }).join("") + "</ul></div>" : "";
   var jobs = H.recurring || [], needed = H.asNeeded || [];
   var areaTag = function(x){ return x.area ? '<span class="area">' + esc(x.area) + "</span>" : ""; };
   var all = jobs.length || needed.length ? '<details class="alljobs no-print" id="alljobs"><summary>All jobs (' + (jobs.length + needed.length) + ")</summary>" + jobs.map(function(r){
@@ -1433,6 +1443,7 @@ function fieldsHtml(defs, prefix, values){
     if (d.t === "md") input = '<textarea id="' + id + '" data-f="' + d.k + '" rows="3">' + esc(val) + "</textarea>";
     else if (d.t === "date") input = '<input type="date" id="' + id + '" data-f="' + d.k + '" value="' + esc(val) + '">';
     else if (d.t === "time") input = '<input type="time" id="' + id + '" data-f="' + d.k + '" value="' + esc(val) + '">';
+    else if (d.t === "count") input = '<input type="number" inputmode="numeric" min="1" max="' + (d.max || 9999) + '" step="1" id="' + id + '" data-f="' + d.k + '" value="' + esc(val) + '">';
     else if (d.t === "role") input = '<select id="' + id + '" data-f="' + d.k + '">' + roleOptions("Not set", val) + "</select>";
     else if (Array.isArray(d.t)) input = '<select id="' + id + '" data-f="' + d.k + '">' + (d.req ? "" : '<option value="">Not set</option>') + d.t.map(function(o){ return '<option value="' + o[0] + '"' + (o[0] === val ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>";
     else input = '<input type="text" id="' + id + '" data-f="' + d.k + '" autocomplete="off" value="' + esc(val) + '">';
@@ -1590,11 +1601,13 @@ function sheet(date){
   var att = attention(date);
   if (att.length){ L.push("## Needs attention", ""); att.forEach(function(a){ L.push("- " + a.plain); }); L.push(""); }
   if (sc.overdue.length){ L.push("## Overdue", ""); sc.overdue.forEach(function(o){ L.push("- [ ] " + plain(o.r.text) + " (was due " + nice(o.date) + ")"); }); L.push(""); }
+  var uw = underWay(sc, date);
+  if (uw.length){ L.push("## Start now", ""); uw.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + " (due " + nice(o.date) + ", " + (o.daysLeft === 1 ? "1 day" : o.daysLeft + " days") + " left)"); }); L.push(""); }
   L.push("## Today", "");
   if (sc.due.length) sc.due.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + (o.r.time ? " · " + o.r.time : "")); }); else L.push("Nothing due today.");
   L.push("");
-  if (sc.next.length){ L.push("## Next 7 days", ""); sc.next.forEach(function(o){ L.push("- " + nice(o.date) + " · " + plain(o.r.text) + (o.r.time ? " · " + o.r.time : "")); }); L.push(""); }
-  if (sc.later.length){ L.push("## Coming up", ""); sc.later.forEach(function(o){ L.push("- " + nice(o.date) + " · " + plain(o.r.text)); }); L.push(""); }
+  if (sc.next.length){ L.push("## Next 7 days", ""); sc.next.forEach(function(o){ L.push("- " + nice(o.starts || o.date) + " · " + startsLabel(o) + plain(o.r.text) + (o.starts ? " (due " + nice(o.date) + ")" : o.r.time ? " · " + o.r.time : "")); }); L.push(""); }
+  if (sc.later.length){ L.push("## Coming up", ""); sc.later.forEach(function(o){ L.push("- " + nice(o.starts || o.date) + " · " + startsLabel(o) + plain(o.r.text) + (o.starts ? " (due " + nice(o.date) + ")" : "")); }); L.push(""); }
   var p = H.path || [];
   if (p.length){
     var i = currentStage(), s = p[i], st = stats(s);

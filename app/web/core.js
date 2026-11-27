@@ -45,7 +45,7 @@ function validate(h){
   var recIds = {};
   list("recurring").forEach(function(r, i){
     var p = "recurring[" + i + "]"; if (!isObj(r)){ errors.push(p + ": must be an object"); return; }
-    keys(r, p, ["id","text","area","every","on","day","monthOfQuarter","date","time","start","end","detail","see"]);
+    keys(r, p, ["id","text","area","every","on","day","monthOfQuarter","date","time","start","end","lead","detail","see"]);
     pat(r, "id", p, ID, "an id like payroll", true); text(r, "text", p, true);
     if (r.area !== undefined) text(r, "area", p);
     if (r.id){ if (recIds[r.id]) errors.push(p + '.id: "' + r.id + '" is used twice'); recIds[r.id] = true; }
@@ -59,6 +59,11 @@ function validate(h){
     if (r.start !== undefined) pat(r, "start", p, DATE, "a date like 2026-12-01");
     if (r.end !== undefined) pat(r, "end", p, DATE, "a date like 2027-06-30");
     if (r.detail !== undefined) text(r, "detail", p);
+    if (r.lead !== undefined){
+      if (!(Number.isInteger(r.lead) && r.lead >= 1 && r.lead <= MAX_LEAD)) errors.push(p + ".lead: must be a whole number of days, 1 to " + MAX_LEAD);
+      else if (r.every === "day" || r.every === "weekday") warnings.push(p + ".lead: a lead time has no effect on a job done every day or weekday. Leave it out");
+      else { var gap = period(r); if (r.lead >= gap) warnings.push(p + ".lead: " + r.lead + " days ahead reaches back past the previous occurrence (they come about every " + gap + " days), so two will be under way at once. Is the lead time right?"); }
+    }
     see(r, p);
   });
   list("questions").forEach(function(q, i){ var p = "questions[" + i + "]"; if (!isObj(q)){ errors.push(p + ": must be an object"); return; } keys(q, p, ["id","q","a","tag","see"]); text(q, "q", p, true); text(q, "a", p, true); if (q.id !== undefined) pat(q, "id", p, ID, "an id"); if (q.tag !== undefined) text(q, "tag", p); see(q, p); });
@@ -75,16 +80,18 @@ function validate(h){
 }
 
 /* ================= Validation of the 1.1 objects (spec sections 9 to 16) ================= */
-var MINOR = 2;
+var MINOR = 3;
 var ROLES = ["outgoing","incoming","principal","owner","facilitator"];
 var ASKS = ["breaks","profile","access","limits","confid","emergency","signoff"];
 var FINAL = ["recurring","in-progress","decisions","context","access","exceptions","decide"];
 var V11 = ["audience","profile","people","stakeholders","plan","asks","gaps","inProgress","rules","decisions","risks","systems","documents","decide","finalCheck","signoff","followUps","catchUps","history","rendered"];
 /* 1.2: the role itself (for a job description), jobs done as needed, and an area on regular jobs */
 var V12 = ["role","asNeeded"];
+/* 1.3: a lead time on regular jobs (spec section 18) */
 /* The lowest minor version that has every field h uses (spec section 8) */
 function usesMinor(h){
   if (!h || typeof h !== "object") return 0;
+  if (Array.isArray(h.recurring) && h.recurring.some(function(r){ return r && r.lead !== undefined; })) return 3;
   if (V12.some(function(k){ return h[k] !== undefined; }) || (Array.isArray(h.recurring) && h.recurring.some(function(r){ return r && r.area !== undefined; }))) return 2;
   if (V11.some(function(k){ return h[k] !== undefined; }) || (h.from && typeof h.from === "object" && (h.from.hours !== undefined || h.from.paid !== undefined))) return 1;
   return 0;
@@ -252,13 +259,30 @@ function occursOn(r, s){
   return false;
 }
 var BACK = {day: 1, weekday: 3, week: 7, month: 31, quarter: 92, year: 366};
+/* Lead time (spec section 18): the most days ahead a job can start, and the shortest time between two occurrences */
+var MAX_LEAD = 366;
+function period(r){
+  switch (r.every){
+    case "day": case "weekday": return 1;
+    case "week": var on = [].concat(r.on || "mon").map(function(d){ return DAYS.indexOf(d); }).filter(function(i){ return i > -1; }).sort();
+      if (on.length < 2) return 7;
+      return on.reduce(function(m, d, i){ var nx = i + 1 < on.length ? on[i + 1] : on[0] + 7; return Math.min(m, nx - d); }, 7);
+    case "month": return 28;
+    case "quarter": return 89;
+    case "year": return 365;
+  }
+  return 365;
+}
+function leadOf(r){ return Number.isInteger(r.lead) && r.lead >= 1 && r.lead <= MAX_LEAD ? r.lead : 0; }
 var fmtShort = new Intl.DateTimeFormat("en-GB", {weekday: "short", day: "numeric", month: "short", timeZone: "UTC"});
 var fmtLong = new Intl.DateTimeFormat("en-GB", {weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC"});
 var fmtDay = new Intl.DateTimeFormat("en-GB", {day: "numeric", month: "short", timeZone: "UTC"});
 function nice(s, kind){ return (kind === "long" ? fmtLong : kind === "day" ? fmtDay : fmtShort).format(new Date(utc(s))); }
 function ordinal(n){ var s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 var DAYNAME = {mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday", fri: "Friday", sat: "Saturday", sun: "Sunday"};
-function cadence(r){
+function cadence(r){ var c = cadenceOnly(r), n = leadOf(r); return n && c ? c + ", starting " + leadWords(n) + " before" : c; }
+function leadWords(n){ return n === 1 ? "1 day" : n % 7 === 0 && n <= 56 ? (n === 7 ? "1 week" : n / 7 + " weeks") : n + " days"; }
+function cadenceOnly(r){
   var dayTxt = r.day === "last" ? "the last day" : "the " + ordinal(r.day || 1);
   switch (r.every){
     case "day": return "Every day";
@@ -270,29 +294,48 @@ function cadence(r){
   }
   return "";
 }
+/* What is due on today: {overdue, due, start, next, later}. Each entry is {r, date} for one occurrence (date is when it is due).
+   A job with a lead time (spec section 18) goes on the list lead days before its date: start holds the occurrences under way,
+   each with starts (the day it went on the list), daysLeft and done. For those jobs, next and later give the day the work starts, as starts. */
 function schedule(h, progress, today){
   progress = progress || {};
   var done = progress.recurring || {};
   function isDone(id, date){ return !!done[id + "@" + date]; }
   var rec = h.recurring || [], floor = progress.firstSeen || today;
-  var due = [], overdue = [], next = [], later = [];
+  var due = [], overdue = [], start = [], next = [], later = [];
   rec.forEach(function(r){
+    var lead = leadOf(r);
     if (occursOn(r, today)) due.push({r: r, date: today});
     var lim = BACK[r.every] || 31;
     for (var k = 1; k <= lim; k++){
       var s = addDays(today, -k); if (s < floor || (r.start && s < r.start)) break;
       if (occursOn(r, s)){ if (!isDone(r.id, s)) overdue.push({r: r, date: s}); break; }
     }
+    if (lead){
+      /* Under way: due in the next lead days. The work went on the list on date - lead. */
+      for (var i = 1; i <= lead; i++){ var u = addDays(today, i); if (occursOn(r, u)) start.push({r: r, date: u, starts: addDays(u, -lead), daysLeft: i, done: isDone(r.id, u), doneAt: done[r.id + "@" + u] || null}); }
+      /* Starting soon: the day the work for a later occurrence goes on the list */
+      if (r.every !== "day" && r.every !== "weekday"){
+        for (var j = 1; j <= 7; j++){ var v = addDays(today, j + lead); if (occursOn(r, v)) next.push({r: r, date: v, starts: addDays(today, j)}); }
+      }
+      if (["month","quarter","year"].indexOf(r.every) > -1){
+        for (var y = 8; y <= 75; y++){ var w = addDays(today, y + lead); if (occursOn(r, w)){ later.push({r: r, date: w, starts: addDays(today, y)}); break; } }
+      }
+      return;
+    }
     if (r.every !== "day" && r.every !== "weekday"){
-      for (var j = 1; j <= 7; j++){ var d = addDays(today, j); if (occursOn(r, d)) next.push({r: r, date: d}); }
+      for (var jj = 1; jj <= 7; jj++){ var d = addDays(today, jj); if (occursOn(r, d)) next.push({r: r, date: d}); }
     }
     if (["month","quarter","year"].indexOf(r.every) > -1){
       for (var x = 8; x <= 75; x++){ var e = addDays(today, x); if (occursOn(r, e)){ later.push({r: r, date: e}); break; } }
     }
   });
-  var byDate = function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : (a.r.time || "") < (b.r.time || "") ? -1 : 1; };
-  due.sort(byDate); overdue.sort(byDate); next.sort(byDate); later.sort(byDate);
-  return {due: due, overdue: overdue, next: next, later: later};
+  /* By the day it needs doing: the start day for a job with a lead time, the date otherwise */
+  var on = function(o){ return o.starts || o.date; };
+  var byDate = function(a, b){ return on(a) < on(b) ? -1 : on(a) > on(b) ? 1 : (a.r.time || "") < (b.r.time || "") ? -1 : 1; };
+  var byDue = function(a, b){ return a.date < b.date ? -1 : a.date > b.date ? 1 : (a.r.time || "") < (b.r.time || "") ? -1 : 1; };
+  due.sort(byDate); overdue.sort(byDate); start.sort(byDue); next.sort(byDate); later.sort(byDate);
+  return {due: due, overdue: overdue, start: start, next: next, later: later};
 }
 
 /* ================= Progress (spec section 6) ================= */
@@ -625,6 +668,10 @@ function fieldValue(d, v, values){
     if (!/^\d{1,2}$/.test(v) || +v < 1 || +v > 31) throw addError("“" + d.label + "” needs a day from 1 to 31, or “last”.", d.k);
     return +v;
   }
+  if (d.t === "count"){
+    if (!/^\d{1,4}$/.test(v) || +v < 1 || +v > (d.max || 9999)) throw addError("“" + d.label + "” needs a whole number from 1 to " + (d.max || 9999) + ".", d.k);
+    return +v;
+  }
   if (d.t === "mmdd"){ if (!/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v)) throw addError("“" + d.label + "” needs a month and day like 03-01 (1 March).", d.k); return v; }
   var why = secretReason(v);
   if (why) throw addError(why + SECRET_HELP, d.k);
@@ -677,6 +724,7 @@ var EDIT_FIELDS = {
     {k: "time", t: "time", label: "Time of day", hint: "e.g. 09:30", n: "the time"},
     {k: "start", t: "date", label: "From", hint: "Leave empty if it already applies", n: "the start"},
     {k: "end", t: "date", label: "Until", hint: "Leave empty if it carries on", n: "the end"},
+    {k: "lead", t: "count", max: MAX_LEAD, label: "Lead time in days", hint: "How many days before the date the work has to start, e.g. 90 for a registration that takes three months. It goes on the list that day and stays until it is done. Leave empty if it is done on the day", when: {k: "every", is: ["week", "month", "quarter", "year"]}, n: "the lead time"},
     {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
   asNeeded: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
     {k: "area", t: "line", label: "Area of work", hint: AREA_HINT, n: "the area"},
@@ -2138,7 +2186,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.3", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
