@@ -180,7 +180,7 @@ test("the AI prompt's example file is a valid 1.1 file", () => {
 test("items export: kinds, single items, privacy and closed items", () => {
   const h = ea();
   const kinds = C.exportKinds(h);
-  assert.deepEqual(kinds.slice(0, 2).map(k => k.key), ["jobs", "tasks"]);
+  assert.deepEqual(kinds.map(k => k.key), ["overview", "people", "jobs", "tasks", "stakeholders", "decide", "systems", "documents", "rules", "decisions", "risks", "inProgress", "gaps", "sections", "questions", "steps", "asks", "finalCheck", "signoff"]);
   assert.equal(kinds.find(k => k.key === "jobs").count, h.recurring.length);
   const md = C.docMarkdown(C.itemsDocument(h, {kinds: ["jobs", "tasks"], title: "Jobs and tasks", date: "2026-11-27"}));
   assert.match(md, /^# Jobs and tasks\n/);
@@ -204,7 +204,7 @@ test("items export: kinds, single items, privacy and closed items", () => {
 
 test("items export works on a 1.0 file", () => {
   const h = sample();
-  assert.deepEqual(C.exportKinds(h).map(k => k.key), ["jobs", "tasks", "questions"]);
+  assert.deepEqual(C.exportKinds(h).map(k => k.key), ["overview", "jobs", "tasks", "sections", "questions"]);
   const md = C.docMarkdown(C.itemsDocument(h, {kinds: ["jobs", "tasks", "questions"]}));
   assert.ok(md.includes("## Jobs") && md.includes("## First-weeks tasks") && md.includes("## Questions and answers"));
 });
@@ -261,4 +261,42 @@ test("Excel export has a sheet per kind, a header row and one row per item", () 
   assert.equal((jobs.match(/<row /g) || []).length, h.recurring.length + 1);
   assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<"));
   assert.match(jobs, /<autoFilter ref="A1:F7"\/>/);
+});
+
+test("components export: overview, people, reference sections, asks, final check and sign-off", () => {
+  const h = ea(), kinds = ["overview", "people", "sections", "asks", "finalCheck", "signoff"];
+  const doc = C.itemsDocument(h, {kinds, date: "2026-11-27"});
+  assert.deepEqual(doc.parts.map(p => p.key), kinds);
+  const md = C.docMarkdown(doc);
+  assert.match(md, /### About this handover\n\nHow to run Dana Whitfield's desk/);
+  assert.ok(md.includes("Marcus Hale's first day") && md.includes("No overlap"));
+  assert.ok(!md.includes("### People\n"), "sections written for 1.0 readers are left out: the structured parts cover them");
+  assert.match(md, /### Confidentiality\n\n- Board papers/);
+  assert.ok(md.includes("> **Warning:** Never forward a board pack"));
+  assert.ok(md.includes("**Profile check**") && md.includes("**Recurring work**"));
+  const asks = doc.parts.find(p => p.key === "asks").groups[0].items;
+  assert.equal(asks.length, h.asks.length);
+  const so = doc.parts.find(p => p.key === "signoff");
+  assert.ok(so.groups[0].items.some(i => i.title === "Record frozen"));
+});
+
+test("reference sections keep their headings, lists, notes and tables in every format", () => {
+  const h = sample(), sec = h.sections.find(s => /\n\|/.test(s.body));
+  const blocks = C.parseBlocks(sec.body), table = blocks.find(b => b.t === "table");
+  assert.ok(table && table.head.length > 1 && table.rows.length > 0);
+  const doc = C.itemsDocument(h, {kinds: ["sections"], only: {sections: [sec.id]}});
+  assert.deepEqual(doc.parts[0].groups[0].items.map(i => i.id), [sec.id]);
+  const md = C.docMarkdown(doc);
+  assert.ok(md.includes("| " + table.head.join(" | ") + " |"), "Markdown tables keep their header");
+  assert.match(C.docHtml(doc), new RegExp("<th>" + table.head[0] + "</th>"));
+  const d = unzipStored(C.docDocx(doc))["word/document.xml"];
+  assert.ok(d.includes("<w:tbl>") && d.includes("<w:tblHeader/>"));
+  const pdf = C.docPdf(doc);
+  assert.ok(pdf.includes(" re f"), "the PDF header row is shaded");
+  assert.ok(pdf.includes("(" + table.head[0] + ")"));
+  const cell = unzipStored(C.docXlsx(doc))["xl/worksheets/sheet1.xml"];
+  assert.ok(cell.includes(table.head[0] + ": "), "a spreadsheet cell gets the table as labelled lines");
+  assert.equal(C.blocksText("1. One\n2. Two\n\n!> Careful"), "1. One\n2. Two\nWarning: Careful");
+  const ordered = unzipStored(C.docDocx(C.itemsDocument({...h, sections: [{id: "x", title: "X", body: "1. a\n2. b\n\ntext\n\n1. c"}]}, {kinds: ["sections"]})));
+  assert.equal((ordered["word/numbering.xml"].match(/<w:startOverride/g) || []).length, 2, "each numbered list starts at 1");
 });
