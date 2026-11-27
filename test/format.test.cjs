@@ -401,6 +401,65 @@ test("adding records in the app (spec section 11)", () => {
   assert.throws(() => C.addItem(json("site/examples/sample.handover"), "gaps", {text: "x"}, o()), /format 1\.0/);
 });
 
+test("editing records, first-weeks tasks and regular jobs in the app", () => {
+  const h = ea(), at = "2026-11-27T10:00:00Z", o = () => ({role: "incoming", date: "2026-11-27", at});
+  // Saving any item as it is changes nothing, in both examples
+  for (const f of [h, sample()]) for (const list of ["inProgress", "gaps", "rules", "decisions", "risks", "systems", "documents", "decide", "path", "recurring"]) {
+    const items = list === "path" ? (f.path || []).flatMap(s => s.tasks) : list === "decide" ? (f.decide ? f.decide.cards : []) : f[list] || [];
+    for (const it of items) assert.throws(() => C.editItem(f, list, it.id, C.editValues(f, list, it.id), o()), /Nothing has changed/, list + " " + it.id);
+  }
+  // A thing in progress: new date and owner; id, provenance and closure are kept, the AI-draft mark goes
+  const ip = h.inProgress.find(x => !x.closed), v = C.editValues(h, "inProgress", ip.id);
+  const before = Object.assign({}, h.inProgress.find(x => x.id === ip.id));
+  v.due = "2026-12-18"; v.owner = "outgoing";
+  const src = C.addItem(h, "inProgress", {text: "x"}, o()).h; src.inProgress = src.inProgress.map(x => x.id === ip.id ? Object.assign({}, x, {aiDrafted: true}) : x);
+  const r = C.editItem(src, "inProgress", ip.id, v, o());
+  const after = r.h.inProgress.find(x => x.id === ip.id);
+  assert.deepEqual(r.changed, (before.owner === "outgoing" ? [] : ["who owns it now"]).concat(before.due === "2026-12-18" ? [] : ["due"]));
+  assert.equal(after.due, "2026-12-18"); assert.equal(after.owner, "outgoing");
+  assert.equal(after.added, before.added); assert.equal(after.aiDrafted, undefined, "a person has checked it");
+  assert.match(r.h.history.slice(-1)[0].text, new RegExp("^Edited thing in progress " + ip.id + " in the app: .*due\\.$"));
+  assert.equal(r.h.history.slice(-1)[0].id, "edit-2026-11-27"); assert.equal(r.h.updated, "2026-11-27");
+  assert.deepEqual(C.validate(r.h).errors, []); assert.deepEqual(check(schema.latest, r.h), []);
+  // Clearing an optional field removes it
+  const v2 = C.editValues(r.h, "inProgress", ip.id); v2.due = "";
+  assert.equal(C.editItem(r.h, "inProgress", ip.id, v2, o()).h.inProgress.find(x => x.id === ip.id).due, undefined);
+  // A regular job (format 1.0): its schedule fields follow how often it happens, and the 1.0 file stays valid
+  const s = sample(), job = s.recurring.find(x => x.every === "quarter");
+  let jv = C.editValues(s, "recurring", job.id);
+  assert.deepEqual([jv.day, jv.monthOfQuarter], [String(job.day), String(job.monthOfQuarter)]);
+  jv.every = "week"; jv.on = ["thu", "mon"]; jv.time = "08:30";
+  let j = C.editItem(s, "recurring", job.id, jv, o());
+  const nj = j.h.recurring.find(x => x.id === job.id);
+  assert.deepEqual([nj.every, nj.on, nj.day, nj.monthOfQuarter, nj.time], ["week", ["mon", "thu"], undefined, undefined, "08:30"]);
+  assert.equal(j.h.history, undefined, "1.0 files have no history");
+  assert.deepEqual(C.validate(j.h).errors, []); assert.deepEqual(check(schema.v10, j.h), []);
+  jv = C.editValues(j.h, "recurring", job.id); jv.on = ["fri"];
+  assert.equal(C.editItem(j.h, "recurring", job.id, jv, o()).h.recurring.find(x => x.id === job.id).on, "fri", "one day is stored as a string");
+  jv.every = "month"; jv.day = "last";
+  assert.equal(C.editItem(j.h, "recurring", job.id, jv, o()).h.recurring.find(x => x.id === job.id).day, "last");
+  jv.every = "quarter"; jv.day = "15"; jv.monthOfQuarter = "3";
+  const q = C.editItem(j.h, "recurring", job.id, jv, o()).h.recurring.find(x => x.id === job.id);
+  assert.deepEqual([q.day, q.monthOfQuarter], [15, 3]);
+  // A first-weeks task keeps its id, so its tick stays
+  const t = s.path[0].tasks[0], tv = C.editValues(s, "path", t.id); tv.text = "Get access to every system"; tv.detail = "Start with the password manager folder.";
+  const pt = C.editItem(s, "path", t.id, tv, o()).h.path[0].tasks[0];
+  assert.deepEqual(pt, {id: t.id, text: "Get access to every system", detail: "Start with the password manager folder."});
+  // Missing, wrong and secret values are refused, with the field named
+  const fails = (f, list, id, change, field) => assert.throws(() => C.editItem(f, list, id, Object.assign(C.editValues(f, list, id), change), o()), e => e.field === field);
+  fails(s, "path", t.id, {text: " "}, "text");
+  fails(s, "recurring", job.id, {every: "year"}, "date");
+  fails(s, "recurring", job.id, {every: "year", date: "31-12"}, "date");
+  fails(s, "recurring", job.id, {day: "32"}, "day");
+  fails(s, "recurring", job.id, {time: "9am"}, "time");
+  fails(s, "recurring", job.id, {detail: "The portal PIN is 4471"}, "detail");
+  const sys = h.systems[0];
+  fails(h, "systems", sys.id, {credentialLocation: "password: Hunter22x"}, "credentialLocation");
+  fails(h, "documents", h.documents[0].id, {url: "", location: ""}, "url");
+  assert.throws(() => C.editItem(s, "gaps", "x", {text: "y"}, o()), /format 1\.0/);
+  assert.throws(() => C.editItem(h, "gaps", "no-such-gap", {text: "y"}, o()), /isn't in the file/);
+});
+
 test("reports for the principal: summaries say only what the file shows", () => {
   const h = ea(), o = {date: "2026-11-27"};
   const w = C.principalReport(h, "working", o);

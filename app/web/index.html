@@ -273,6 +273,13 @@ body.searching .questions{display:none}
 .cfield.check{display:flex;gap:8px;align-items:center;font-weight:400;font-size:15px}
 .cfield.check input{width:auto;margin:0}
 .cfield .bad{border-color:#b3261e}
+.closebtn + .closebtn{margin-left:6px}
+.checklist li .editbtn{float:right;margin:0 0 4px 10px}
+.alljobs{margin-top:14px}
+.alljobs summary{cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.alljobs .duty{margin-top:8px}
+.cfield .days{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px}
+.cfield .days label{display:flex;align-items:center;gap:4px;font-weight:500}
 .addrow{margin-top:10px}
 .addrow .closebtn{margin-left:0}
 .subhead{font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;display:flex;gap:8px;align-items:center}
@@ -555,6 +562,18 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   </form>
 </dialog>
 
+<dialog class="dlg" id="editDlg" aria-labelledby="editDlgTitle">
+  <form method="dialog" id="editForm">
+    <header><h2 id="editDlgTitle">Edit</h2><p>Change what isn't accurate. The item keeps its place, its ticks and its history. Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
+    <div class="dlg-body">
+      <div id="editFields"></div>
+      <label class="cfield">Edited by <select id="editBy"></select></label>
+      <p id="editMsg" hidden></p>
+    </div>
+    <footer><button class="btn" type="button" id="editCancel">Cancel</button><button class="btn primary" type="submit" id="editGo">Save changes</button></footer>
+  </form>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
@@ -772,7 +791,7 @@ function dutyHtml(o, showDate){
   var when = [showDate ? nice(o.date) : "", r.time || "", cadence(r)].filter(Boolean).join(" · ");
   return '<div class="duty' + (on ? " done" : "") + '" data-key="' + esc(key) + '">' +
     '<button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(r.text)) + '">' + TICK + "</button>" +
-    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + "</span>" +
+    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + editBtn("recurring", r) + "</span>" +
     (r.detail ? '<div class="detail">' + md(r.detail) + "</div>" : "") + "</div>";
 }
 function renderToday(){
@@ -785,7 +804,10 @@ function renderToday(){
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
   var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.date)) + "</span><span>" + inline(o.r.text) + "</span></li>"; }).join("") + "</ul></div>" : "";
-  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + "</section>";
+  var jobs = H.recurring || [], all = jobs.length ? '<details class="alljobs no-print" id="alljobs"><summary>All regular jobs (' + jobs.length + ")</summary>" + jobs.map(function(r){
+    return '<div class="duty plain"><span class="t">' + inline(r.text) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + editBtn("recurring", r) + "</span></div>";
+  }).join("") + "</details>" : "";
+  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + all + "</section>";
 }
 function stats(stage){ var d = 0; stage.tasks.forEach(function(t){ if (S.tasks[t.id]) d++; }); return {n: stage.tasks.length, d: d}; }
 function currentStage(){ var p = H.path || []; for (var i = 0; i < p.length; i++){ var s = stats(p[i]); if (s.d < s.n) return i; } return Math.max(0, p.length - 1); }
@@ -802,7 +824,7 @@ function renderPath(){
         (s.summary ? '<div class="stage-sub">' + md(s.summary) + "</div>" : "") +
         '<ul class="checklist">' + s.tasks.map(function(t){
           var on = !!S.tasks[t.id];
-          return '<li class="' + (on ? "done" : "") + '" data-task="' + esc(t.id) + '"><button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(t.text)) + '">' + TICK + '</button><span class="t">' + inline(t.text) + "</span>" + (t.detail ? '<div class="detail">' + md(t.detail) + "</div>" : "") + "</li>";
+          return '<li class="' + (on ? "done" : "") + '" data-task="' + esc(t.id) + '"><button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(t.text)) + '">' + TICK + "</button>" + editBtn("path", t) + '<span class="t">' + inline(t.text) + "</span>" + (t.detail ? '<div class="detail">' + md(t.detail) + "</div>" : "") + "</li>";
         }).join("") + "</ul>" +
         '<div class="stage-nav no-print">' + (i > 0 ? '<button class="btn" type="button" data-go="' + (i - 1) + '">← ' + esc(p[i - 1].title) + "</button>" : "<span></span>") +
         (i < p.length - 1 ? '<button class="btn primary" type="button" data-go="' + (i + 1) + '">Next: ' + esc(p[i + 1].title) + " →</button>" : '<button class="btn primary" type="button" data-cmd="ask">Ask a question →</button>') + "</div>" +
@@ -876,10 +898,10 @@ function link(id, text){ return '<a href="#' + esc(id) + '">' + esc(text) + "</a
 /* What needs someone today, worked out from the records (spec section 15: never stored) */
 function attention(today){
   var out = [], soon = C.addDays(today, 7);
-  (H.gaps || []).filter(function(g){ return open_(g) && g.blocks; }).forEach(function(g){ out.push({html: inline(g.text), when: chip("Blocks work", "bad") + " " + link("rec-gaps", "Gaps list"), plain: "Blocks work: " + plain(g.text), close: closeBtn("gaps", g)}); });
+  (H.gaps || []).filter(function(g){ return open_(g) && g.blocks; }).forEach(function(g){ out.push({html: inline(g.text), when: chip("Blocks work", "bad") + " " + link("rec-gaps", "Gaps list"), plain: "Blocks work: " + plain(g.text), close: editBtn("gaps", g) + closeBtn("gaps", g)}); });
   (H.inProgress || []).filter(function(x){ return open_(x) && x.due && x.due <= soon; }).sort(function(a, b){ return a.due < b.due ? -1 : 1; }).forEach(function(x){
     var late = x.due < today;
-    out.push({close: closeBtn("inProgress", x), html: inline(x.text), when: chip(late ? "Overdue" : "Due " + nice(x.due), late ? "bad" : "warn") + (x.owner ? " " + esc(who(x.owner)) : ""), plain: plain(x.text) + " (" + (late ? "overdue, was due " : "due ") + nice(x.due) + (x.owner ? ", " + who(x.owner) : "") + ")"});
+    out.push({close: editBtn("inProgress", x) + closeBtn("inProgress", x), html: inline(x.text), when: chip(late ? "Overdue" : "Due " + nice(x.due), late ? "bad" : "warn") + (x.owner ? " " + esc(who(x.owner)) : ""), plain: plain(x.text) + " (" + (late ? "overdue, was due " : "due ") + nice(x.due) + (x.owner ? ", " + who(x.owner) : "") + ")"});
   });
   (H.asks || []).filter(function(a){ return a.status === "sent"; }).forEach(function(a){
     var late = a.replyBy && a.replyBy < today;
@@ -905,6 +927,7 @@ function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
 var RECORD_LISTS = ["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide"];
 function listOf(o){ for (var i = 0; i < RECORD_LISTS.length; i++){ var k = RECORD_LISTS[i], l = k === "decide" ? (H.decide && H.decide.cards) || [] : H[k] || []; if (l.indexOf(o) > -1) return k; } return ""; }
 function closeBtn(list, o){ return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
+function editBtn(list, o){ return '<button type="button" class="closebtn no-print' + (list === "path" ? " editbtn" : "") + '" data-edit="' + esc(list + ":" + o.id) + '" title="Change what isn\'t accurate">Edit…</button>'; }
 function canAdd(){ return !!H.handover && H.handover !== "1.0"; }
 function addBtn(list){ return canAdd() ? '<div class="addrow no-print"><button type="button" class="closebtn" data-add="' + list + '">Add a ' + esc(C.listNoun[list]) + "…</button></div>" : ""; }
 function metaLine(o, extra){
@@ -913,7 +936,7 @@ function metaLine(o, extra){
   if (o.aiDrafted) bits.push(chip("AI draft", "ai", "Drafted by an AI. Check it."));
   if (o.visibleTo) bits.push(chip("Only " + o.visibleTo.map(who).filter(uniq).join(", "), "lock", "Only these people may see it"));
   if (o.added) bits.push("Added " + esc(day(o.added)) + (o.addedBy ? " by " + esc(who(o.addedBy)) : ""));
-  if (list) bits.push(closeBtn(list, o));
+  if (list){ bits.push(editBtn(list, o)); bits.push(closeBtn(list, o)); }
   return bits.length ? '<div class="meta-line">' + bits.map(function(b){ return /^<(span class="chip|button)/.test(b) ? b : '<span class="mbit">' + b + "</span>"; }).join("") + "</div>" : "";
 }
 function checksHtml(c){ if (!c) return ""; return ["opens","create","level"].filter(function(k){ return c[k]; }).map(function(k){ return chip(CHECK[k] + ": " + c[k].result, c[k].result === "pass" ? "ok" : "bad", c[k].note || ""); }).join(" ") + ["opens","create","level"].filter(function(k){ return c[k] && c[k].note; }).map(function(k){ return '<p class="sub">' + esc(CHECK[k]) + ": " + inline(c[k].note) + "</p>"; }).join(""); }
@@ -1071,6 +1094,7 @@ document.addEventListener("click", function(e){
   var cb = t.closest("[data-close]"); if (cb){ e.preventDefault(); openClose(cb.dataset.close); return; }
   var rb = t.closest("[data-reopen]"); if (rb){ e.preventDefault(); reopen(rb.dataset.reopen); return; }
   var ab = t.closest("[data-add]"); if (ab){ e.preventDefault(); openAdd(ab.dataset.add); return; }
+  var eb = t.closest("[data-edit]"); if (eb){ e.preventDefault(); openEdit(eb.dataset.edit); return; }
   var a = t.closest('a[href^="#"]');
   if (a && $("app").contains(a)){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
@@ -1219,19 +1243,51 @@ function peopleRoles(){
   return roles;
 }
 function roleOptions(blank, pick){ return '<option value="">' + esc(blank) + "</option>" + peopleRoles().map(function(r){ return '<option value="' + r[0] + '"' + (r[0] === pick ? " selected" : "") + ">" + esc(r[1]) + "</option>"; }).join(""); }
-function addFieldsRender(){
-  var kind = $("addKind").value;
-  $("addFields").innerHTML = C.addFields[kind].map(function(d){
-    var id = "addF-" + d.k, hint = d.hint ? "<small>" + esc(d.hint) + "</small>" : "", label = esc(d.label) + (d.req ? "" : ' <small style="display:inline">(optional)</small>');
-    if (d.t === "bool") return '<label class="cfield check"><input type="checkbox" id="' + id + '" data-f="' + d.k + '"> ' + esc(d.label) + "</label>";
-    var input;
-    if (d.t === "md") input = '<textarea id="' + id + '" data-f="' + d.k + '" rows="3"></textarea>';
-    else if (d.t === "date") input = '<input type="date" id="' + id + '" data-f="' + d.k + '">';
-    else if (d.t === "role") input = '<select id="' + id + '" data-f="' + d.k + '">' + roleOptions("Not set") + "</select>";
-    else if (Array.isArray(d.t)) input = '<select id="' + id + '" data-f="' + d.k + '">' + (d.req ? "" : '<option value="">Not set</option>') + d.t.map(function(o){ return '<option value="' + o[0] + '">' + esc(o[1]) + "</option>"; }).join("") + "</select>";
-    else input = '<input type="text" id="' + id + '" data-f="' + d.k + '" autocomplete="off">';
-    return '<label class="cfield">' + label + hint + input + "</label>";
+/* Form fields for a list (core addFields / editFields), filled with values; prefix makes the ids unique per dialog */
+function fieldsHtml(defs, prefix, values){
+  values = values || {};
+  return defs.map(function(d){
+    var id = prefix + d.k, v = values[d.k], hint = d.hint ? "<small>" + esc(d.hint) + "</small>" : "", label = esc(d.label) + (d.req ? "" : ' <small style="display:inline">(optional)</small>');
+    var when = d.when ? ' data-when="' + esc(d.when.k) + '" data-is="' + esc(d.when.is.join(" ")) + '"' : "";
+    if (d.t === "bool") return '<label class="cfield check"' + when + '><input type="checkbox" id="' + id + '" data-f="' + d.k + '"' + (v ? " checked" : "") + "> " + esc(d.label) + "</label>";
+    if (d.t === "days"){
+      var on = [].concat(v || []);
+      return '<div class="cfield"' + when + '><span id="' + id + '">' + label + "</span>" + hint + '<div class="days" role="group" aria-labelledby="' + id + '">' + ["mon","tue","wed","thu","fri","sat","sun"].map(function(x){ return '<label><input type="checkbox" data-f="' + d.k + '" data-v="' + x + '"' + (on.indexOf(x) > -1 ? " checked" : "") + "> " + x.charAt(0).toUpperCase() + x.slice(1) + "</label>"; }).join("") + "</div></div>";
+    }
+    var input, val = v === undefined || v === null ? "" : String(v);
+    if (d.t === "md") input = '<textarea id="' + id + '" data-f="' + d.k + '" rows="3">' + esc(val) + "</textarea>";
+    else if (d.t === "date") input = '<input type="date" id="' + id + '" data-f="' + d.k + '" value="' + esc(val) + '">';
+    else if (d.t === "time") input = '<input type="time" id="' + id + '" data-f="' + d.k + '" value="' + esc(val) + '">';
+    else if (d.t === "role") input = '<select id="' + id + '" data-f="' + d.k + '">' + roleOptions("Not set", val) + "</select>";
+    else if (Array.isArray(d.t)) input = '<select id="' + id + '" data-f="' + d.k + '">' + (d.req ? "" : '<option value="">Not set</option>') + d.t.map(function(o){ return '<option value="' + o[0] + '"' + (o[0] === val ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>";
+    else input = '<input type="text" id="' + id + '" data-f="' + d.k + '" autocomplete="off" value="' + esc(val) + '">';
+    return '<label class="cfield"' + when + ">" + label + hint + input + "</label>";
   }).join("");
+}
+/* The values of a form's fields: checkboxes with data-v collect into a list */
+function formValues(box){
+  var values = {};
+  [].slice.call(box.querySelectorAll("[data-f]")).forEach(function(x){
+    x.classList.remove("bad");
+    var k = x.dataset.f;
+    if (x.dataset.v){ values[k] = values[k] || []; if (x.checked) values[k].push(x.dataset.v); }
+    else values[k] = x.type === "checkbox" ? x.checked : x.value;
+  });
+  return values;
+}
+/* Show only the fields that apply (a weekly job has days, a monthly one a day of the month) */
+function fieldsShown(box){
+  var values = formValues(box);
+  [].slice.call(box.querySelectorAll("[data-when]")).forEach(function(el){ el.hidden = el.dataset.is.split(" ").indexOf(String(values[el.dataset.when] || "")) < 0; });
+}
+function fieldError(box, prefix, msg, err){
+  msg.textContent = err.message; msg.hidden = false;
+  var f = err.field && (box.querySelector("#" + CSS.escape(prefix + err.field)) || box.querySelector('[data-f="' + CSS.escape(err.field) + '"]'));
+  if (f){ f.classList.add("bad"); f.focus(); }
+}
+function addFieldsRender(){
+  $("addFields").innerHTML = fieldsHtml(C.addFields[$("addKind").value], "addF-");
+  fieldsShown($("addFields"));
   $("addMsg").hidden = true;
 }
 function openAdd(kind){
@@ -1246,14 +1302,44 @@ $("addKind").addEventListener("change", addFieldsRender);
 $("addCancel").addEventListener("click", function(){ $("addDlg").close(); });
 $("addForm").addEventListener("submit", function(e){
   e.preventDefault();
-  var kind = $("addKind").value, values = {}, res;
-  [].slice.call($("addFields").querySelectorAll("[data-f]")).forEach(function(x){ x.classList.remove("bad"); values[x.dataset.f] = x.type === "checkbox" ? x.checked : x.value; });
+  var kind = $("addKind").value, values = formValues($("addFields")), res;
   try { res = C.addItem(H, kind, values, {role: $("addBy").value || undefined, date: TODAY}); }
-  catch (err){ $("addMsg").textContent = err.message; $("addMsg").hidden = false; var f = err.field && $("addF-" + err.field); if (f){ f.classList.add("bad"); f.focus(); } return; }
+  catch (err){ fieldError($("addFields"), "addF-", $("addMsg"), err); return; }
   saveContent(res.h).then(function(ok){
     if (!ok) return;
     $("addDlg").close(); toast("Added: " + C.listNoun[kind]);
     var panel = $(ADD_PANEL[kind]); if (panel){ if (panel.tagName === "DETAILS") panel.open = true; panel.scrollIntoView({block: "start"}); flash(panel); }
+  });
+});
+
+/* Edit a record, a first-weeks task or a regular job */
+var EDITING = null;
+function openEdit(ref){
+  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), values = C.editValues(H, list, id);
+  if (!values){ toast("That item isn't in the file any more"); return; }
+  EDITING = {list: list, id: id};
+  var noun = C.listNoun[list];
+  $("editDlgTitle").textContent = "Edit " + (/^[aeiou]/.test(noun) ? "an " : "a ") + noun;
+  $("editFields").innerHTML = fieldsHtml(C.editFields(list), "editF-", values);
+  fieldsShown($("editFields"));
+  $("editBy").innerHTML = roleOptions("Not recorded", peopleRoles().some(function(r){ return r[0] === "incoming"; }) ? "incoming" : "");
+  $("editMsg").hidden = true;
+  $("editDlg").showModal();
+  var first = $("editFields").querySelector("textarea, input[type=text]"); if (first) first.focus();
+}
+$("editFields").addEventListener("change", function(){ fieldsShown($("editFields")); });
+$("addFields").addEventListener("change", function(){ fieldsShown($("addFields")); });
+$("editCancel").addEventListener("click", function(){ $("editDlg").close(); });
+$("editForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var res;
+  try { res = C.editItem(H, EDITING.list, EDITING.id, formValues($("editFields")), {role: $("editBy").value || undefined, date: TODAY}); }
+  catch (err){ fieldError($("editFields"), "editF-", $("editMsg"), err); return; }
+  var allOpen = $("alljobs") && $("alljobs").open;
+  saveContent(res.h).then(function(ok){
+    if (!ok) return;
+    if (allOpen && $("alljobs")) $("alljobs").open = true;
+    $("editDlg").close(); toast("Saved: " + res.changed.join(", "));
   });
 });
 
