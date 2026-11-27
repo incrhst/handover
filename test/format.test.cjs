@@ -358,3 +358,45 @@ test("closing and reopening records (spec section 11)", () => {
   const card = h.decide.cards[0], dropped = C.closeItem(h, "decide", card.id, {how: "dropped"});
   assert.equal(dropped.decide.cards[0].closed.how, "dropped"); assert.deepEqual(C.validate(dropped).errors, []);
 });
+
+test("adding records in the app (spec section 11)", () => {
+  const h = ea(), at = "2026-11-27T10:00:00Z", o = () => ({role: "incoming", date: "2026-11-27", at});
+  const r = C.addItem(h, "risks", {text: "Visa renewals for the principal", list: "occasional", severity: "high", treatment: ""}, o());
+  assert.equal(r.id, "visa-renewals-for-the-principal");
+  assert.deepEqual(r.h.risks.slice(-1)[0], {id: r.id, text: "Visa renewals for the principal", list: "occasional", severity: "high", added: at, addedBy: "incoming"});
+  assert.deepEqual(r.h.history.slice(-1)[0], {id: "add-2026-11-27", at, source: "app", text: "Added risk " + r.id + " in the app.", role: "incoming"});
+  assert.equal(r.h.updated, "2026-11-27");
+  assert.deepEqual(C.validate(r.h).errors, []); assert.deepEqual(check(schema.latest, r.h), []);
+  assert.equal(h.risks.length + 1, r.h.risks.length, "the original is left alone");
+  // A second item with the same words gets its own id, and the history id stays unique
+  const r2 = C.addItem(r.h, "risks", {text: "Visa renewals for the principal", list: "spof"}, o());
+  assert.equal(r2.id, "visa-renewals-for-the-principal-2");
+  assert.equal(r2.h.history.slice(-1)[0].id, "add-2026-11-27-2");
+  // Every kind of record, plus a who-decides card
+  let x = r2.h;
+  [["inProgress", {text: "Renew the parking permit", owner: "incoming", due: "2026-12-10"}], ["gaps", {text: "Who signs off the **Q1** offsite budget", blocks: true}],
+   ["rules", {text: "If the CEO is travelling, then confirm cars the day before", situation: "Principal travelling"}], ["decisions", {text: "Use the new caterer", reason: "Cheaper\nand closer", date: "2026-11-20"}],
+   ["systems", {name: "Bank portal", purpose: "Paying suppliers", credentialLocation: "Team password manager, Finance folder", grantedBy: "Ravi in Finance"}],
+   ["documents", {title: "Travel guide", location: "Shared drive, EA folder; Priya holds it", type: "guide", status: "draft", owner: "incoming"}],
+   ["decide", {text: "Booking travel under USD 500", column: "alone"}]].forEach(([list, values]) => { x = C.addItem(x, list, values, o()).h; });
+  assert.deepEqual(C.validate(x).errors, []); assert.deepEqual(check(schema.latest, x), []);
+  assert.equal(x.gaps.slice(-1)[0].blocks, true);
+  assert.equal(x.decisions.slice(-1)[0].reason, "Cheaper\nand closer", "several-line fields keep their lines");
+  assert.equal(x.decide.cards.slice(-1)[0].column, "alone");
+  // The newcomer copy keeps open records and drops who added them
+  const n = C.exportProfile(x, "newcomer");
+  assert.equal(n.systems.slice(-1)[0].added, undefined);
+  // Missing, wrong and secret values are refused, with the field named
+  const fails = (list, values, field) => assert.throws(() => C.addItem(h, list, values, o()), e => e.field === field);
+  fails("gaps", {text: "  "}, "text");
+  fails("risks", {text: "x"}, "list");
+  fails("risks", {text: "x", list: "sometimes"}, "list");
+  fails("inProgress", {text: "x", owner: "boss"}, "owner");
+  fails("inProgress", {text: "x", due: "next week"}, "due");
+  fails("documents", {title: "Guide"}, "url");
+  fails("systems", {name: "Bank portal", credentialLocation: "password: Hunter22x"}, "credentialLocation");
+  fails("gaps", {text: "Card 4111 1111 1111 1111 for the agency"}, "text");
+  fails("documents", {title: "Guide", url: "https://x.test/?token=" + "Ab3".repeat(9)}, "url");
+  assert.throws(() => C.addItem(h, "people", {}, o()), /can't be added/);
+  assert.throws(() => C.addItem(json("site/examples/sample.handover"), "gaps", {text: "x"}, o()), /format 1\.0/);
+});

@@ -452,6 +452,71 @@ function reopenItem(h, list, id, o){
   return finish(out, o);
 }
 
+/* ================= Adding records (spec section 11) ================= */
+/* The fields a person fills in for each list. t: md (several lines), line, date, role, bool, or options [[value, label]]. */
+var ADD_FIELDS = {
+  inProgress: [{k: "text", t: "md", req: true, label: "What's under way", hint: "What it is and where it has got to"}, {k: "owner", t: "role", label: "Who owns it now"}, {k: "due", t: "date", label: "Due"}],
+  gaps: [{k: "text", t: "md", req: true, label: "What's missing", hint: "What someone still needs to find out, get or be given"}, {k: "blocks", t: "bool", label: "It blocks work today"}],
+  rules: [{k: "text", t: "md", req: true, label: "The rule", hint: "If this happens, then do that"}, {k: "situation", t: "line", label: "Situation", hint: "The situation it belongs to, e.g. \"Principal travelling\""}],
+  decisions: [{k: "text", t: "md", req: true, label: "What was decided"}, {k: "reason", t: "md", label: "Why"}, {k: "date", t: "date", label: "When it was decided"}],
+  risks: [{k: "text", t: "md", req: true, label: "What could go wrong"},
+    {k: "list", t: [["weekly", "Recurring work"], ["occasional", "An occasional or seasonal flow"], ["spof", "Only one person knows or does it"]], req: true, label: "Kind of risk"},
+    {k: "severity", t: [["high", "High"], ["medium", "Medium"], ["low", "Low"]], label: "How much it hurts if it fails"},
+    {k: "treatment", t: [["record", "Record someone doing it"], ["write", "Write it down"], ["brief", "A line in the one-page brief"]], label: "How to pass it on"}],
+  systems: [{k: "name", t: "line", req: true, label: "System"}, {k: "purpose", t: "line", label: "What it's for"},
+    {k: "credentialLocation", t: "line", label: "Where the login is kept", hint: "e.g. \"Team password manager, Finance folder\". Never the password itself"},
+    {k: "grantedBy", t: "line", label: "Who grants access"}],
+  documents: [{k: "title", t: "line", req: true, label: "Title"}, {k: "url", t: "line", label: "Link"},
+    {k: "location", t: "line", label: "Where it is kept", hint: "Give a link, or say where it is kept and who holds it (for a protected file, don't give a link)"},
+    {k: "type", t: [["folder", "Folder"], ["brief", "One-page brief"], ["profile", "Principal profile"], ["recording", "Recording"], ["guide", "Step-by-step guide"], ["template", "Template"], ["protected", "Protected file"], ["other", "Other"]], label: "Kind of document"},
+    {k: "status", t: [["draft", "Draft"], ["final", "Final"]], label: "Status"}, {k: "owner", t: "role", label: "Who keeps it up to date"}],
+  decide: [{k: "text", t: "md", req: true, label: "What kind of decision", hint: "e.g. \"Booking travel under USD 500\""},
+    {k: "column", t: [["alone", "Decide alone"], ["check", "Check first"], ["principal", "Always the principal"]], req: true, label: "Who decides"}]
+};
+function slugFor(text, noun){
+  var words = String(text || "").toLowerCase().replace(/\*\*|__|`/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean).slice(0, 5);
+  var s = words.join("-").slice(0, 40).replace(/-+$/, "");
+  return s || noun.replace(/[^a-z]+/g, "-");
+}
+function addError(message, field){ var e = new Error(message); e.field = field; return e; }
+/* A copy of h with one new record: values = {field: value}, o = {role (who added it), date, at}. Returns {h, id}; throws with .field set. */
+function addItem(h, list, values, o){
+  o = o || {}; values = values || {};
+  var defs = ADD_FIELDS[list];
+  if (!defs) throw new Error("Items can't be added to " + list + ".");
+  if (!h.handover || h.handover === "1.0") throw new Error("This file uses format 1.0, which has no records. Ask the AI to write it again as format 1.1.");
+  var item = {};
+  defs.forEach(function(d){
+    var v = values[d.k];
+    if (d.t === "bool"){ if (v === true || v === "true" || v === "on") item[d.k] = true; return; }
+    v = String(v === undefined || v === null ? "" : v).trim();
+    if (d.t !== "md") v = v.replace(/\s*\r?\n\s*/g, " ");
+    if (!v){ if (d.req) throw addError("Fill in “" + d.label + "”.", d.k); return; }
+    if (Array.isArray(d.t)){ if (!d.t.some(function(x){ return x[0] === v; })) throw addError("Choose one of the options for “" + d.label + "”.", d.k); }
+    else if (d.t === "role"){ if (ROLES.indexOf(v) < 0) throw addError("Choose who for “" + d.label + "”.", d.k); }
+    else if (d.t === "date"){ if (!DATE.test(v)) throw addError("“" + d.label + "” needs a date like 2026-12-31.", d.k); }
+    else {
+      var why = secretReason(v);
+      if (why) throw addError(why + " Handover files MUST NOT hold passwords, PINs, codes, keys or card and bank numbers. Write where it is kept and who grants access instead, e.g. \"In the team password manager, Finance folder; Ravi grants access\".", d.k);
+    }
+    item[d.k] = v;
+  });
+  if (list === "documents" && !item.url && !item.location) throw addError("Give a link, or say where the document is kept.", "url");
+  var out = clone(h), items = recordList(out, list), used = {};
+  items.forEach(function(x){ used[x.id] = true; });
+  var base = slugFor(item.text || item.name || item.title, LIST_NOUN[list]), id = base, k = 2;
+  while (used[id]) id = base + "-" + k++;
+  var rec = {id: id};
+  Object.keys(item).forEach(function(f){ rec[f] = item[f]; });
+  rec.added = stamp(o);
+  if (o.role) rec.addedBy = o.role;
+  if (list === "decide"){ out.decide = out.decide || {}; out.decide.cards = (out.decide.cards || []).concat([rec]); }
+  else out[list] = items.concat([rec]);
+  o.idPrefix = "add";
+  logChange(out, o, "Added " + LIST_NOUN[list] + " " + id + " in the app.");
+  return {h: finish(out, o), id: id};
+}
+
 /* Fill several gaps at once ({key: text}), record it in the history (1.1) and the date, and write the 1.0 sections again.
    Returns {h, filled} or throws with a message for the person. */
 function fillGaps(h, answers, o){
@@ -1181,6 +1246,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

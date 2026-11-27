@@ -261,7 +261,14 @@ body.searching .questions{display:none}
 .chow label{display:flex;gap:8px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:var(--surface)}
 .cfield{display:block;margin:0 0 12px;font-size:13px;font-weight:650;color:var(--ink-2,inherit)}
 .cfield input,.cfield select{display:block;width:100%;box-sizing:border-box;margin-top:4px;font:inherit;font-size:15px;font-weight:400;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#fff);color:inherit}
-#closeMsg{color:#b3261e;font-size:13px;margin:0 0 8px}
+#closeMsg,#addMsg{color:#b3261e;font-size:13px;margin:0 0 8px}
+.cfield textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;font:inherit;font-size:15px;font-weight:400;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#fff);color:inherit;min-height:72px;resize:vertical}
+.cfield small{display:block;font-weight:400;color:var(--ink-3);margin-top:2px}
+.cfield.check{display:flex;gap:8px;align-items:center;font-weight:400;font-size:15px}
+.cfield.check input{width:auto;margin:0}
+.cfield .bad{border-color:#b3261e}
+.addrow{margin-top:10px}
+.addrow .closebtn{margin-left:0}
 .subhead{font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;display:flex;gap:8px;align-items:center}
 .board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .board .colh{font-size:13px;font-weight:800;margin:0 0 8px;color:var(--ink-2)}
@@ -505,6 +512,19 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <p id="closeMsg" hidden></p>
     </div>
     <footer><button class="btn" type="button" id="closeCancel">Cancel</button><button class="btn primary" type="submit" id="closeGo">Close item</button></footer>
+  </form>
+</dialog>
+
+<dialog class="dlg" id="addDlg" aria-labelledby="addDlgTitle">
+  <form method="dialog" id="addForm">
+    <header><h2 id="addDlgTitle">Add to the records</h2><p>Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
+    <div class="dlg-body">
+      <label class="cfield">What are you adding? <select id="addKind"></select></label>
+      <div id="addFields"></div>
+      <label class="cfield">Added by <select id="addBy"></select></label>
+      <p id="addMsg" hidden></p>
+    </div>
+    <footer><button class="btn" type="button" id="addCancel">Cancel</button><button class="btn primary" type="submit" id="addGo">Add</button></footer>
   </form>
 </dialog>
 
@@ -854,6 +874,8 @@ function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
 var RECORD_LISTS = ["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide"];
 function listOf(o){ for (var i = 0; i < RECORD_LISTS.length; i++){ var k = RECORD_LISTS[i], l = k === "decide" ? (H.decide && H.decide.cards) || [] : H[k] || []; if (l.indexOf(o) > -1) return k; } return ""; }
 function closeBtn(list, o){ return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
+function canAdd(){ return !!H.handover && H.handover !== "1.0"; }
+function addBtn(list){ return canAdd() ? '<div class="addrow no-print"><button type="button" class="closebtn" data-add="' + list + '">Add a ' + esc(C.listNoun[list]) + "…</button></div>" : ""; }
 function metaLine(o, extra){
   var bits = (extra || []).slice(), list = listOf(o);
   if (o.closed) bits.push(chip(CLOSED[o.closed.how] || "Closed", "ok") + (o.closed.at ? " " + esc(day(o.closed.at)) : "") + (o.closed.fix ? " · " + (/^https?:/.test(o.closed.fix) ? '<a href="' + esc(o.closed.fix) + '" target="_blank" rel="noopener">the fix</a>' : esc(o.closed.fix)) : ""));
@@ -883,7 +905,7 @@ function renderDecide(){
   var stake = {}; (H.stakeholders || []).forEach(function(s){ stake[s.id] = s.name; });
   var cols = [["alone", "Decide alone"], ["check", "Check first"], ["principal", "Always " + who("principal")]];
   w.innerHTML = '<section class="panel block" id="decide"><div class="panel-head"><h2>Who decides what</h2>' +
-    (d.confirmed ? chip("Confirmed by " + who("principal") + (d.confirmedAt ? " " + day(d.confirmedAt) : ""), "ok") : chip("Not confirmed by " + who("principal") + " yet", "warn")) + xbtn("decide") + '</div><div class="board">' +
+    (d.confirmed ? chip("Confirmed by " + who("principal") + (d.confirmedAt ? " " + day(d.confirmedAt) : ""), "ok") : chip("Not confirmed by " + who("principal") + " yet", "warn")) + '<button class="btn no-print" type="button" data-add="decide" title="Add a kind of decision to the board">Add…</button>' + xbtn("decide") + '</div><div class="board">' +
     cols.map(function(c){
       var cs = d.cards.filter(function(x){ return x.column === c[0] && open_(x); });
       return '<div><div class="colh">' + esc(c[1]) + ' <span class="count">' + cs.length + "</span></div>" + (cs.length ? cs.map(function(x){
@@ -898,29 +920,30 @@ function renderDecide(){
 
 function renderRecords(){
   var w = $("recordsWrap"), parts = [];
+  function blk(list, id, title, count, body, openIt){ return block(id, title, count, body + addBtn(list), openIt); }
   function sorted(list, key){ return list.filter(open_).sort(key || function(){ return 0; }).concat(list.filter(function(x){ return !open_(x); })); }
   function closedNote(list){ var n = list.filter(function(x){ return !open_(x); }).length; return n ? n + " closed" : ""; }
   var ip = H.inProgress || [];
-  if (ip.length) parts.push(block("rec-inprogress", "Things in progress", ip.filter(open_).length + " open", '<div class="rec-list">' + sorted(ip, function(a, b){ return (a.due || "9") < (b.due || "9") ? -1 : 1; }).map(function(x){
+  if (ip.length) parts.push(blk("inProgress", "rec-inprogress", "Things in progress", ip.filter(open_).length + " open", '<div class="rec-list">' + sorted(ip, function(a, b){ return (a.due || "9") < (b.due || "9") ? -1 : 1; }).map(function(x){
     var late = open_(x) && x.due && x.due < TODAY;
     return '<div class="card' + (open_(x) ? "" : " closed") + '"><div>' + inline(x.text) + "</div>" + metaLine(x, [x.owner ? "Owner: " + esc(who(x.owner)) : chip("No owner", "warn"), x.due ? chip((late ? "Overdue, due " : "Due ") + nice(x.due), late ? "bad" : "") : (open_(x) ? chip("No date", "warn") : "")].filter(Boolean)) + "</div>";
   }).join("") + "</div>", true));
   var gp = H.gaps || [];
-  if (gp.length) parts.push(block("rec-gaps", "Gaps list", gp.filter(open_).length + " open", '<div class="rec-list">' + sorted(gp, function(a, b){ return (b.blocks ? 1 : 0) - (a.blocks ? 1 : 0); }).map(function(g){
+  if (gp.length) parts.push(blk("gaps", "rec-gaps", "Gaps list", gp.filter(open_).length + " open", '<div class="rec-list">' + sorted(gp, function(a, b){ return (b.blocks ? 1 : 0) - (a.blocks ? 1 : 0); }).map(function(g){
     return '<div class="card' + (open_(g) ? "" : " closed") + '"><div>' + inline(g.text) + "</div>" + metaLine(g, g.blocks && open_(g) ? [chip("Blocks work", "bad")] : []) + "</div>";
   }).join("") + "</div>", gp.some(function(g){ return open_(g); })));
   var ru = H.rules || [];
   if (ru.length){
     var sits = ru.map(function(r){ return r.situation || ""; }).filter(uniq);
-    parts.push(block("rec-rules", "When this happens", ru.length + "", sits.map(function(s){ return (s ? '<div class="subhead">' + esc(s) + "</div>" : "") + '<div class="rec-list">' + ru.filter(function(r){ return (r.situation || "") === s; }).map(function(r){ return '<div class="card' + (open_(r) ? "" : " closed") + '"><div>' + inline(r.text) + "</div>" + metaLine(r) + "</div>"; }).join("") + "</div>"; }).join("")));
+    parts.push(blk("rules", "rec-rules", "When this happens", ru.length + "", sits.map(function(s){ return (s ? '<div class="subhead">' + esc(s) + "</div>" : "") + '<div class="rec-list">' + ru.filter(function(r){ return (r.situation || "") === s; }).map(function(r){ return '<div class="card' + (open_(r) ? "" : " closed") + '"><div>' + inline(r.text) + "</div>" + metaLine(r) + "</div>"; }).join("") + "</div>"; }).join("")));
   }
   var de = H.decisions || [];
-  if (de.length) parts.push(block("rec-decisions", "Decisions", de.length + "", '<div class="rec-list">' + de.slice().sort(function(a, b){ return (b.date || "") < (a.date || "") ? -1 : 1; }).map(function(d){ return '<div class="card' + (open_(d) ? "" : " closed") + '"><h4>' + inline(d.text) + "</h4>" + (d.reason ? '<div class="sub">' + md(d.reason) + "</div>" : "") + metaLine(d, d.date ? ["Decided " + esc(nice(d.date))] : []) + "</div>"; }).join("") + "</div>"));
+  if (de.length) parts.push(blk("decisions", "rec-decisions", "Decisions", de.length + "", '<div class="rec-list">' + de.slice().sort(function(a, b){ return (b.date || "") < (a.date || "") ? -1 : 1; }).map(function(d){ return '<div class="card' + (open_(d) ? "" : " closed") + '"><h4>' + inline(d.text) + "</h4>" + (d.reason ? '<div class="sub">' + md(d.reason) + "</div>" : "") + metaLine(d, d.date ? ["Decided " + esc(nice(d.date))] : []) + "</div>"; }).join("") + "</div>"));
   var rk = H.risks || [];
   if (rk.length){
     var recById = {}; (H.recurring || []).forEach(function(r){ recById[r.id] = r; });
     var LIST = [["weekly", "Recurring work"], ["occasional", "Occasional flows"], ["spof", "Only one person knows"]], TREAT = {record: "Record it", write: "Write it down", brief: "A line in the brief"}, ORDER = {high: 0, medium: 1, low: 2};
-    parts.push(block("rec-risks", "Risks", rk.filter(open_).length + "", LIST.map(function(l){
+    parts.push(blk("risks", "rec-risks", "Risks", rk.filter(open_).length + "", LIST.map(function(l){
       var items = rk.filter(function(r){ return r.list === l[0]; }).sort(function(a, b){ return (ORDER[a.severity] || 3) - (ORDER[b.severity] || 3); });
       if (!items.length) return "";
       return '<div class="subhead">' + esc(l[1]) + "</div>" + '<div class="rec-list">' + items.map(function(r){
@@ -931,19 +954,20 @@ function renderRecords(){
     }).join("")));
   }
   var sy = H.systems || [];
-  if (sy.length) parts.push(block("rec-systems", "Systems and access", sy.length + "", cardsHtml(sy.map(function(s){
+  if (sy.length) parts.push(blk("systems", "rec-systems", "Systems and access", sy.length + "", cardsHtml(sy.map(function(s){
     return '<div class="card' + (open_(s) ? "" : " closed") + '"><h4>' + esc(s.name) + "</h4>" + (s.purpose ? '<div class="sub">' + inline(s.purpose) + "</div>" : "") +
       (s.credentialLocation ? "<p><strong>Credential:</strong> " + inline(s.credentialLocation) + "</p>" : "") + (s.grantedBy ? "<p><strong>Access from:</strong> " + inline(s.grantedBy) + "</p>" : "") +
       (s.checks ? '<div class="meta-line">' + checksHtml(s.checks) + "</div>" : "") + metaLine(s) + "</div>";
   }))));
   var dc = H.documents || [];
-  if (dc.length) parts.push(block("rec-documents", "Documents", dc.length + "", cardsHtml(dc.map(function(d){
+  if (dc.length) parts.push(blk("documents", "rec-documents", "Documents", dc.length + "", cardsHtml(dc.map(function(d){
     var title = d.url && /^https?:/i.test(d.url) ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.title) + "</a>" : esc(d.title);
     return '<div class="card' + (open_(d) ? "" : " closed") + '"><h4>' + title + '</h4><div class="sub">' + esc([DOCTYPE[d.type] || "", d.owner ? "Owner: " + who(d.owner) : ""].filter(Boolean).join(" · ")) + "</div>" +
       (d.location ? "<p><strong>Where:</strong> " + inline(d.location) + "</p>" : "") + metaLine(d, d.status ? [chip(d.status === "final" ? "Final" : "Draft", d.status === "final" ? "ok" : "warn")] : []) +
       (d.checks ? '<div class="meta-line">' + checksHtml(d.checks) + "</div>" : "") + "</div>";
   }))));
-  w.innerHTML = parts.length ? '<section class="block" id="records"><div class="panel-head" style="margin:0 0 12px"><h2>Records</h2><span class="muted" style="font-size:14px">What was collected while handing over</span>' + xbtn("inProgress,gaps,rules,decisions,risks,systems,documents") + '</div>' + parts.join("") + "</section>" : "";
+  if (!parts.length && canAdd()) parts.push('<p class="muted">Nothing recorded yet. Add things in progress, gaps, rules, decisions, risks, systems and documents as you find them.</p>');
+  w.innerHTML = parts.length ? '<section class="block" id="records"><div class="panel-head" style="margin:0 0 12px"><h2>Records</h2><span class="muted" style="font-size:14px">What was collected while handing over</span>' + (canAdd() ? '<button class="btn no-print" type="button" data-add="" title="Add a thing in progress, gap, rule, decision, risk, system or document">Add…</button>' : "") + xbtn("inProgress,gaps,rules,decisions,risks,systems,documents") + '</div>' + parts.join("") + "</section>" : "";
 }
 
 function renderHandover(){
@@ -1015,6 +1039,7 @@ document.addEventListener("click", function(e){
   var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
   var cb = t.closest("[data-close]"); if (cb){ e.preventDefault(); openClose(cb.dataset.close); return; }
   var rb = t.closest("[data-reopen]"); if (rb){ e.preventDefault(); reopen(rb.dataset.reopen); return; }
+  var ab = t.closest("[data-add]"); if (ab){ e.preventDefault(); openAdd(ab.dataset.add); return; }
   var a = t.closest('a[href^="#"]');
   if (a && $("app").contains(a)){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
@@ -1119,6 +1144,53 @@ function reopen(ref){
   try { next = C.reopenItem(H, ref.slice(0, i), ref.slice(i + 1), {date: TODAY}); } catch (err){ toast(err.message); return; }
   saveContent(next).then(function(ok){ if (ok) toast("Reopened"); });
 }
+
+/* Add a record (spec section 11) */
+var ADD_KINDS = [["inProgress", "A thing in progress"], ["gaps", "A gap"], ["rules", "A rule (when this happens)"], ["decisions", "A decision"], ["risks", "A risk"], ["systems", "A system and its access"], ["documents", "A document"], ["decide", "A who-decides card"]];
+var ADD_PANEL = {inProgress: "rec-inprogress", gaps: "rec-gaps", rules: "rec-rules", decisions: "rec-decisions", risks: "rec-risks", systems: "rec-systems", documents: "rec-documents", decide: "decide"};
+function peopleRoles(){
+  var roles = []; (H.people || []).forEach(function(p){ (p.roles || []).forEach(function(r){ if (["outgoing","incoming","principal","facilitator"].indexOf(r) > -1 && !roles.some(function(x){ return x[0] === r; })) roles.push([r, p.name + " (" + C.roleName[r].toLowerCase() + ")"]); }); });
+  if (!roles.length) ["incoming","outgoing","principal"].forEach(function(r){ roles.push([r, C.roleName[r]]); });
+  return roles;
+}
+function roleOptions(blank, pick){ return '<option value="">' + esc(blank) + "</option>" + peopleRoles().map(function(r){ return '<option value="' + r[0] + '"' + (r[0] === pick ? " selected" : "") + ">" + esc(r[1]) + "</option>"; }).join(""); }
+function addFieldsRender(){
+  var kind = $("addKind").value;
+  $("addFields").innerHTML = C.addFields[kind].map(function(d){
+    var id = "addF-" + d.k, hint = d.hint ? "<small>" + esc(d.hint) + "</small>" : "", label = esc(d.label) + (d.req ? "" : ' <small style="display:inline">(optional)</small>');
+    if (d.t === "bool") return '<label class="cfield check"><input type="checkbox" id="' + id + '" data-f="' + d.k + '"> ' + esc(d.label) + "</label>";
+    var input;
+    if (d.t === "md") input = '<textarea id="' + id + '" data-f="' + d.k + '" rows="3"></textarea>';
+    else if (d.t === "date") input = '<input type="date" id="' + id + '" data-f="' + d.k + '">';
+    else if (d.t === "role") input = '<select id="' + id + '" data-f="' + d.k + '">' + roleOptions("Not set") + "</select>";
+    else if (Array.isArray(d.t)) input = '<select id="' + id + '" data-f="' + d.k + '">' + (d.req ? "" : '<option value="">Not set</option>') + d.t.map(function(o){ return '<option value="' + o[0] + '">' + esc(o[1]) + "</option>"; }).join("") + "</select>";
+    else input = '<input type="text" id="' + id + '" data-f="' + d.k + '" autocomplete="off">';
+    return '<label class="cfield">' + label + hint + input + "</label>";
+  }).join("");
+  $("addMsg").hidden = true;
+}
+function openAdd(kind){
+  if (!canAdd()){ toast("This file uses format 1.0, which has no records"); return; }
+  $("addKind").innerHTML = ADD_KINDS.map(function(k){ return '<option value="' + k[0] + '"' + (k[0] === (kind || "gaps") ? " selected" : "") + ">" + esc(k[1]) + "</option>"; }).join("");
+  $("addBy").innerHTML = roleOptions("Not recorded", peopleRoles().some(function(r){ return r[0] === "incoming"; }) ? "incoming" : "");
+  addFieldsRender();
+  $("addDlg").showModal();
+  var first = $("addFields").querySelector("textarea, input[type=text]"); if (first) first.focus();
+}
+$("addKind").addEventListener("change", addFieldsRender);
+$("addCancel").addEventListener("click", function(){ $("addDlg").close(); });
+$("addForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var kind = $("addKind").value, values = {}, res;
+  [].slice.call($("addFields").querySelectorAll("[data-f]")).forEach(function(x){ x.classList.remove("bad"); values[x.dataset.f] = x.type === "checkbox" ? x.checked : x.value; });
+  try { res = C.addItem(H, kind, values, {role: $("addBy").value || undefined, date: TODAY}); }
+  catch (err){ $("addMsg").textContent = err.message; $("addMsg").hidden = false; var f = err.field && $("addF-" + err.field); if (f){ f.classList.add("bad"); f.focus(); } return; }
+  saveContent(res.h).then(function(ok){
+    if (!ok) return;
+    $("addDlg").close(); toast("Added: " + C.listNoun[kind]);
+    var panel = $(ADD_PANEL[kind]); if (panel){ if (panel.tagName === "DETAILS") panel.open = true; panel.scrollIntoView({block: "start"}); flash(panel); }
+  });
+});
 
 /* Search */
 var q = $("q"), qinfo = $("qinfo"), qtimer;
