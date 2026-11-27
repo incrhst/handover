@@ -6,7 +6,10 @@
 //   node handover.cjs due <file> [YYYY-MM-DD] [--days N]
 //                                              what is overdue, due and coming up
 //   node handover.cjs summary <file>           counts of stages, tasks, duties, questions, sections, gaps
-//   node handover.cjs strip <file> [out]       remove progress, for sharing with someone new
+//   node handover.cjs strip <file> [out] [--profile newcomer|record] [--audience role,role]
+//                                              export for sharing: newcomer (default) drops progress,
+//                                              process state and anything the audience may not see
+//   node handover.cjs render <file> [out]      write the sections for 1.0 readers again from the 1.1 data
 //   node handover.cjs merge <file> <other> [out]
 //                                              merge the progress in <other> into <file>
 "use strict";
@@ -34,32 +37,13 @@ function requireValid(h, file) {
   return v;
 }
 
-// Every markdown field, with a readable location
-function textFields(h) {
-  const out = [];
-  const add = (where, v) => { if (typeof v === "string") out.push([where, v]); };
-  add("summary", h.summary);
-  (h.path || []).forEach((s, i) => {
-    add(`path[${i}] "${s.title}" summary`, s.summary);
-    if (s.tip) add(`path[${i}] "${s.title}" tip`, s.tip.text);
-    (s.tasks || []).forEach((t, j) => { add(`path[${i}].tasks[${j}] (${t.id}) text`, t.text); add(`path[${i}].tasks[${j}] (${t.id}) detail`, t.detail); });
-  });
-  (h.recurring || []).forEach((r, i) => { add(`recurring[${i}] (${r.id}) text`, r.text); add(`recurring[${i}] (${r.id}) detail`, r.detail); });
-  (h.questions || []).forEach((q, i) => add(`questions[${i}] "${q.q}"`, q.a));
-  (h.sections || []).forEach((s, i) => add(`sections[${i}] (${s.id}) body`, s.body));
-  return out;
-}
-function gaps(h) {
-  const found = [];
-  for (const [where, text] of textFields(h)) {
-    for (const line of text.split("\n")) {
-      for (const m of line.matchAll(/\{TODO:\s*([^}]*)\}/g)) found.push([where, m[1].trim() || "(no description)"]);
-      // A cell or line that starts with TODO:
-      for (const cell of line.split("|")) { const m = cell.trim().match(/^TODO:\s*(.*)$/); if (m) found.push([where, m[1].trim() || "(no description)"]); }
-      if (!line.includes("|")) { const m = line.match(/(?:^|\s)TODO:\s*(.*)$/); if (m && !/^\s*TODO:/.test(line) && !/\{TODO:/.test(line)) found.push([where, m[1].trim()]); }
-    }
-  }
-  return found;
+// TODO gaps in every text field, 1.1 objects included: [where, what]
+function gaps(h) { return C.findGaps(h).map(g => [g.where, g.what]); }
+function gapLine(h) {
+  const c = C.gapCounts(h);
+  const parts = [c.todo ? `${c.todo} TODO gap(s) still to fill (${Object.keys(c.byArea).map(k => k + " " + c.byArea[k]).join(", ")})` : "no TODO gaps"];
+  if (h.gaps) parts.push(`${c.openItems} open item(s) on the gaps list` + (c.blocking ? `, ${c.blocking} blocking work` : ""));
+  return parts.join("; ");
 }
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -70,16 +54,16 @@ switch (cmd) {
     const h = read(args[0]);
     const v = requireValid(h, args[0]);
     v.warnings.forEach(w => console.error("warning: " + w));
-    const g = gaps(h).length;
-    console.log(`${args[0]}: valid handover ${h.handover} "${h.title}"` + (g ? `, ${g} gap(s) still to fill` : ", no gaps"));
+    console.log(`${args[0]}: valid handover ${h.handover} "${h.title}", ${gapLine(h)}`);
     break;
   }
   case "gaps": {
     const h = read(args[0]);
     const g = gaps(h);
-    if (!g.length) { console.log("No gaps."); break; }
     g.forEach(([where, what]) => console.log(`- ${where}: ${what}`));
-    console.log(`${g.length} gap(s).`);
+    console.log(g.length ? `${g.length} TODO gap(s).` : "No TODO gaps.");
+    const open = (h.gaps || []).filter(x => !x.closed);
+    if (open.length) { console.log(`\nOpen on the gaps list:`); open.forEach(x => console.log(`- ${x.id}${x.blocks ? " (blocks work)" : ""}: ${x.text}`)); }
     break;
   }
   case "due": {
@@ -105,13 +89,35 @@ switch (cmd) {
       stages: (h.path || []).length, tasks, recurring: (h.recurring || []).length,
       questions: (h.questions || []).length, sections: (h.sections || []).length,
       gaps: gaps(h).length, hasProgress: !!h.progress,
+      ...(h.handover !== "1.0" || h.plan ? {
+        profile: h.profile, audience: h.audience,
+        people: (h.people || []).length, stakeholders: (h.stakeholders || []).length,
+        overlap: h.plan ? C.overlap(h.plan) : undefined,
+        steps: h.plan && h.plan.steps ? h.plan.steps.reduce((o, x) => (o[x.status] = (o[x.status] || 0) + 1, o), {}) : undefined,
+        gates: h.plan ? Object.fromEntries(Object.entries(C.gates(h)).map(([k, g]) => [k, g.met ? "met" : g.left + " step(s) left"])) : undefined,
+        asks: h.asks ? h.asks.reduce((o, a) => (o[a.status] = (o[a.status] || 0) + 1, o), {}) : undefined,
+        askMinutes: h.asks ? C.askMinutes(h) : undefined,
+        records: Object.fromEntries(["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents"].filter(k => h[k]).map(k => [k, { open: h[k].filter(x => !x.closed).length, closed: h[k].filter(x => x.closed).length }])),
+        openGapItems: C.gapCounts(h).openItems
+      } : {}),
       cadences: (h.recurring || []).reduce((o, r) => (o[r.every] = (o[r.every] || 0) + 1, o), {})
     }, null, 2));
     break;
   }
   case "strip": {
+    const profile = flag("--profile", "newcomer"), aud = flag("--audience", "");
     const h = read(args[0]); requireValid(h, args[0]);
-    write(C.contentOnly(h), args[1]);
+    if (h.handover === "1.0" && !aud && profile === "newcomer") { write(C.contentOnly(h), args[1]); break; }
+    let out;
+    try { out = C.exportProfile(h, profile, aud ? aud.split(",").map(s => s.trim()) : undefined); } catch (e) { die(e.message); }
+    const v = C.validate(out);
+    if (v.errors.length) { console.error("The exported file would not be valid:"); v.errors.forEach(e => console.error("  - " + e)); process.exit(1); }
+    write(out, args[1]);
+    break;
+  }
+  case "render": {
+    const h = read(args[0]); requireValid(h, args[0]);
+    write(C.withRendered(h), args[1]);
     break;
   }
   case "merge": {

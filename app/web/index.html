@@ -212,6 +212,36 @@ textarea.notes{width:100%;min-height:130px;font:inherit;font-size:16px;padding:1
 .questions .muted{color:var(--hero-ink-2);font-size:14px}
 body.searching .questions{display:none}
 
+/* 1.1: people, records, who decides, the handover process */
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;line-height:1.5;border-radius:99px;padding:1px 9px;background:var(--surface-2);color:var(--ink-2);white-space:nowrap;letter-spacing:0;text-transform:none}
+.chip.ok{background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)}
+.chip.bad{background:var(--red-soft);color:var(--red)}
+.chip.warn{background:var(--todo-bg);color:var(--todo-ink);padding:1px 9px;margin:0;border-left:0;border-radius:99px}
+.chip.ai{background:var(--accent-soft);color:var(--accent)}
+.chip.lock{background:transparent;border:1px solid var(--line);color:var(--ink-3)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;min-width:0}
+.card h4{margin:0 0 2px;font-size:1rem;font-weight:800}
+.card .sub{font-size:14px;color:var(--ink-3)}
+.card p{margin:.35rem 0 0;font-size:14.5px}
+.card.closed{background:var(--bg);color:var(--ink-3)}
+.meta-line{font-size:13px;color:var(--ink-3);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.meta-line .mbit+.mbit::before{content:"·";margin-right:6px}
+.subhead{font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;display:flex;gap:8px;align-items:center}
+.board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.board .colh{font-size:13px;font-weight:800;margin:0 0 8px;color:var(--ink-2)}
+.board .card{margin-bottom:8px}
+.rec-list{display:flex;flex-direction:column;gap:8px}
+.attention .duty{border-color:color-mix(in srgb,var(--orange) 45%,var(--line))}
+.col.attention h3{color:var(--orange)}
+.col.attention .count{background:color-mix(in srgb,var(--orange) 14%,transparent);color:var(--orange)}
+.dates{display:flex;flex-wrap:wrap;gap:10px 22px;margin:0 0 14px;font-size:14.5px}
+.dates b{display:block;font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:6px}
+.hero .chip{background:color-mix(in srgb,var(--hero-ink) 16%,transparent);color:var(--hero-ink)}
+.panel + .panel, .block + .block{margin-top:22px}
+@media (max-width: 760px){ .board{grid-template-columns:1fr} }
+
 footer{padding:36px 0 70px;color:var(--ink-3);font-size:14px}
 footer .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:.5rem 0}
 details.small{border:1px solid var(--line);border-radius:12px;padding:0 14px;margin:.6rem 0;background:var(--surface)}
@@ -252,6 +282,11 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   .questions{padding:22px 18px}
   .md{padding:6px 16px 18px}
   details.ref > summary{padding:14px 16px}
+  table.stack thead{display:none}
+  table.stack tr{display:block;padding:10px 14px;border-bottom:1px solid var(--line)}
+  table.stack tr:last-child{border-bottom:0}
+  table.stack td{display:block;padding:2px 0;border:0}
+  table.stack td:not(:first-child)::before{content:attr(data-label) ": ";font-size:12px;font-weight:700;color:var(--ink-3)}
 }
 @media print{
   .topbar,.no-print,.toast,.ask .askbox,.qchips,.qinfo,.questions,.stage-nav,#stepper,.banner{display:none!important}
@@ -281,6 +316,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <div class="row">
         <button class="btn primary big" id="openBtn" type="button">Open a handover file…</button>
         <button class="btn big" id="sampleBtn" type="button">Try the example</button>
+        <button class="btn big" id="sampleEaBtn" type="button">Try an assistant handover</button>
       </div>
       <input type="file" id="fileInput" accept=".handover,.json,application/json" hidden>
     </div>
@@ -306,7 +342,8 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
         <summary class="btn primary">Share &amp; export</summary>
         <div class="menu-panel" role="menu">
           <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
-          <button type="button" data-cmd="shareFile">Share handover file<small>The content only, for someone new</small></button>
+          <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
+          <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
           <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
           <hr>
           <button type="button" data-cmd="print">Print…</button>
@@ -320,6 +357,10 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
     <section class="hero" id="hero"></section>
     <div class="wrap" id="todayWrap"></div>
     <div class="wrap" id="pathWrap"></div>
+    <div class="wrap" id="peopleWrap"></div>
+    <div class="wrap" id="decideWrap"></div>
+    <div class="wrap" id="recordsWrap"></div>
+    <div class="wrap" id="handoverWrap"></div>
 
     <section class="ask" id="ask">
       <div class="wrap">
@@ -436,7 +477,7 @@ var TICK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="
 var sectionIds = {};
 function linkHtml(text, href){
   var h = href.replace(/&amp;/g, "&");
-  if (h.charAt(0) === "#"){ var id = h.slice(1); return '<a href="#' + (sectionIds[id] ? "sec-" + esc(id) : esc(id)) + '">' + text + "</a>"; }
+  if (h.charAt(0) === "#") return '<a href="' + esc(secHref(h.slice(1))) + '">' + text + "</a>";
   if (/^(https?:|mailto:)/i.test(h)) return '<a href="' + esc(h) + '" target="_blank" rel="noopener">' + text + "</a>";
   return text;
 }
@@ -479,6 +520,11 @@ function md(src){
   return html;
 }
 function plain(s){ return String(s || "").replace(/\{TODO:\s*([^}]*)\}/g, "[TO FILL IN: $1]").replace(/\[([^\]]+)\]\(#[^)]*\)/g, "$1"); }
+
+/* Sections written for 1.0 readers (spec section 16) are hidden; links to them go to the structured view. */
+var renderedIds = {}, RENDER_TARGET = {"handover-people": "people", "handover-access": "rec-systems", "handover-knowledge": "rec-rules", "handover-open": "rec-inprogress", "handover-decide": "decide", "handover-plan": "handover"};
+function secHref(id){ if (renderedIds[id] && RENDER_TARGET[id.replace(/-\d+$/, "")]) return "#" + RENDER_TARGET[id.replace(/-\d+$/, "")]; return "#" + (sectionIds[id] ? "sec-" + id : id); }
+function visibleSections(){ return (H.sections || []).filter(function(s){ return !renderedIds[s.id]; }); }
 
 /* Validation, schedules and merging live in core.js, shared with the agent skill. */
 var C = window.HandoverCore, validate = C.validate, zoneParts = C.zoneParts, nice = C.nice, cadence = C.cadence, contentOnly = C.contentOnly, mergeProgress = C.mergeProgress;
@@ -531,6 +577,7 @@ function normalise(st, today){ var s = emptyState(today); Object.keys(st || {}).
 function load(content, state, name, warnings){
   H = content; S = state; SOURCE_NAME = name || "";
   sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
+  renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
   $("errors").hidden = true;
   $("welcome").hidden = true; $("app").hidden = false;
   var wb = $("warnBanner");
@@ -548,44 +595,59 @@ function render(){
   document.title = H.title;
   $("brand").textContent = H.title;
   $("fmtVersion").textContent = H.handover;
-  renderHero(); renderToday(); renderPath(); renderAsk(); renderRefs();
+  renderHero(); renderToday(); renderPath(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
   $("notes").value = S.notes || "";
   var nav = [];
-  if ((H.recurring || []).length) nav.push(["#today", "Today"]);
+  if ($("today")) nav.push(["#today", "Today"]);
   if ((H.path || []).length) nav.push(["#path", "First weeks"]);
+  if ($("people")) nav.push(["#people", "People"]);
+  if ($("decide")) nav.push(["#decide", "Who decides"]);
+  if ($("records")) nav.push(["#records", "Records"]);
+  if ($("handover")) nav.push(["#handover", "Handover"]);
   nav.push(["#ask", "Ask"]);
-  if ((H.sections || []).length) nav.push(["#refWrap", "Reference"]);
+  if (visibleSections().length) nav.push(["#refWrap", "Reference"]);
+  var is11 = has11();
+  $("exportRecordBtn").hidden = !is11;
+  $("shareNote").textContent = is11 ? "For someone new: knowledge only, no process state or private items" : "The content only, for someone new";
   $("topnav").innerHTML = nav.map(function(n){ return '<a href="' + n[0] + '">' + n[1] + "</a>"; }).join("");
   $("autoExportNote").textContent = native ? "Each morning at " + exportTime() + " a task sheet for the day is saved in your data folder." : "Use Share & export to save today's task sheet.";
   countGaps();
 }
 function exportTime(){ return (H.settings && H.settings.dailyExportTime) || "07:00"; }
 function renderHero(){
-  var f = H.from || {}, total = 0, done = 0;
+  var f = H.from || {}, total = 0, done = 0, pl = H.plan;
   (H.path || []).forEach(function(s){ s.tasks.forEach(function(t){ total++; if (S.tasks[t.id]) done++; }); });
   var prog = total ? (done === total ? "First weeks complete: all " + total + " tasks done." : done + " of " + total + " first-weeks tasks done.") : "";
   $("hero").className = "hero" + ((H.recurring || []).length ? "" : " short");
   $("hero").innerHTML = '<div class="wrap"><div class="eyebrow">' + (f.name ? "Handover from " + esc(f.name) + (f.role ? " · " + esc(f.role) : "") : "Handover") + "</div>" +
     "<h1>" + esc(H.title) + "</h1>" + (H.summary ? '<div class="lede">' + md(H.summary) + "</div>" : "") +
     (prog ? '<p class="hero-progress">' + prog + "</p>" : "") +
-    '<div class="meta">' + [H.updated ? "Updated " + nice(H.updated, "long") : "", f.availableUntil ? esc(f.name || "The author") + " can answer questions until " + nice(f.availableUntil, "long") : ""].filter(Boolean).join(" · ") + "</div></div>";
+    '<div class="meta">' + [H.updated ? "Updated " + nice(H.updated, "long") : "", f.availableUntil ? esc(f.name || "The author") + " can answer questions until " + nice(f.availableUntil, "long") + (f.hours ? ", " + esc(f.hours) : "") : ""].filter(Boolean).join(" · ") + "</div>" +
+    (pl || H.profile ? '<div class="meta" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">' + [
+      pl && pl.practice ? chip("Practice run: nothing was sent", "") : "",
+      pl ? chip(C.overlap(pl) ? "Overlap" : "No overlap", "") : "",
+      pl && pl.firstDay ? esc(who("incoming")) + " started " + esc(nice(pl.firstDay)) : "",
+      pl ? esc(who("outgoing")) + "'s last day " + esc(nice(pl.lastDay)) : "",
+      H.profile ? chip(H.profile === "record" ? "Full record" + (H.audience ? " for " + H.audience.map(who).filter(uniq).join(", ") : "") : "Newcomer copy", "") : ""
+    ].filter(Boolean).join(" · ") + "</div>" : "") + "</div>";
 }
 function dutyHtml(o, showDate){
   var r = o.r, key = r.id + "@" + o.date, on = !!S.recurring[key];
   var when = [showDate ? nice(o.date) : "", r.time || "", cadence(r)].filter(Boolean).join(" · ");
   return '<div class="duty' + (on ? " done" : "") + '" data-key="' + esc(key) + '">' +
     '<button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(r.text)) + '">' + TICK + "</button>" +
-    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="#sec-' + esc(r.see) + '">Details</a>' : "") + "</span>" +
+    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + "</span>" +
     (r.detail ? '<div class="detail">' + md(r.detail) + "</div>" : "") + "</div>";
 }
 function renderToday(){
-  var w = $("todayWrap");
-  if (!(H.recurring || []).length){ w.innerHTML = ""; return; }
+  var w = $("todayWrap"), att = attention(TODAY);
+  if (!(H.recurring || []).length && !att.length){ w.innerHTML = ""; return; }
   var sc = schedule(TODAY), dueDone = sc.due.filter(function(o){ return isDone(o.r.id, o.date); }).length;
   var cols = "";
+  if (att.length) cols += '<div class="col attention"><h3>Needs attention <span class="count">' + att.length + "</span></h3>" + att.map(function(a){ return '<div class="duty plain"><span class="t">' + a.html + '</span><span class="when">' + a.when + "</span></div>"; }).join("") + "</div>";
   if (sc.overdue.length) cols += '<div class="col overdue"><h3>Overdue <span class="count">' + sc.overdue.length + "</span></h3>" + sc.overdue.map(function(o){ return dutyHtml(o, true); }).join("") + "</div>";
-  cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
-  cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
+  if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
+  if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
   var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.date)) + "</span><span>" + inline(o.r.text) + "</span></li>"; }).join("") + "</ul></div>" : "";
   w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2><button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + "</section>";
 }
@@ -633,13 +695,13 @@ function renderAsk(){
     var tc = q.tag ? " t" + (tags.indexOf(q.tag) % 3) : "";
     return '<article class="qa' + (gap ? " gap" : "") + '" id="qa-' + i + '">' + (q.tag ? '<div class="tag' + tc + '">' + esc(q.tag) + "</div>" : "") +
       "<h3>" + esc(q.q) + '</h3><div class="a">' + md(q.a) + "</div>" +
-      (q.see && sectionIds[q.see] ? '<a class="more" href="#sec-' + esc(q.see) + '">More: ' + esc(sectionTitle(q.see)) + "</a>" : "") + "</article>";
+      (q.see && sectionIds[q.see] ? '<a class="more" href="' + esc(secHref(q.see)) + '">More: ' + esc(sectionTitle(q.see)) + "</a>" : "") + "</article>";
   }).join("");
   $("qchips").innerHTML = qs.slice(0, 4).map(function(q, i){ return '<button class="qchip" type="button" data-qa="qa-' + i + '">' + esc(q.q) + "</button>"; }).join("");
 }
 function sectionTitle(id){ var s = (H.sections || []).filter(function(x){ return x.id === id; })[0]; return s ? s.title : id; }
 function renderRefs(){
-  var secs = H.sections || [];
+  var secs = visibleSections();
   $("refWrap").hidden = !secs.length;
   $("refs").innerHTML = secs.map(function(s){ return '<details class="ref" id="sec-' + esc(s.id) + '"><summary><h3>' + esc(s.title) + '</h3><span class="n" hidden></span></summary><div class="md">' + md(s.body) + "</div></details>"; }).join("");
   $("shelf").innerHTML = secs.map(function(s){ return '<a href="#sec-' + esc(s.id) + '">' + esc(s.title) + '<span class="n" hidden></span></a>'; }).join("");
@@ -648,7 +710,7 @@ function countGaps(){
   var all = document.querySelectorAll("#main .todo").length, chip = $("gaps");
   chip.hidden = !all; chip.textContent = all + (all === 1 ? " gap" : " gaps") + " to fill";
   var shelfLinks = $("shelf").querySelectorAll("a");
-  (H.sections || []).forEach(function(s, i){
+  visibleSections().forEach(function(s, i){
     var n = document.querySelectorAll("#sec-" + CSS.escape(s.id) + " .md .todo").length;
     var a = shelfLinks[i] && shelfLinks[i].querySelector(".n"), b = document.querySelector("#sec-" + CSS.escape(s.id) + " summary .n");
     [a, b].forEach(function(x){ if (x){ x.hidden = !n; x.textContent = n; x.title = n + " to fill in"; } });
@@ -662,6 +724,179 @@ function renderLibrary(){
     el.innerHTML = '<h2 style="font-size:1.1rem;margin:0 0 8px">Your handovers</h2><div style="display:flex;gap:8px;flex-wrap:wrap">' + lib.map(function(x){ return '<button class="btn" type="button" data-switch="' + esc(x.id) + '">' + esc(x.title || x.id) + "</button>"; }).join("") + "</div>";
   });
 }
+
+/* ================= 1.1: people, records, who decides, the handover process ================= */
+var V11KEYS = ["people","stakeholders","plan","asks","gaps","inProgress","rules","decisions","risks","systems","documents","decide","finalCheck","signoff","followUps","catchUps","history"];
+function has11(){ return H.handover !== "1.0" && V11KEYS.some(function(k){ return H[k] !== undefined; }); }
+function uniq(v, i, a){ return a.indexOf(v) === i; }
+function chip(text, cls, title){ return '<span class="chip' + (cls ? " " + cls : "") + '"' + (title ? ' title="' + esc(title) + '"' : "") + ">" + esc(text) + "</span>"; }
+function who(role){ var p = (H.people || []).filter(function(x){ return (x.roles || []).indexOf(role) > -1; })[0]; return p ? p.name : (C.roleName[role] || role); }
+function day(dt){ return dt ? nice(String(dt).slice(0, 10)) : ""; }
+function open_(x){ return !x.closed; }
+function risky(){ var m = {}; (H.risks || []).filter(open_).forEach(function(r){ if (r.recurring) m[r.recurring] = r; }); return m; }
+var SEV = {high: ["High risk", "bad"], medium: ["Medium risk", "warn"], low: ["Low risk", ""]};
+function riskChip(dutyId){ var r = risky()[dutyId]; if (!r || !r.severity) return ""; return " " + chip(SEV[r.severity][0], SEV[r.severity][1], plain(r.text)); }
+function link(id, text){ return '<a href="#' + esc(id) + '">' + esc(text) + "</a>"; }
+/* What needs someone today, worked out from the records (spec section 15: never stored) */
+function attention(today){
+  var out = [], soon = C.addDays(today, 7);
+  (H.gaps || []).filter(function(g){ return open_(g) && g.blocks; }).forEach(function(g){ out.push({html: inline(g.text), when: chip("Blocks work", "bad") + " " + link("rec-gaps", "Gaps list"), plain: "Blocks work: " + plain(g.text)}); });
+  (H.inProgress || []).filter(function(x){ return open_(x) && x.due && x.due <= soon; }).sort(function(a, b){ return a.due < b.due ? -1 : 1; }).forEach(function(x){
+    var late = x.due < today;
+    out.push({html: inline(x.text), when: chip(late ? "Overdue" : "Due " + nice(x.due), late ? "bad" : "warn") + (x.owner ? " " + esc(who(x.owner)) : ""), plain: plain(x.text) + " (" + (late ? "overdue, was due " : "due ") + nice(x.due) + (x.owner ? ", " + who(x.owner) : "") + ")"});
+  });
+  (H.asks || []).filter(function(a){ return a.status === "sent"; }).forEach(function(a){
+    var late = a.replyBy && a.replyBy < today;
+    out.push({html: "Waiting for " + esc(who("principal")) + ": " + esc(ASK[a.id]), when: a.replyBy ? chip((late ? "Reply was due " : "Reply by ") + nice(a.replyBy), late ? "bad" : "warn") : "", plain: "Waiting for " + who("principal") + ": " + ASK[a.id] + (a.replyBy ? " (reply by " + nice(a.replyBy) + ")" : "")});
+  });
+  (H.finalCheck || []).filter(function(c){ return c.result === "fail"; }).forEach(function(c){
+    var late = c.due && c.due < today;
+    out.push({html: "Final check failed: " + esc(FINAL[c.id]) + (c.note ? '<div class="detail">' + md(c.note) + "</div>" : ""), when: chip(late ? "Overdue" : "Due " + nice(c.due), late ? "bad" : "warn") + (c.owner ? " " + esc(who(c.owner)) : ""), plain: "Final check failed: " + FINAL[c.id] + (c.due ? " (due " + nice(c.due) + (c.owner ? ", " + who(c.owner) : "") + ")" : "")});
+  });
+  (H.systems || []).concat(H.documents || []).filter(open_).forEach(function(s){
+    var c = s.checks || {}; ["opens","create","level"].forEach(function(k){ if (c[k] && c[k].result === "fail") out.push({html: "Access check failed: " + esc(s.name || s.title) + " · " + esc(CHECK[k]), when: (c[k].note ? esc(c[k].note) + " " : "") + link("rec-systems", "Systems"), plain: "Access check failed: " + (s.name || s.title) + ", " + CHECK[k] + (c[k].note ? " (" + c[k].note + ")" : "")}); });
+  });
+  return out;
+}
+var ASK = {breaks: "What breaks if the outgoing assistant is absent", profile: "Profile check", access: "Access approvals", limits: "Who decides what", confid: "Confidentiality rules", emergency: "Emergency plan", signoff: "Sign-off"};
+var FINAL = {recurring: "Recurring work", "in-progress": "Things in progress", decisions: "Decisions and reasons", context: "Live context", access: "Access", exceptions: "Exceptions", decide: "Who decides what"};
+var CHECK = {opens: "Opens", create: "Can create", level: "Right level"};
+var CLOSED = {fixed: "Fixed", answered: "Answered", principal: "Handed to the principal", done: "Done", dropped: "Dropped"};
+var DOCTYPE = {folder: "Folder", brief: "One-page brief", profile: "Principal profile", recording: "Recording", guide: "Step guide", template: "Template", protected: "Protected file", other: "Other"};
+var STATUS = {draft: ["Draft", ""], sent: ["Sent", "warn"], confirmed: ["Confirmed", "ok"], corrected: ["Corrected", "warn"], defaulted: ["Default applied", ""], open: ["Open", ""], done: ["Done", "ok"], na: ["Not needed", ""], pass: ["Pass", "ok"], fail: ["Fail", "bad"]};
+function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
+/* Provenance, visibility and closure of one item (spec section 11) */
+function metaLine(o, extra){
+  var bits = (extra || []).slice();
+  if (o.closed) bits.push(chip(CLOSED[o.closed.how] || "Closed", "ok") + (o.closed.at ? " " + esc(day(o.closed.at)) : "") + (o.closed.fix ? " · " + (/^https?:/.test(o.closed.fix) ? '<a href="' + esc(o.closed.fix) + '" target="_blank" rel="noopener">the fix</a>' : esc(o.closed.fix)) : ""));
+  if (o.aiDrafted) bits.push(chip("AI draft", "ai", "Drafted by an AI. Check it."));
+  if (o.visibleTo) bits.push(chip("Only " + o.visibleTo.map(who).filter(uniq).join(", "), "lock", "Only these people may see it"));
+  if (o.added) bits.push("Added " + esc(day(o.added)) + (o.addedBy ? " by " + esc(who(o.addedBy)) : ""));
+  return bits.length ? '<div class="meta-line">' + bits.map(function(b){ return /^<span class="chip/.test(b) ? b : '<span class="mbit">' + b + "</span>"; }).join("") + "</div>" : "";
+}
+function checksHtml(c){ if (!c) return ""; return ["opens","create","level"].filter(function(k){ return c[k]; }).map(function(k){ return chip(CHECK[k] + ": " + c[k].result, c[k].result === "pass" ? "ok" : "bad", c[k].note || ""); }).join(" ") + ["opens","create","level"].filter(function(k){ return c[k] && c[k].note; }).map(function(k){ return '<p class="sub">' + esc(CHECK[k]) + ": " + inline(c[k].note) + "</p>"; }).join(""); }
+function block(id, title, count, body, openIt){ return '<details class="ref" id="' + esc(id) + '"' + (openIt ? " open" : "") + '><summary><h3>' + esc(title) + "</h3>" + (count ? chip(count, "") : "") + '</summary><div class="md">' + body + "</div></details>"; }
+function cardsHtml(items){ return '<div class="cards">' + items.join("") + "</div>"; }
+
+function renderPeople(){
+  var w = $("peopleWrap"), ppl = H.people || [], st = H.stakeholders || [];
+  if (!ppl.length && !st.length){ w.innerHTML = ""; return; }
+  w.innerHTML = '<section class="panel block" id="people"><div class="panel-head"><h2>People</h2></div>' +
+    (ppl.length ? cardsHtml(ppl.map(function(p){ return '<div class="card"><h4>' + esc(p.name) + '</h4><div class="sub">' + esc(p.roles.map(function(r){ return C.roleName[r]; }).join(" · ")) + "</div>" + (p.contact ? "<p>" + inline(p.contact) + "</p>" : "") + "</div>"; })) : "") +
+    (st.length ? '<div class="subhead">People to know <span class="count">' + st.length + "</span></div>" + cardsHtml(st.map(function(s){
+      return '<div class="card"><h4>' + esc(s.name) + '</h4><div class="sub">' + inline(s.relationship) + "</div>" + (s.involve ? "<p><strong>When:</strong> " + inline(s.involve) + "</p>" : "") + (s.contact ? "<p>" + inline(s.contact) + (s.contactVisibleTo ? " " + chip("Only " + s.contactVisibleTo.map(who).filter(uniq).join(", "), "lock") : "") + "</p>" : "") + metaLine(s) + "</div>";
+    })) : "") + "</section>";
+}
+
+function renderDecide(){
+  var w = $("decideWrap"), d = H.decide;
+  if (!d || !(d.cards || []).length){ w.innerHTML = ""; return; }
+  var stake = {}; (H.stakeholders || []).forEach(function(s){ stake[s.id] = s.name; });
+  var cols = [["alone", "Decide alone"], ["check", "Check first"], ["principal", "Always " + who("principal")]];
+  w.innerHTML = '<section class="panel block" id="decide"><div class="panel-head"><h2>Who decides what</h2>' +
+    (d.confirmed ? chip("Confirmed by " + who("principal") + (d.confirmedAt ? " " + day(d.confirmedAt) : ""), "ok") : chip("Not confirmed by " + who("principal") + " yet", "warn")) + '</div><div class="board">' +
+    cols.map(function(c){
+      var cs = d.cards.filter(function(x){ return x.column === c[0] && open_(x); });
+      return '<div><div class="colh">' + esc(c[1]) + ' <span class="count">' + cs.length + "</span></div>" + (cs.length ? cs.map(function(x){
+        var extra = [];
+        if (x.limit) extra.push(chip("Up to " + x.limit.currency + " " + Number(x.limit.amount).toLocaleString("en-GB"), ""));
+        if (x.approver) extra.push("Approver: " + esc(x.approver.role ? who(x.approver.role) : stake[x.approver.stakeholder] || x.approver.stakeholder));
+        if (x.movedByPrincipal) extra.push(chip(who("principal") + " moved this", "warn"));
+        return '<div class="card"><div>' + inline(x.text) + "</div>" + metaLine(x, extra) + "</div>";
+      }).join("") : '<div class="empty">None.</div>') + "</div>";
+    }).join("") + "</div></section>";
+}
+
+function renderRecords(){
+  var w = $("recordsWrap"), parts = [];
+  function sorted(list, key){ return list.filter(open_).sort(key || function(){ return 0; }).concat(list.filter(function(x){ return !open_(x); })); }
+  function closedNote(list){ var n = list.filter(function(x){ return !open_(x); }).length; return n ? n + " closed" : ""; }
+  var ip = H.inProgress || [];
+  if (ip.length) parts.push(block("rec-inprogress", "Things in progress", ip.filter(open_).length + " open", '<div class="rec-list">' + sorted(ip, function(a, b){ return (a.due || "9") < (b.due || "9") ? -1 : 1; }).map(function(x){
+    var late = open_(x) && x.due && x.due < TODAY;
+    return '<div class="card' + (open_(x) ? "" : " closed") + '"><div>' + inline(x.text) + "</div>" + metaLine(x, [x.owner ? "Owner: " + esc(who(x.owner)) : chip("No owner", "warn"), x.due ? chip((late ? "Overdue, due " : "Due ") + nice(x.due), late ? "bad" : "") : (open_(x) ? chip("No date", "warn") : "")].filter(Boolean)) + "</div>";
+  }).join("") + "</div>", true));
+  var gp = H.gaps || [];
+  if (gp.length) parts.push(block("rec-gaps", "Gaps list", gp.filter(open_).length + " open", '<div class="rec-list">' + sorted(gp, function(a, b){ return (b.blocks ? 1 : 0) - (a.blocks ? 1 : 0); }).map(function(g){
+    return '<div class="card' + (open_(g) ? "" : " closed") + '"><div>' + inline(g.text) + "</div>" + metaLine(g, g.blocks && open_(g) ? [chip("Blocks work", "bad")] : []) + "</div>";
+  }).join("") + "</div>", gp.some(function(g){ return open_(g); })));
+  var ru = H.rules || [];
+  if (ru.length){
+    var sits = ru.map(function(r){ return r.situation || ""; }).filter(uniq);
+    parts.push(block("rec-rules", "When this happens", ru.length + "", sits.map(function(s){ return (s ? '<div class="subhead">' + esc(s) + "</div>" : "") + '<div class="rec-list">' + ru.filter(function(r){ return (r.situation || "") === s; }).map(function(r){ return '<div class="card' + (open_(r) ? "" : " closed") + '"><div>' + inline(r.text) + "</div>" + metaLine(r) + "</div>"; }).join("") + "</div>"; }).join("")));
+  }
+  var de = H.decisions || [];
+  if (de.length) parts.push(block("rec-decisions", "Decisions", de.length + "", '<div class="rec-list">' + de.slice().sort(function(a, b){ return (b.date || "") < (a.date || "") ? -1 : 1; }).map(function(d){ return '<div class="card' + (open_(d) ? "" : " closed") + '"><h4>' + inline(d.text) + "</h4>" + (d.reason ? '<div class="sub">' + md(d.reason) + "</div>" : "") + metaLine(d, d.date ? ["Decided " + esc(nice(d.date))] : []) + "</div>"; }).join("") + "</div>"));
+  var rk = H.risks || [];
+  if (rk.length){
+    var recById = {}; (H.recurring || []).forEach(function(r){ recById[r.id] = r; });
+    var LIST = [["weekly", "Recurring work"], ["occasional", "Occasional flows"], ["spof", "Only one person knows"]], TREAT = {record: "Record it", write: "Write it down", brief: "A line in the brief"}, ORDER = {high: 0, medium: 1, low: 2};
+    parts.push(block("rec-risks", "Risks", rk.filter(open_).length + "", LIST.map(function(l){
+      var items = rk.filter(function(r){ return r.list === l[0]; }).sort(function(a, b){ return (ORDER[a.severity] || 3) - (ORDER[b.severity] || 3); });
+      if (!items.length) return "";
+      return '<div class="subhead">' + esc(l[1]) + "</div>" + '<div class="rec-list">' + items.map(function(r){
+        var d = r.recurring && recById[r.recurring], e = r.evidence || {};
+        var ev = [e.cadence ? e.cadence.charAt(0).toUpperCase() + e.cadence.slice(1) : "", e.occurrences ? e.occurrences + " times" : "", e.hours ? "about " + e.hours + " h" : "", e.firstSeen && e.lastSeen ? nice(e.firstSeen) + " to " + nice(e.lastSeen) : "", e.source || ""].filter(Boolean).join(" · ");
+        return '<div class="card' + (open_(r) ? "" : " closed") + '"><div>' + inline(r.text) + "</div>" + metaLine(r, [r.severity ? chip(SEV[r.severity][0], SEV[r.severity][1]) : "", r.treatment ? esc(TREAT[r.treatment]) : "", d ? "On the daily list: " + esc(cadence(d)) + (d.time ? " · " + esc(d.time) : "") : ""].filter(Boolean)) + (ev ? '<p class="sub">Evidence: ' + esc(ev) + "</p>" : "") + "</div>";
+      }).join("") + "</div>";
+    }).join("")));
+  }
+  var sy = H.systems || [];
+  if (sy.length) parts.push(block("rec-systems", "Systems and access", sy.length + "", cardsHtml(sy.map(function(s){
+    return '<div class="card' + (open_(s) ? "" : " closed") + '"><h4>' + esc(s.name) + "</h4>" + (s.purpose ? '<div class="sub">' + inline(s.purpose) + "</div>" : "") +
+      (s.credentialLocation ? "<p><strong>Credential:</strong> " + inline(s.credentialLocation) + "</p>" : "") + (s.grantedBy ? "<p><strong>Access from:</strong> " + inline(s.grantedBy) + "</p>" : "") +
+      (s.checks ? '<div class="meta-line">' + checksHtml(s.checks) + "</div>" : "") + metaLine(s) + "</div>";
+  }))));
+  var dc = H.documents || [];
+  if (dc.length) parts.push(block("rec-documents", "Documents", dc.length + "", cardsHtml(dc.map(function(d){
+    var title = d.url && /^https?:/i.test(d.url) ? '<a href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.title) + "</a>" : esc(d.title);
+    return '<div class="card' + (open_(d) ? "" : " closed") + '"><h4>' + title + '</h4><div class="sub">' + esc([DOCTYPE[d.type] || "", d.owner ? "Owner: " + who(d.owner) : ""].filter(Boolean).join(" · ")) + "</div>" +
+      (d.location ? "<p><strong>Where:</strong> " + inline(d.location) + "</p>" : "") + metaLine(d, d.status ? [chip(d.status === "final" ? "Final" : "Draft", d.status === "final" ? "ok" : "warn")] : []) +
+      (d.checks ? '<div class="meta-line">' + checksHtml(d.checks) + "</div>" : "") + "</div>";
+  }))));
+  w.innerHTML = parts.length ? '<section class="block" id="records"><div class="panel-head" style="margin:0 0 12px"><h2>Records</h2><span class="muted" style="font-size:14px">What was collected while handing over</span></div>' + parts.join("") + "</section>" : "";
+}
+
+function renderHandover(){
+  var w = $("handoverWrap"), pl = H.plan, parts = [];
+  if (!pl && !H.asks && !H.finalCheck && !H.signoff && !H.followUps && !H.history){ w.innerHTML = ""; return; }
+  var ov = C.overlap(pl), steps = (pl && pl.steps) || [];
+  var head = pl ? '<div class="dates">' + [["Preparation from", nice(pl.prepStart)], [who("outgoing") + "'s last day", nice(pl.lastDay)], [pl.firstDay ? who("incoming") + "'s first day" : "First day", pl.firstDay ? nice(pl.firstDay) : "Not hired yet"], ["Mode", (ov ? "Overlap" : "No overlap: " + who("principal") + " holds the desk in between")], ["Track", pl.track === "full" ? "Full" : "Light"]].map(function(x){ return "<div><b>" + esc(x[0]) + "</b>" + esc(x[1]) + "</div>"; }).join("") + "</div>" : "";
+  if (steps.length){
+    var g = C.gates(H), fails = (H.finalCheck || []).filter(function(c){ return c.result === "fail"; }).length;
+    head += '<div class="gates">' + Object.keys(g).map(function(k){ var x = g[k]; return '<div class="card"><h4>' + esc(x.title) + "</h4>" + (x.steps ? (x.met ? chip("Met", "ok") : chip(x.left + " of " + x.steps + " steps left", "warn")) : chip("No steps", "")) + (k === "done" && fails ? " " + chip(fails + (fails === 1 ? " check failed" : " checks failed"), "bad") : "") + "</div>"; }).join("") + "</div>";
+    parts.push(block("plan-steps", "The plan", steps.filter(function(s){ return s.status === "open"; }).length + " open", C.phases.map(function(ph){
+      var s = steps.filter(function(x){ return x.phase === ph; }); if (!s.length) return "";
+      return '<div class="subhead">' + esc(C.phaseLabel(ph, ov)) + "</div>" + tableHtml(["Step", "Who", "Status"], s.map(function(x){ return ["<strong>" + inline(x.title) + "</strong>" + (x.why ? '<div class="sub">' + inline(x.why) + "</div>" : "") + (x.status === "na" && x.reason ? '<div class="sub">Not needed: ' + inline(x.reason) + "</div>" : ""), esc(who(x.role)), statusChip(x.status) + (x.gate ? " " + chip(C.gates(H)[x.gate].title, "") : "")]; }));
+    }).join(""), true));
+  }
+  if ((H.asks || []).length){
+    var mins = C.askMinutes(H);
+    parts.push(block("plan-asks", "Questions for " + who("principal"), mins ? mins + " minutes" : "", '<p class="muted">' + esc(who("principal")) + " answers each one from a link in their own channel, never in this app.</p>" + tableHtml(["Question", "Status", "Dates"], H.asks.map(function(a){
+      return ["<strong>" + esc(ASK[a.id]) + "</strong>" + (a.minutes ? ' <span class="muted">about ' + a.minutes + " min</span>" : "") + (a.draft ? '<div class="sub">' + md(a.draft) + "</div>" : "") + (a.default ? '<div class="sub"><strong>If no reply:</strong> ' + inline(a.default) + "</div>" : "") + (a.correction ? '<div class="sub"><strong>Correction:</strong> ' + inline(a.correction) + "</div>" : ""),
+        statusChip(a.status), esc([a.sent ? "Sent " + day(a.sent) : "", a.replyBy ? "Reply by " + nice(a.replyBy) : "", a.answered ? "Answered " + day(a.answered) : ""].filter(Boolean).join(" · "))];
+    }))));
+  }
+  var so = H.signoff, fc = H.finalCheck || [];
+  if (fc.length || so){
+    var body = "";
+    if (fc.length) body += '<div class="subhead">Final check</div>' + tableHtml(["Check", "Result", "If it failed"], fc.map(function(c){ return [esc(FINAL[c.id]) + (c.note ? '<div class="sub">' + md(c.note) + "</div>" : ""), statusChip(c.result), c.result === "fail" ? esc([c.owner ? who(c.owner) : "", c.due ? "by " + nice(c.due) : ""].filter(Boolean).join(" ")) : ""]; }));
+    if (so) body += '<div class="subhead">Sign-off</div>' + tableHtml(["Who", "Signed"], ["outgoing", "incoming", "principal"].map(function(r){ return [esc(who(r)) + ' <span class="muted">' + esc(C.roleName[r]) + "</span>", so[r] ? chip(day(so[r]), "ok") : chip("Not yet", "")]; })) + (so.frozen ? '<p class="muted">Record frozen on ' + esc(nice(so.frozen, "long")) + ".</p>" : "") +
+      ((so.notes || []).length ? '<div class="subhead">Notes added since</div><div class="rec-list">' + so.notes.map(function(n){ return '<div class="card"><div>' + inline(n.text) + '</div><div class="meta-line">' + esc(day(n.at)) + (n.role ? " · " + esc(who(n.role)) : "") + "</div></div>"; }).join("") + "</div>" : "");
+    parts.push(block("plan-final", "Final check and sign-off", fc.length ? fc.filter(function(c){ return c.result === "pass"; }).length + " of " + fc.length + " pass" : "", body));
+  }
+  var f = H.from || {}, fu = H.followUps || [], cu = H.catchUps || [];
+  if (f.hours || f.paid !== undefined || fu.length || cu.length){
+    var Q = ["What did you have to ask about that should have been written down?", "What went wrong, or nearly did, that the handover should have caught?", "What is the principal still doing that the assistant should be doing?"];
+    var b2 = (f.availableUntil || f.hours ? '<div class="subhead">Contact period</div><p>' + esc(f.name || who("outgoing")) + (f.availableUntil ? " can be contacted until " + esc(nice(f.availableUntil, "long")) : "") + (f.contact ? ", " + inline(f.contact) : "") + (f.hours ? ". " + inline(f.hours) : "") + (f.paid !== undefined ? ". " + (f.paid ? "This time is paid." : "This time is unpaid.") : "") + "</p>" : "") +
+      fu.map(function(x){ return '<div class="subhead">' + (x.id === "f1" ? "First" : "Second") + " follow-up check" + (x.at ? " · " + esc(day(x.at)) : "") + "</div>" + (x.gapsFound !== undefined ? "<p>" + x.gapsFound + " gaps found" + (x.gapsFixed !== undefined ? ", " + x.gapsFixed + " fixed" : "") + ".</p>" : "") + "<ol>" + (x.answers || []).map(function(a, i){ return "<li><strong>" + esc(Q[i]) + "</strong><br>" + inline(a) + "</li>"; }).join("") + "</ol>"; }).join("") +
+      (cu.length ? '<div class="subhead">Daily catch-ups</div><p>' + cu.length + " held, the last on " + esc(day(cu[cu.length - 1].at)) + ".</p>" : "");
+    parts.push(block("plan-after", "After the handover", "", b2));
+  }
+  if ((H.history || []).length) parts.push(block("plan-history", "Change log", H.history.length + "", '<div class="rec-list">' + H.history.slice().reverse().map(function(x){ return '<div class="card"><div>' + inline(x.text) + '</div><div class="meta-line">' + esc(day(x.at)) + (x.role ? " · " + esc(who(x.role)) : "") + " " + (x.source === "ai" ? chip("AI", "ai") : "") + "</div></div>"; }).join("") + "</div>"));
+  w.innerHTML = '<section class="panel block" id="handover"><div class="panel-head"><h2>The handover</h2>' + (pl && pl.practice ? chip("Practice run", "warn") : "") + "</div>" + head + parts.join("") + "</section>";
+}
+function tableHtml(head, rows){ return '<div class="table-wrap"><table class="stack"><thead><tr>' + head.map(function(h){ return "<th>" + esc(h) + "</th>"; }).join("") + "</tr></thead><tbody>" + rows.map(function(r){ return "<tr>" + r.map(function(c, i){ return '<td data-label="' + esc(head[i] || "") + '">' + c + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table></div>"; }
 
 /* ================= Interaction ================= */
 function reveal(el){
@@ -705,7 +940,7 @@ $("gaps").addEventListener("click", (function(){
 
 /* Search */
 var q = $("q"), qinfo = $("qinfo"), qtimer;
-function units(){ return [$("today")].concat(stages, Array.prototype.slice.call(document.querySelectorAll(".qa, details.ref"))).filter(Boolean); }
+function units(){ return [$("today"), $("people"), $("decide")].concat(stages, Array.prototype.slice.call(document.querySelectorAll(".qa, details.ref"))).filter(Boolean); }
 function clearMarks(){ document.querySelectorAll("mark.hit").forEach(function(m){ var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); }); }
 function clearSearch(){ if (!q.value && !document.body.classList.contains("searching")) return; q.value = ""; search(""); }
 function search(term){
@@ -746,6 +981,8 @@ $("copyNotes").addEventListener("click", function(){ var t = $("notes").value.tr
 function sheet(date){
   var sc = schedule(date), L = [];
   L.push("# " + H.title, "", nice(date, "long"), "");
+  var att = attention(date);
+  if (att.length){ L.push("## Needs attention", ""); att.forEach(function(a){ L.push("- " + a.plain); }); L.push(""); }
   if (sc.overdue.length){ L.push("## Overdue", ""); sc.overdue.forEach(function(o){ L.push("- [ ] " + plain(o.r.text) + " (was due " + nice(o.date) + ")"); }); L.push(""); }
   L.push("## Today", "");
   if (sc.due.length) sc.due.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + (o.r.time ? " · " + o.r.time : "")); }); else L.push("Nothing due today.");
@@ -766,7 +1003,8 @@ function command(c){
   switch (c){
     case "open": return openFile();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
-    case "shareFile": return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
+    case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
+    case "exportRecord": return call("saveAs", {filename: H.id + "-record.handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Export the full record"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "exportProgress": var o = JSON.parse(JSON.stringify(H)); o.progress = progressOut(); return call("saveAs", {filename: H.id + "-with-progress.handover", content: JSON.stringify(o, null, 2) + "\n", mime: "application/json", title: "Export with my progress"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "print": clearSearch(); document.querySelectorAll("details.ref").forEach(function(d){ d.open = true; }); return call("print");
     case "find": return jumpToSearch();
@@ -787,10 +1025,12 @@ function openFile(){
 $("openBtn").addEventListener("click", openFile);
 $("fileInput").addEventListener("change", function(){ var f = this.files[0]; if (!f) return; var rd = new FileReader(); rd.onload = function(){ importText(rd.result, f.name); }; rd.readAsText(f); this.value = ""; });
 function fetchFirst(urls){ var u = urls.shift(); if (!u) return Promise.reject(new Error("not found")); return fetch(u).then(function(r){ if (!r.ok) throw new Error(r.status); return r.text(); }).catch(function(){ return fetchFirst(urls); }); }
-$("sampleBtn").addEventListener("click", function(){
-  (native ? call("sample") : fetchFirst(["sample.handover", "../../site/examples/sample.handover"]).then(function(t){ return {text: t}; }))
-    .then(function(r){ if (r && r.text) importText(r.text, "sample.handover"); }).catch(function(){ toast("The example isn't available here"); });
-});
+function openExample(name){
+  (native ? call("sample", {name: name}) : fetchFirst([name, "../../site/examples/" + name]).then(function(t){ return {text: t}; }))
+    .then(function(r){ if (r && r.text) importText(r.text, name); }).catch(function(){ toast("The example isn't available here"); });
+}
+$("sampleBtn").addEventListener("click", function(){ openExample("sample.handover"); });
+$("sampleEaBtn").addEventListener("click", function(){ openExample("ea-no-overlap.handover"); });
 $("copyPrompt").addEventListener("click", function(){
   (native ? call("prompt") : fetchFirst(["prompt.md", "../../site/prompt.md"]).then(function(t){ return {text: t}; }))
     .then(function(r){ if (!r || !r.text) throw new Error(); return call("copy", {text: r.text}); })

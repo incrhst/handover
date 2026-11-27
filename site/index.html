@@ -154,18 +154,19 @@ footer{padding:56px 0 64px;color:var(--ink-3);font-size:14.5px}
         <div class="panel">
           <h3 style="margin-top:0">For people and tools</h3>
           <ul class="links">
-            <li><a href="https://github.com/incrhst/handover/blob/main/spec/SPEC.md">The specification</a> (version 1.0)</li>
-            <li><a href="schema/v1.json">JSON Schema</a>: <code>https://incrhst.github.io/handover/schema/v1.json</code></li>
-            <li><a href="examples/sample.handover">An example file</a></li>
+            <li><a href="https://github.com/incrhst/handover/blob/main/spec/SPEC.md">The specification</a> (version 1.1; every 1.0 file is still valid)</li>
+            <li><a href="schema/v1.json">JSON Schema</a>: <code>https://incrhst.github.io/handover/schema/v1.json</code>, always the newest 1.x. Frozen copies: <a href="schema/v1.0.json">1.0</a>, <a href="schema/v1.1.json">1.1</a></li>
+            <li>Examples: <a href="examples/sample.handover">an operations lead</a> (1.0), and <a href="examples/ea-no-overlap.handover">an executive assistant with no overlap</a> (1.1, the full record: people, plan, risks, who decides what and sign-off)</li>
             <li><a href="https://github.com/incrhst/handover">Source code</a> for the app, the format and the skill</li>
           </ul>
           <div class="note">Never put passwords or keys in a handover file. Say where they're kept instead.</div>
         </div>
         <div class="panel">
           <h3 style="margin-top:0">For developers</h3>
-          <p style="margin:0">The skill ships the reference implementation, <code>core.js</code>: validation, schedules and progress merging, with no dependencies. It runs in Node and in browsers, and it powers the app too.</p>
+          <p style="margin:0">The skill ships the reference implementation, <code>core.js</code>: validation with reference checks, schedules, gap counts, export profiles and progress merging, with no dependencies. It runs in Node and in browsers, and it powers the app too.</p>
           <pre>node scripts/handover.cjs check role.handover
-node scripts/handover.cjs due role.handover 2026-12-01</pre>
+node scripts/handover.cjs due role.handover 2026-12-01
+node scripts/handover.cjs strip role.handover new.handover --profile newcomer</pre>
         </div>
       </div>
     </div>

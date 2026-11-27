@@ -254,7 +254,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
             reply(["ok": true])
         case "sample":
-            reply(["text": (try? String(contentsOf: webDir.appendingPathComponent("sample.handover"), encoding: .utf8)) ?? ""])
+            let name = str("name") == "ea-no-overlap.handover" ? "ea-no-overlap.handover" : "sample.handover"
+            reply(["text": (try? String(contentsOf: webDir.appendingPathComponent(name), encoding: .utf8)) ?? ""])
         case "prompt":
             reply(["text": (try? String(contentsOf: webDir.appendingPathComponent("prompt.md"), encoding: .utf8)) ?? ""])
         case "reveal":

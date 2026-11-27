@@ -1,0 +1,902 @@
+{
+  "$schema": "https://incrhst.github.io/handover/schema/v1.json",
+  "handover": "1.1",
+  "id": "example-holdings-ea-to-ceo",
+  "title": "Executive assistant to the CEO",
+  "summary": "How to run Dana Whitfield's desk at Example Holdings. Priya left on 25 September and Marcus started on 5 October, so there was no overlap: Dana held the desk in between. Start with the path for your first weeks, keep the daily list open, and check **Needs attention** every morning.",
+  "from": {
+    "name": "Priya Nair",
+    "role": "Executive assistant to the CEO (outgoing)",
+    "contact": "WhatsApp, on the number in the protected contacts file",
+    "availableUntil": "2026-11-27",
+    "hours": "Weekdays 10:00 to 12:00, replies within a day",
+    "paid": true
+  },
+  "updated": "2026-11-26",
+  "timezone": "America/Jamaica",
+  "audience": ["outgoing", "owner"],
+  "profile": "record",
+  "people": [
+    { "id": "priya", "name": "Priya Nair", "roles": ["outgoing", "owner"], "contact": "priya.nair@example.com until 25 September" },
+    { "id": "marcus", "name": "Marcus Hale", "roles": ["incoming"], "contact": "marcus.hale@example.com" },
+    {
+      "id": "dana",
+      "name": "Dana Whitfield",
+      "roles": ["principal"],
+      "contact": "Through her own WhatsApp and email; she never opens the handover tool"
+    },
+    { "id": "helen", "name": "Helen Ortiz", "roles": ["facilitator"], "contact": "HR business partner, helen.ortiz@example.com" }
+  ],
+  "stakeholders": [
+    {
+      "id": "cfo",
+      "name": "Ravi Campbell",
+      "relationship": "Chief financial officer",
+      "involve": "Approves spend above the limits on the who-decides board, and the quarterly board budget.",
+      "contact": "Ext. 2210, or his assistant Kim",
+      "added": "2026-09-01T10:05:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "cosec",
+      "name": "Joy Lindo",
+      "relationship": "Company secretary",
+      "involve": "Board calendar, board packs and minutes. Agree the pack timetable with her a month before each board meeting.",
+      "contact": "Ext. 2240",
+      "added": "2026-09-01T10:07:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "chair",
+      "name": "Elaine Brooks",
+      "relationship": "Chair of the board",
+      "involve": "Only through Dana. Never book time with her directly; send requests with the template in the documents list.",
+      "contact": "Through her office manager, details in the protected contacts file",
+      "contactVisibleTo": ["outgoing", "owner", "principal"],
+      "added": "2026-09-01T10:09:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "driver",
+      "name": "Andre Clarke",
+      "relationship": "Company driver",
+      "involve": "Airport runs and evening events. Give him flight numbers, not just times.",
+      "contact": "Mobile in the shared contacts",
+      "added": "2026-09-02T09:30:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "travel-desk",
+      "name": "Northstar Travel desk",
+      "relationship": "The company's travel agency",
+      "involve": "Flights, hotels and rebooking when a trip changes. They hold Dana's travel preferences.",
+      "contact": "travel desk email in the booking portal",
+      "added": "2026-09-02T09:35:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    },
+    {
+      "id": "partner",
+      "name": "Sam Whitfield",
+      "relationship": "Dana's partner",
+      "involve": "Family dates go in the personal calendar. Check it before accepting anything in the evening or at weekends.",
+      "contact": "In the protected contacts file",
+      "contactVisibleTo": ["outgoing", "owner", "principal"],
+      "visibleTo": ["outgoing", "owner", "principal"],
+      "added": "2026-09-03T14:20:00-05:00",
+      "addedBy": "outgoing"
+    }
+  ],
+  "path": [
+    {
+      "id": "days-1-2",
+      "title": "Days 1–2 · Get in",
+      "summary": "Access and the one-page brief. Read nothing else on day one.",
+      "tip": { "title": "No overlap", "text": "Priya has already left, so Dana held the desk last week. Start by walking the open items with her." },
+      "tasks": [
+        { "id": "brief", "text": "**Read the one-page brief** in the documents list, and nothing else today." },
+        {
+          "id": "walk-open-items",
+          "text": "**Walk the open items with Dana**: what moved while she held the desk, and what is due. Update each one in [Open items](#handover-open)."
+        },
+        {
+          "id": "access-check",
+          "text": "**Run the access check** on every system in [Systems and documents](#handover-access). Each failure goes on the gaps list today."
+        }
+      ]
+    },
+    {
+      "id": "week-1",
+      "title": "Week 1 · Learn the rhythm",
+      "summary": "Two new things a day at most.",
+      "tasks": [
+        { "id": "meet-stakeholders", "text": "**Meet Ravi, Joy and Andre** from [People](#handover-people)." },
+        { "id": "first-expenses", "text": "**Submit Thursday's expense claims** using the step guide." },
+        { "id": "read-decisions", "text": "**Read the decisions and rules** in [Rules, decisions and risks](#handover-knowledge)." }
+      ]
+    },
+    {
+      "id": "week-2",
+      "title": "Week 2 · Run it",
+      "summary": "Ask Dana for five minutes a day: what did you notice?",
+      "tasks": [
+        { "id": "run-diary-review", "text": "**Run the Friday diary review** with Dana." },
+        { "id": "close-gaps", "text": "**Close gaps**: fix the document, log the answer, or hand it to Dana." },
+        { "id": "cover-plan", "text": "**Agree diary cover** for your leave {TODO: who covers the diary when Marcus is away}." }
+      ]
+    },
+    {
+      "id": "yours",
+      "title": "Weeks 3–4 · It's yours",
+      "tasks": [
+        { "id": "board-pack-dry-run", "text": "**Prepare a dry run of the December board pack** with Joy, using the recording." },
+        { "id": "final-check", "text": "**Run the final check with Dana** and record her verdict." }
+      ]
+    }
+  ],
+  "recurring": [
+    { "id": "inbox", "text": "Triage Dana's inbox and flag anything for today", "every": "weekday", "time": "08:00" },
+    {
+      "id": "expense-approvals",
+      "text": "Submit Dana's expense claims for approval",
+      "every": "week",
+      "on": "thu",
+      "time": "11:00",
+      "detail": "Finance pays claims submitted by Thursday noon in the same week. Miss it and Dana's card statement goes unpaid for a week."
+    },
+    { "id": "diary-review", "text": "Review next week's diary with Dana", "every": "week", "on": "fri", "time": "15:00" },
+    { "id": "card-reconcile", "text": "Reconcile Dana's company card statement", "every": "month", "day": 5 },
+    {
+      "id": "board-pack",
+      "text": "Circulate the board pack through the portal",
+      "every": "quarter",
+      "day": 7,
+      "monthOfQuarter": 3,
+      "detail": "Board meets in the third week of March, June, September and December. Joy confirms the agenda a week before."
+    },
+    { "id": "agm", "text": "Book the AGM venue and send proxy forms", "every": "year", "date": "05-15" }
+  ],
+  "questions": [
+    {
+      "q": "Who approves spending above my limit?",
+      "a": "Ravi Campbell, the CFO, for anything over USD 2,000. Gifts over USD 250 go to Dana.",
+      "tag": "Money",
+      "see": "handover-decide"
+    },
+    {
+      "q": "What do I do if Dana's flight is cancelled?",
+      "a": "Rebook the next flight in the same class through the travel desk first, then tell her. Don't wait for approval.",
+      "tag": "If this happens",
+      "see": "handover-knowledge"
+    },
+    {
+      "q": "Can I book time with the board chair?",
+      "a": "No. Requests go through Dana, using the chair's meeting request template.",
+      "tag": "People",
+      "see": "handover-people"
+    },
+    {
+      "q": "Where are the passwords?",
+      "a": "In the Exec vault in the company password manager. IT adds you on day one.",
+      "tag": "Access",
+      "see": "handover-access"
+    },
+    { "q": "Until when can I ask Priya?", "a": "Until 27 November, weekdays 10:00 to 12:00, on WhatsApp.", "tag": "People" }
+  ],
+  "sections": [
+    {
+      "id": "how-dana-works",
+      "title": "How Dana works",
+      "body": "- Mornings are for thinking: no meetings before 10:00 unless she asks.\n- She reads WhatsApp, not email, after 18:00.\n- Fridays after 15:00 are meeting-free.\n\n> The full principal profile is in the documents list. Dana confirmed it with one correction."
+    },
+    {
+      "id": "confidentiality",
+      "title": "Confidentiality",
+      "body": "- Board papers go through the portal only, never as email attachments.\n- The personal calendar is for Dana, Sam and you. Nobody else sees it.\n\n!> Never forward a board pack, even internally."
+    },
+    {
+      "id": "handover-people",
+      "title": "People",
+      "body": "| Name | Role | Contact |\n|---|---|---|\n| Priya Nair | Outgoing assistant, Owner | priya.nair@example.com until 25 September |\n| Marcus Hale | Incoming assistant | marcus.hale@example.com |\n| Dana Whitfield | Principal | Through her own WhatsApp and email; she never opens the handover tool |\n| Helen Ortiz | Facilitator | HR business partner, helen.ortiz@example.com |\n\n### People to know\n\n| Name | Who they are | When to involve them | Contact |\n|---|---|---|---|\n| Ravi Campbell | Chief financial officer | Approves spend above the limits on the who-decides board, and the quarterly board budget. | Ext. 2210, or his assistant Kim |\n| Joy Lindo | Company secretary | Board calendar, board packs and minutes. Agree the pack timetable with her a month before each board meeting. | Ext. 2240 |\n| Elaine Brooks | Chair of the board | Only through Dana. Never book time with her directly; send requests with the template in the documents list. | Through her office manager, details in the protected contacts file |\n| Andre Clarke | Company driver | Airport runs and evening events. Give him flight numbers, not just times. | Mobile in the shared contacts |\n| Northstar Travel desk | The company's travel agency | Flights, hotels and rebooking when a trip changes. They hold Dana's travel preferences. | travel desk email in the booking portal |\n| Sam Whitfield | Dana's partner | Family dates go in the personal calendar. Check it before accepting anything in the evening or at weekends. | In the protected contacts file |"
+    },
+    {
+      "id": "handover-access",
+      "title": "Systems and documents",
+      "body": "| System | Used for | Credential kept in | Access from | Access check |\n|---|---|---|---|---|\n| Diary (Outlook) | Dana's work diary, with delegate access | Company single sign-on; no separate password | IT service desk, approved by Dana | Opens: pass; Can create: pass; Right level: pass |\n| Board portal | Board packs, minutes and the board calendar | Exec vault in the password manager, Board folder | TODO: confirm whether Joy or IT grants editor access | Opens: pass; Right level: pass |\n| Expenses tool | Submitting Dana's claims | Company single sign-on | Finance, Ravi Campbell's team | Opens: pass; Can create: pass |\n| Travel booking portal | Flights and hotels through Northstar Travel | Exec vault in the password manager, Travel folder | Northstar Travel account manager | Opens: pass; Can create: fail (Can see bookings but not create them since the agency changed licences) |\n\n### Documents\n\n| Document | Type | Where | Status |\n|---|---|---|---|\n| [Handover folder](https://drive.example.com/exec/handover-2026) | Folder |  | Final |\n| [One-page brief](https://drive.example.com/exec/handover-2026/brief) | One-page brief |  | Final |\n| [Principal profile](https://drive.example.com/exec/handover-2026/profile) | Principal profile |  | Final |\n| [Recording: preparing the board pack](https://drive.example.com/exec/handover-2026/board-pack-recording) | Recording |  | Final |\n| [Step guide: Thursday expense claims](https://drive.example.com/exec/handover-2026/expenses-guide) | Step guide |  | Final |\n| [Meeting request template for the chair](https://drive.example.com/exec/templates/chair-meeting-request) | Template |  | Final |\n| Personal contacts and travel documents list | Protected file | Locked drawer in Dana's office; Helen in HR holds the second key |  |\n| [Visa invitation letter](https://drive.example.com/exec/templates/visa-letter) | Other |  | Draft |"
+    },
+    {
+      "id": "handover-knowledge",
+      "title": "Rules, decisions and risks",
+      "body": "### When this happens\n\n- If the chair's office calls, put them straight through to Dana, even in a meeting. (Board)\n- If a flight is cancelled while Dana is travelling, rebook the next flight in the same class first, then tell her. (Principal travelling)\n- If a meeting request mentions a journalist, decline politely and copy Communications.\n- If Dana can't be reached and something urgent arrives, call Ravi Campbell, then Joy Lindo. (Emergency plan)\n\n### Decisions\n\n| Date | Decision | Why |\n|---|---|---|\n| 2026-03-02 | Fridays after 15:00 stay meeting-free | Dana uses the time to plan the week ahead. |\n| 2026-06-10 | Board packs go out through the portal only, never by email | A pack was forwarded by mistake in May. |\n| 2026-09-21 | Dana holds the diary herself from 26 September to 2 October | No overlap, and nobody else has delegate access. |\n\n### Risks\n\n| Risk | Kind | Severity | When |\n|---|---|---|---|\n| Weekly expense claims miss Finance's Thursday cut-off | Recurring work | High | Every Thursday |\n| Board pack late or sent the wrong way | Occasional | High | Quarterly, the 7th of Mar, Jun, Sep and Dec |\n| AGM proxy forms not sent in time | Occasional | Medium | Every year, 15 May |\n| Only Priya knows how the chair likes meeting requests worded | Only one person knows | Medium |  |\n| Visa invitation letters for overseas guests | Occasional | Low | Rare |"
+    },
+    {
+      "id": "handover-open",
+      "title": "Open items",
+      "body": "### In progress\n\n| What | Owner | Due |\n|---|---|---|\n| Book the venue for the Q4 leadership offsite | Marcus Hale | 2026-12-04 |\n| Renew the airline lounge memberships before they lapse | Marcus Hale | 2026-12-01 |\n\n### Gaps still open\n\n- **Blocks work:** Travel portal: Marcus can see bookings but not create them since the agency changed licences."
+    },
+    {
+      "id": "handover-decide",
+      "title": "Who decides what",
+      "body": "| Decision | Who decides | Limit | Approver |\n|---|---|---|---|\n| Accept or decline internal meeting requests | Decide alone |  |  |\n| Book travel and hotels | Decide alone | USD 2,000 |  |\n| Spend above USD 2,000 on travel or events | Check first |  | Ravi Campbell |\n| Gifts and hospitality for external guests | Check first | USD 250 | Dana Whitfield |\n| Anything involving the board chair | Always the principal |  |  |\n| Sign off the quarterly board budget | Always the principal |  | Dana Whitfield |"
+    },
+    {
+      "id": "handover-plan",
+      "title": "The handover plan",
+      "body": "### Prepare\n\n| Step | Who | Status |\n|---|---|---|\n| Confirm the dates, track and folder link | Priya Nair | Done |\n| Do the eight-minute practice run first | Priya Nair | Not needed: Priya did the practice run when she set up an earlier handover. |\n| Run the day-one scoping session with the principal | Priya Nair | Done |\n| Answer: what breaks if Priya is not here on Monday? | Dana Whitfield | Done |\n| Draft the one-page brief and add its link | Priya Nair | Done |\n| List every system, where its credential lives and who grants access | Priya Nair | Done |\n| Answer the ask: Profile check | Dana Whitfield | Done |\n| Send the access approvals ask | Priya Nair | Done |\n| Give every thing in progress an actual completion date and an interim owner, must-haves first | Priya Nair | Done |\n| Answer the ask: Who decides what | Dana Whitfield | Done |\n| Hold the handback session with the principal | Priya Nair | Done |\n| Sign your part of the handover before you leave | Priya Nair | Done |\n\n### Incoming starts\n\n| Step | Who | Status |\n|---|---|---|\n| Run the access check on every system and link | Marcus Hale | Done |\n| Meet the three closest stakeholders | Marcus Hale | Done |\n\n### Incoming takes over\n\n| Step | Who | Status |\n|---|---|---|\n| Run the final check with the principal and record her verdict | Marcus Hale | Done |\n| Sign off | Marcus Hale | Done |\n| Answer the ask: Sign-off | Dana Whitfield | Done |\n\n### After\n\n| Step | Who | Status |\n|---|---|---|\n| Run the first follow-up check | Priya Nair | Done |\n| Run the second follow-up check | Priya Nair | Done |\n| 30-day check-in with the principal | Marcus Hale | Done |\n| 60-day check-in with the principal | Marcus Hale | Open |\n| 90-day check-in and handover notes review | Marcus Hale | Open |"
+    }
+  ],
+  "plan": {
+    "prepStart": "2026-08-31",
+    "firstDay": "2026-10-05",
+    "lastDay": "2026-09-25",
+    "track": "light",
+    "practice": false,
+    "template": "handover-desk/2026-08",
+    "steps": [
+      {
+        "id": "p-own-1",
+        "role": "owner",
+        "phase": "prepare",
+        "title": "Confirm the dates, track and folder link",
+        "why": "Everyone works from the same three dates.",
+        "status": "done"
+      },
+      {
+        "id": "p-out-practice",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Do the eight-minute practice run first",
+        "status": "na",
+        "reason": "Priya did the practice run when she set up an earlier handover."
+      },
+      {
+        "id": "p-out-1",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Run the day-one scoping session with the principal",
+        "why": "The risk list it produces drives every step after it.",
+        "status": "done"
+      },
+      {
+        "id": "ask-breaks",
+        "role": "principal",
+        "phase": "prepare",
+        "title": "Answer: what breaks if Priya is not here on Monday?",
+        "status": "done",
+        "ask": "breaks"
+      },
+      {
+        "id": "p-out-3",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Draft the one-page brief and add its link",
+        "why": "It is the one place the incoming assistant looks first.",
+        "status": "done",
+        "gate": "ready"
+      },
+      {
+        "id": "p-out-4",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "List every system, where its credential lives and who grants access",
+        "why": "Access breaks on day one when nobody listed it.",
+        "status": "done",
+        "gate": "ready"
+      },
+      { "id": "ask-profile", "role": "principal", "phase": "prepare", "title": "Answer the ask: Profile check", "status": "done", "ask": "profile" },
+      {
+        "id": "p-out-7",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Send the access approvals ask",
+        "why": "Approvals take days, and day one cannot wait for them.",
+        "status": "done",
+        "gate": "ready"
+      },
+      {
+        "id": "n-out-1",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Give every thing in progress an actual completion date and an interim owner, must-haves first",
+        "status": "done",
+        "gate": "ready"
+      },
+      { "id": "ask-limits", "role": "principal", "phase": "prepare", "title": "Answer the ask: Who decides what", "status": "done", "ask": "limits" },
+      {
+        "id": "n-out-2",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Hold the handback session with the principal",
+        "why": "Everything passes to the principal and the documents.",
+        "status": "done",
+        "gate": "ready"
+      },
+      {
+        "id": "n-out-4",
+        "role": "outgoing",
+        "phase": "prepare",
+        "title": "Sign your part of the handover before you leave",
+        "status": "done",
+        "gate": "sign"
+      },
+      {
+        "id": "s-in-2",
+        "role": "incoming",
+        "phase": "shadow",
+        "title": "Run the access check on every system and link",
+        "why": "Each failure becomes a gap today, not a surprise next week.",
+        "status": "done",
+        "gate": "ready"
+      },
+      {
+        "id": "s-in-6",
+        "role": "incoming",
+        "phase": "shadow",
+        "title": "Meet the three closest stakeholders",
+        "why": "Relationships transfer more slowly than tasks.",
+        "status": "done"
+      },
+      {
+        "id": "a-own-1",
+        "role": "owner",
+        "phase": "after",
+        "title": "Run the first follow-up check",
+        "why": "A good handover still surfaces 3 to 8 gaps.",
+        "status": "done"
+      },
+      {
+        "id": "w-in-n3",
+        "role": "incoming",
+        "phase": "swap",
+        "title": "Run the final check with the principal and record her verdict",
+        "status": "done",
+        "gate": "done"
+      },
+      { "id": "w-in-4", "role": "incoming", "phase": "swap", "title": "Sign off", "status": "done", "gate": "sign" },
+      {
+        "id": "ask-signoff",
+        "role": "principal",
+        "phase": "swap",
+        "title": "Answer the ask: Sign-off",
+        "status": "done",
+        "ask": "signoff",
+        "gate": "sign"
+      },
+      {
+        "id": "a-own-2",
+        "role": "owner",
+        "phase": "after",
+        "title": "Run the second follow-up check",
+        "why": "Fewer gaps than the first check means the fixes held.",
+        "status": "done"
+      },
+      {
+        "id": "a-in-30",
+        "role": "incoming",
+        "phase": "after",
+        "title": "30-day check-in with the principal",
+        "why": "Catch drift while it is cheap.",
+        "status": "done"
+      },
+      {
+        "id": "a-in-60",
+        "role": "incoming",
+        "phase": "after",
+        "title": "60-day check-in with the principal",
+        "why": "Confirm the decision limits still fit.",
+        "status": "open"
+      },
+      { "id": "a-in-90", "role": "incoming", "phase": "after", "title": "90-day check-in and handover notes review", "status": "open" }
+    ]
+  },
+  "asks": [
+    {
+      "id": "breaks",
+      "minutes": 15,
+      "draft": "Here is the risk list I drafted from the last year of work. Tell me what is missing, and which three items would hurt most if they failed.",
+      "replyBy": "2026-09-04",
+      "default": "The risk list stands as drafted, ranked by Priya.",
+      "status": "confirmed",
+      "sent": "2026-09-01T16:00:00-05:00",
+      "answered": "2026-09-03T07:45:00-05:00"
+    },
+    {
+      "id": "profile",
+      "minutes": 15,
+      "draft": "I drafted a profile of how you work. Each line is marked observed. Correct anything wrong, then confirm.",
+      "replyBy": "2026-09-09",
+      "default": "Every line stays marked observed, not confirmed.",
+      "status": "corrected",
+      "correction": "I read WhatsApp after 18:00, not email. Please fix the evenings line.",
+      "sent": "2026-09-07T09:10:00-05:00",
+      "answered": "2026-09-08T19:30:00-05:00"
+    },
+    {
+      "id": "access",
+      "minutes": 5,
+      "draft": "Marcus will need access to the systems below. Approve them in one go so his first day works.",
+      "replyBy": "2026-09-14",
+      "default": "Requests go ahead as listed. Anything that needs your own login waits for you.",
+      "status": "confirmed",
+      "sent": "2026-09-09T11:00:00-05:00",
+      "answered": "2026-09-09T13:12:00-05:00"
+    },
+    {
+      "id": "limits",
+      "minutes": 15,
+      "draft": "These are the decisions I make today, sorted into decide alone, check first, and always you. Move any card that is in the wrong column, then confirm.",
+      "replyBy": "2026-09-16",
+      "default": "Marcus works to my documented limits, and you are told in writing.",
+      "status": "confirmed",
+      "sent": "2026-09-11T10:00:00-05:00",
+      "answered": "2026-09-14T08:20:00-05:00"
+    },
+    {
+      "id": "confid",
+      "minutes": 10,
+      "draft": "These are the confidentiality rules I follow: what never leaves the office, who may see the diary, what I never forward. Confirm or correct them.",
+      "replyBy": "2026-09-22",
+      "default": "The rules stand as drafted.",
+      "status": "defaulted",
+      "sent": "2026-09-17T09:00:00-05:00",
+      "answered": "2026-09-23T00:00:00-05:00"
+    },
+    {
+      "id": "emergency",
+      "minutes": 10,
+      "draft": "If you cannot be reached and something urgent arrives, this is who I call and in what order. Confirm or correct it.",
+      "replyBy": "2026-09-24",
+      "default": "The emergency plan stands as drafted.",
+      "status": "confirmed",
+      "sent": "2026-09-21T09:00:00-05:00",
+      "answered": "2026-09-21T17:40:00-05:00"
+    },
+    {
+      "id": "signoff",
+      "minutes": 10,
+      "draft": "The final check is done and both assistants have signed. Countersign the handover record.",
+      "replyBy": "2026-10-20",
+      "status": "confirmed",
+      "sent": "2026-10-16T15:30:00-05:00",
+      "answered": "2026-10-19T08:05:00-05:00"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "pack-paper-copies",
+      "text": "Which board members get the pack on paper as well as through the portal?",
+      "blocks": false,
+      "added": "2026-10-06T10:15:00-05:00",
+      "addedBy": "incoming",
+      "closed": { "how": "answered", "at": "2026-10-07T09:00:00-05:00", "by": "incoming" }
+    },
+    {
+      "id": "chair-template",
+      "text": "Couldn't find the template for meeting requests to the chair.",
+      "blocks": false,
+      "added": "2026-10-05T14:02:00-05:00",
+      "addedBy": "incoming",
+      "closed": { "how": "fixed", "at": "2026-10-06T11:30:00-05:00", "by": "outgoing", "fix": "https://drive.example.com/exec/templates/chair-meeting-request" }
+    },
+    {
+      "id": "evenings-line",
+      "text": "Profile correction: Dana reads WhatsApp after 18:00, not email.",
+      "added": "2026-09-08T19:31:00-05:00",
+      "addedBy": "principal",
+      "visibleTo": ["outgoing", "owner", "principal"],
+      "closed": { "how": "fixed", "at": "2026-09-09T08:40:00-05:00", "by": "outgoing", "fix": "Principal profile, evenings line" }
+    },
+    {
+      "id": "friday-review",
+      "text": "Keep the Friday diary review now Dana travels most Fridays?",
+      "added": "2026-10-09T12:00:00-05:00",
+      "addedBy": "incoming",
+      "closed": { "how": "principal", "at": "2026-10-09T16:00:00-05:00", "by": "incoming" }
+    },
+    {
+      "id": "travel-booking",
+      "text": "Travel portal: Marcus can see bookings but not create them since the agency changed licences.",
+      "blocks": true,
+      "added": "2026-10-21T09:20:00-05:00",
+      "addedBy": "incoming"
+    }
+  ],
+  "inProgress": [
+    {
+      "id": "offsite-venue",
+      "text": "Book the venue for the Q4 leadership offsite",
+      "owner": "incoming",
+      "due": "2026-12-04",
+      "added": "2026-09-15T10:00:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "q3-minutes",
+      "text": "Chase sign-off of the Q3 board minutes with Joy",
+      "owner": "principal",
+      "due": "2026-10-02",
+      "added": "2026-09-15T10:02:00-05:00",
+      "addedBy": "outgoing",
+      "closed": { "how": "done", "at": "2026-10-01T15:00:00-05:00", "by": "principal" }
+    },
+    {
+      "id": "lounge-renewal",
+      "text": "Renew the airline lounge memberships before they lapse",
+      "owner": "incoming",
+      "due": "2026-12-01",
+      "added": "2026-09-15T10:05:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    }
+  ],
+  "rules": [
+    {
+      "id": "chair-calls",
+      "text": "If the chair's office calls, put them straight through to Dana, even in a meeting.",
+      "situation": "Board",
+      "added": "2026-09-10T11:00:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "flight-cancelled",
+      "text": "If a flight is cancelled while Dana is travelling, rebook the next flight in the same class first, then tell her.",
+      "situation": "Principal travelling",
+      "added": "2026-09-10T11:05:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "press",
+      "text": "If a meeting request mentions a journalist, decline politely and copy Communications.",
+      "added": "2026-09-10T11:08:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    },
+    {
+      "id": "unreachable",
+      "text": "If Dana can't be reached and something urgent arrives, call Ravi Campbell, then Joy Lindo.",
+      "situation": "Emergency plan",
+      "added": "2026-09-21T17:45:00-05:00",
+      "addedBy": "outgoing"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "friday-pm",
+      "text": "Fridays after 15:00 stay meeting-free",
+      "reason": "Dana uses the time to plan the week ahead.",
+      "date": "2026-03-02",
+      "added": "2026-09-04T09:00:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "portal-only",
+      "text": "Board packs go out through the portal only, never by email",
+      "reason": "A pack was forwarded by mistake in May.",
+      "date": "2026-06-10",
+      "added": "2026-09-04T09:05:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "dana-holds-desk",
+      "text": "Dana holds the diary herself from 26 September to 2 October",
+      "reason": "No overlap, and nobody else has delegate access.",
+      "date": "2026-09-21",
+      "added": "2026-09-21T16:30:00-05:00",
+      "addedBy": "outgoing"
+    }
+  ],
+  "risks": [
+    {
+      "id": "expenses",
+      "text": "Weekly expense claims miss Finance's Thursday cut-off",
+      "list": "weekly",
+      "severity": "high",
+      "treatment": "record",
+      "evidence": {
+        "cadence": "weekly",
+        "occurrences": 46,
+        "hours": 23,
+        "firstSeen": "2025-10-02",
+        "lastSeen": "2026-09-17",
+        "source": "Time tracker export, Oct 2025 to Sep 2026"
+      },
+      "recurring": "expense-approvals",
+      "added": "2026-09-01T12:00:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    },
+    {
+      "id": "board-pack",
+      "text": "Board pack late or sent the wrong way",
+      "list": "occasional",
+      "severity": "high",
+      "treatment": "write",
+      "evidence": {
+        "cadence": "quarterly",
+        "occurrences": 4,
+        "hours": 36,
+        "firstSeen": "2025-12-07",
+        "lastSeen": "2026-09-07",
+        "source": "Time tracker export, Oct 2025 to Sep 2026"
+      },
+      "recurring": "board-pack",
+      "added": "2026-09-01T12:01:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    },
+    {
+      "id": "agm",
+      "text": "AGM proxy forms not sent in time",
+      "list": "occasional",
+      "severity": "medium",
+      "treatment": "brief",
+      "evidence": {
+        "cadence": "annual",
+        "occurrences": 1,
+        "hours": 6,
+        "firstSeen": "2026-05-15",
+        "lastSeen": "2026-05-15",
+        "source": "Time tracker export, Oct 2025 to Sep 2026"
+      },
+      "recurring": "agm",
+      "added": "2026-09-01T12:02:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "chair-wording",
+      "text": "Only Priya knows how the chair likes meeting requests worded",
+      "list": "spof",
+      "severity": "medium",
+      "treatment": "write",
+      "added": "2026-09-03T08:00:00-05:00",
+      "addedBy": "principal"
+    },
+    {
+      "id": "visa-letters",
+      "text": "Visa invitation letters for overseas guests",
+      "list": "occasional",
+      "severity": "low",
+      "treatment": "brief",
+      "evidence": {
+        "cadence": "rare",
+        "occurrences": 2,
+        "hours": 3,
+        "firstSeen": "2026-02-11",
+        "lastSeen": "2026-07-20",
+        "source": "Time tracker export, Oct 2025 to Sep 2026"
+      },
+      "added": "2026-09-01T12:03:00-05:00",
+      "addedBy": "outgoing",
+      "aiDrafted": true
+    }
+  ],
+  "systems": [
+    {
+      "id": "diary",
+      "name": "Diary (Outlook)",
+      "purpose": "Dana's work diary, with delegate access",
+      "credentialLocation": "Company single sign-on; no separate password",
+      "grantedBy": "IT service desk, approved by Dana",
+      "checks": {
+        "opens": { "result": "pass", "at": "2026-10-05T09:30:00-05:00" },
+        "create": { "result": "pass", "at": "2026-10-05T09:32:00-05:00" },
+        "level": { "result": "pass", "at": "2026-10-05T09:35:00-05:00" }
+      },
+      "added": "2026-09-02T10:00:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "board-portal",
+      "name": "Board portal",
+      "purpose": "Board packs, minutes and the board calendar",
+      "credentialLocation": "Exec vault in the password manager, Board folder",
+      "grantedBy": "TODO: confirm whether Joy or IT grants editor access",
+      "checks": {
+        "opens": { "result": "pass", "at": "2026-10-05T09:40:00-05:00" },
+        "level": { "result": "pass", "note": "Editor access granted on 7 October", "at": "2026-10-07T10:00:00-05:00" }
+      },
+      "added": "2026-09-02T10:05:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "expenses-tool",
+      "name": "Expenses tool",
+      "purpose": "Submitting Dana's claims",
+      "credentialLocation": "Company single sign-on",
+      "grantedBy": "Finance, Ravi Campbell's team",
+      "checks": { "opens": {"result": "pass", "at": "2026-10-05T09:45:00-05:00"}, "create": {"result": "pass", "at": "2026-10-05T09:47:00-05:00"} },
+      "added": "2026-09-02T10:10:00-05:00",
+      "addedBy": "outgoing"
+    },
+    {
+      "id": "travel-portal",
+      "name": "Travel booking portal",
+      "purpose": "Flights and hotels through Northstar Travel",
+      "credentialLocation": "Exec vault in the password manager, Travel folder",
+      "grantedBy": "Northstar Travel account manager",
+      "checks": {
+        "opens": { "result": "pass", "at": "2026-10-05T09:50:00-05:00" },
+        "create": { "result": "fail", "note": "Can see bookings but not create them since the agency changed licences", "at": "2026-10-21T09:15:00-05:00" }
+      },
+      "added": "2026-09-02T10:15:00-05:00",
+      "addedBy": "outgoing"
+    }
+  ],
+  "documents": [
+    {
+      "id": "folder",
+      "title": "Handover folder",
+      "url": "https://drive.example.com/exec/handover-2026",
+      "type": "folder",
+      "status": "final",
+      "owner": "owner"
+    },
+    {
+      "id": "one-page-brief",
+      "title": "One-page brief",
+      "url": "https://drive.example.com/exec/handover-2026/brief",
+      "type": "brief",
+      "status": "final",
+      "owner": "outgoing",
+      "checks": { "opens": {"result": "pass", "at": "2026-10-05T09:20:00-05:00"} }
+    },
+    {
+      "id": "principal-profile",
+      "title": "Principal profile",
+      "url": "https://drive.example.com/exec/handover-2026/profile",
+      "type": "profile",
+      "status": "final",
+      "owner": "outgoing",
+      "visibleTo": ["outgoing", "owner", "principal", "incoming"]
+    },
+    {
+      "id": "board-pack-recording",
+      "title": "Recording: preparing the board pack",
+      "url": "https://drive.example.com/exec/handover-2026/board-pack-recording",
+      "type": "recording",
+      "status": "final",
+      "owner": "outgoing"
+    },
+    {
+      "id": "expenses-guide",
+      "title": "Step guide: Thursday expense claims",
+      "url": "https://drive.example.com/exec/handover-2026/expenses-guide",
+      "type": "guide",
+      "status": "final",
+      "owner": "outgoing"
+    },
+    {
+      "id": "chair-template-doc",
+      "title": "Meeting request template for the chair",
+      "url": "https://drive.example.com/exec/templates/chair-meeting-request",
+      "type": "template",
+      "status": "final",
+      "owner": "incoming"
+    },
+    {
+      "id": "protected-contacts",
+      "title": "Personal contacts and travel documents list",
+      "location": "Locked drawer in Dana's office; Helen in HR holds the second key",
+      "type": "protected",
+      "owner": "principal"
+    },
+    {
+      "id": "visa-letter-draft",
+      "title": "Visa invitation letter",
+      "url": "https://drive.example.com/exec/templates/visa-letter",
+      "type": "other",
+      "status": "draft",
+      "owner": "incoming"
+    }
+  ],
+  "decide": {
+    "confirmed": true,
+    "confirmedAt": "2026-09-14T08:20:00-05:00",
+    "cards": [
+      { "id": "internal-meetings", "text": "Accept or decline internal meeting requests", "column": "alone" },
+      { "id": "travel-booking", "text": "Book travel and hotels", "column": "alone", "limit": {"amount": 2000, "currency": "USD"} },
+      { "id": "spend-over-limit", "text": "Spend above USD 2,000 on travel or events", "column": "check", "approver": {"stakeholder": "cfo"} },
+      {
+        "id": "gifts",
+        "text": "Gifts and hospitality for external guests",
+        "column": "check",
+        "limit": { "amount": 250, "currency": "USD" },
+        "approver": { "role": "principal" },
+        "movedByPrincipal": true
+      },
+      { "id": "chair-anything", "text": "Anything involving the board chair", "column": "principal" },
+      { "id": "board-budget", "text": "Sign off the quarterly board budget", "column": "principal", "approver": {"role": "principal"} }
+    ]
+  },
+  "finalCheck": [
+    { "id": "recurring", "result": "pass", "at": "2026-10-15T14:00:00-05:00" },
+    { "id": "in-progress", "result": "pass", "at": "2026-10-15T14:05:00-05:00" },
+    { "id": "decisions", "result": "pass", "at": "2026-10-15T14:08:00-05:00" },
+    { "id": "context", "result": "pass", "at": "2026-10-15T14:12:00-05:00" },
+    { "id": "access", "result": "pass", "at": "2026-10-15T14:15:00-05:00" },
+    {
+      "id": "exceptions",
+      "result": "fail",
+      "owner": "incoming",
+      "due": "2026-12-11",
+      "note": "AGM proxy forms and visa letters are not written down yet. Dana agreed to sign off with both due before the December board.",
+      "at": "2026-10-15T14:20:00-05:00"
+    },
+    { "id": "decide", "result": "pass", "at": "2026-10-15T14:25:00-05:00" }
+  ],
+  "signoff": {
+    "outgoing": "2026-09-25T16:40:00-05:00",
+    "incoming": "2026-10-16T15:10:00-05:00",
+    "principal": "2026-10-19T08:05:00-05:00",
+    "frozen": "2026-10-19",
+    "notes": [
+      {
+        "id": "travel-licence",
+        "text": "Travel portal booking access lapsed when the agency changed licences. On the gaps list; Marcus books by email until it is fixed.",
+        "role": "incoming",
+        "at": "2026-10-21T09:30:00-05:00"
+      },
+      {
+        "id": "checkin-moved",
+        "text": "Dana asked to move the 60-day check-in to the week of 14 December.",
+        "role": "incoming",
+        "at": "2026-11-12T10:00:00-05:00"
+      }
+    ]
+  },
+  "followUps": [
+    {
+      "id": "f1",
+      "answers": [
+        "Which board members get paper packs, and where the chair's template was.",
+        "Nearly missed Thursday's expense cut-off: the reminder was in Priya's calendar, not the shared one.",
+        "Dana still rebooks her own flights when a trip changes."
+      ],
+      "gapsFound": 6,
+      "gapsFixed": 4,
+      "at": "2026-10-09T15:00:00-05:00"
+    },
+    {
+      "id": "f2",
+      "answers": ["How to word a visa invitation letter.", "Travel portal booking access lapsed.", "Nothing."],
+      "gapsFound": 2,
+      "gapsFixed": 1,
+      "at": "2026-10-23T15:00:00-05:00"
+    }
+  ],
+  "catchUps": [
+    { "id": "cu-2026-10-05", "at": "2026-10-05T16:30:00-05:00" },
+    { "id": "cu-2026-10-06", "at": "2026-10-06T16:30:00-05:00" },
+    { "id": "cu-2026-10-07", "at": "2026-10-07T16:30:00-05:00" },
+    { "id": "cu-2026-10-08", "at": "2026-10-08T16:30:00-05:00" },
+    { "id": "cu-2026-10-09", "at": "2026-10-09T16:30:00-05:00" }
+  ],
+  "history": [
+    { "id": "h-created", "at": "2026-08-28T15:00:00-05:00", "role": "owner", "source": "app", "text": "Handover created: no overlap, light track." },
+    {
+      "id": "h-import",
+      "at": "2026-09-01T12:05:00-05:00",
+      "role": "outgoing",
+      "source": "ai",
+      "text": "Imported 5 risks from the time tracker export, Oct 2025 to Sep 2026."
+    },
+    {
+      "id": "h-limits",
+      "at": "2026-09-14T08:20:00-05:00",
+      "role": "principal",
+      "source": "app",
+      "text": "Dana moved the gifts card to check first and confirmed the board."
+    },
+    { "id": "h-handback", "at": "2026-09-21T16:30:00-05:00", "role": "outgoing", "source": "app", "text": "Handback session held with Dana." },
+    { "id": "h-out-signed", "at": "2026-09-25T16:40:00-05:00", "role": "outgoing", "source": "app", "text": "Priya signed her part." },
+    {
+      "id": "h-final",
+      "at": "2026-10-15T14:25:00-05:00",
+      "role": "incoming",
+      "source": "app",
+      "text": "Final check recorded: six pass, one fail with a date."
+    },
+    { "id": "h-countersigned", "at": "2026-10-19T08:05:00-05:00", "role": "principal", "source": "app", "text": "Dana countersigned. Record frozen." }
+  ],
+  "rendered": ["handover-people", "handover-access", "handover-knowledge", "handover-open", "handover-decide", "handover-plan"]
+}

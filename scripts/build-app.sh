@@ -28,6 +28,7 @@ lipo -create -output "$APP/Contents/MacOS/Handover" build/bin/Handover-arm64 bui
 cp build/icon/Handover.icns "$APP/Contents/Resources/Handover.icns"
 cp app/web/index.html app/web/core.js "$APP/Contents/Resources/web/"
 cp site/examples/sample.handover "$APP/Contents/Resources/web/sample.handover"
+cp site/examples/ea-no-overlap.handover "$APP/Contents/Resources/web/ea-no-overlap.handover"
 cp site/prompt.md "$APP/Contents/Resources/web/prompt.md"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" -e "s/__BUNDLE_ID__/$BUNDLE_ID/" app/macos/Info.plist > "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist" >/dev/null

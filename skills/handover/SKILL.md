@@ -1,20 +1,21 @@
 ---
 name: handover
-description: Create, convert, check, edit and merge role handover files (.handover, the open Handover format 1.x, plain JSON). Use when someone is leaving or changing a role and wants to hand it over, asks for a handover document, onboarding plan, "what I do every week" list, role runbook or knowledge transfer, wants to turn existing notes, docs or an SOP into a .handover file, or has a .handover or handover JSON file to validate, fill gaps in, update, preview the schedule of, strip of progress before sharing, or merge progress from. The files open in the free Handover Mac app as a guided first month, a daily dashboard of what's due and a searchable reference.
+description: Create, convert, check, edit and merge role handover files (.handover, the open Handover format 1.x, plain JSON). Use when someone is leaving or changing a role and wants to hand it over, asks for a handover document, onboarding plan, "what I do every week" list, role runbook or knowledge transfer, wants to turn existing notes, docs or an SOP into a .handover file, or has a .handover or handover JSON file to validate, fill gaps in, update, preview the schedule of, export for a newcomer or as a full record, or merge progress from. Format 1.1 also carries an assistant handover's full record: people, stakeholders, plan and asks, records (gaps, rules, decisions, risks, systems, documents), who decides what, sign-off and check-ins. The files open in the free Handover Mac app as a guided first month, a daily dashboard of what's due and a searchable reference.
 ---
 
 # Handover files
 
-A `.handover` file is UTF-8 JSON describing how to take over a role: a first-month **path** of stages and tasks, **recurring** duties on a schedule, common **questions** with short answers, and reference **sections**. It is an open format: spec in `references/SPEC.md`, JSON Schema in `references/schema.json`, a complete example in `references/sample.handover`. The Handover app (https://incrhst.github.io/handover/) opens these files; any other tool can read them too.
+A `.handover` file is UTF-8 JSON describing how to take over a role: a first-month **path** of stages and tasks, **recurring** duties on a schedule, common **questions** with short answers, and reference **sections**. It is an open format: spec in `references/SPEC.md`, JSON Schema in `references/schema.json`, a 1.0 example in `references/sample.handover` and a full 1.1 example (an executive assistant handover with no overlap) in `references/ea-no-overlap.handover`. The Handover app (https://incrhst.github.io/handover/) opens these files; any other tool can read them too.
 
 ## Rules that always apply
 
-1. **No secrets, ever.** Never write passwords, PINs, API keys, tokens, card or bank numbers, or personal health or financial details into a handover file, even if the user pastes them. Write where the secret is kept ("in the shared password manager, Finance folder"). If you drop something for this reason, tell the user.
+1. **No secrets, ever.** Never write passwords, PINs, API keys, tokens, card or bank numbers, or personal health or financial details into any field of a handover file, even if the user pastes them. Systems record where a credential is kept (`credentialLocation`: "in the shared password manager, Finance folder") and who grants access (`grantedBy`), never the credential. A `limit` is a business limit, never a balance. If you drop something for this reason, tell the user.
 2. **Never guess.** Information you don't have becomes a gap: text starting `TODO:` (to the end of that line or table cell) or `{TODO: what's missing}` inside a sentence. The app counts gaps and shows them in yellow, so the author can fill them.
 3. **Validate before you hand the file back.** Run `node scripts/handover.cjs check <file>` (paths are relative to this skill's folder). Fix every error it reports, then run it again.
-4. **Keep `id` stable.** When updating an existing handover, never change its top-level `id` or the ids of tasks and recurring duties that still exist: the reader's progress is keyed on them.
+4. **Keep `id` stable.** When updating an existing handover, never change its top-level `id` or the ids of tasks, recurring duties or 1.1 items that still exist: progress and references are keyed on them.
+5. **Store facts, not derived values.** Never write step dates, gate status, overlap, the ask minute budget or at-risk flags: tools work them out (SPEC section 15).
 
-## Format essentials (version 1.0)
+## Format essentials (1.0, still valid in 1.1)
 
 Top level: `handover` ("1.0", required), `id` (required), `title` (required), and optionally `$schema` ("https://incrhst.github.io/handover/schema/v1.json"), `summary`, `from` {`name`, `role`, `contact`, `availableUntil`}, `updated`, `timezone` (IANA, e.g. "America/Jamaica"), `settings` {`dailyExportTime`}, `path`, `recurring`, `questions`, `sections`, `progress`.
 
@@ -31,17 +32,32 @@ Top level: `handover` ("1.0", required), `id` (required), `title` (required), an
   - A rule the format can't express ("the Friday before the 25th if it's a weekend") goes in `detail`; pick the nearest schedule for `every`.
 - **Question**: `q`, `a` required; optional `id`, `tag` (short category such as "Money" or "If this happens"), `see`.
 - **Section**: `id`, `title`, `body` required. One topic each: systems and access, people, money, suppliers, decision log, "if this happens", glossary.
-- **Extensions**: any field starting `x-` is allowed anywhere and must be preserved when you rewrite a file. Any other unknown field is an error in 1.0.
+- **Extensions**: any field starting `x-` is allowed anywhere and must be preserved when you rewrite a file. Any other unknown field is an error for the version the file declares, and a warning for a newer 1.x.
 - **Markdown in text fields**: `#`–`###` headings, paragraphs, `-` and `1.` lists, tables with a `|---|` line under the header, `**bold**`, `*italic*`, `` `code` ``, links `[text](https://…)` or `[text](#section-id)`, `> ` note, `!> ` warning. No raw HTML.
 - **Progress** (optional, one reader's): `firstSeen`, `tasks` {task id: when}, `recurring` {"id@YYYY-MM-DD": when}, `notes`, `updated`. Leave it out when sharing with someone new.
 
-Read `references/SPEC.md` when you need the exact rules, such as overdue logic or versioning.
+## What 1.1 adds
+
+Set `"handover": "1.1"` to use any of these (all optional). `references/ea-no-overlap.handover` uses every one; copy its shapes.
+
+- **People**: `people[]` {`id`, `name`, `roles`} with roles `outgoing`, `incoming`, `principal`, `owner`, `facilitator` (each held by one person); `stakeholders[]` {`id`, `name`, `relationship`, `involve`, `contact`, `contactVisibleTo`}. `from` gains `hours` and `paid`.
+- **Process**: `plan` {`prepStart`, `lastDay`, `firstDay`, `track` light|full, `practice`, `template`, `steps[]`}; steps have `id`, `role`, `phase`, `title`, `status` open|done|na (na needs `reason`) and optional `gate` ready|done|sign. `asks[]` are the seven questions to the principal: `breaks`, `profile`, `access`, `limits`, `confid`, `emergency`, `signoff`.
+- **Records**, each a list of items with `id` plus optional `added`, `addedBy`, `aiDrafted`, `visibleTo`, `closed` {`how`, `at`, `by`, `fix`}: `gaps` (`blocks`), `inProgress` (`owner`, `due`), `rules` (`situation`), `decisions` (`reason`, `date`), `risks` (`list` weekly|occasional|spof, `severity`, `treatment`, `evidence`, `recurring`), `systems` (`credentialLocation`, `grantedBy`, `checks`), `documents` (`url` or `location`, `type`, `status`).
+- **A risk on an exact day** is a `recurring` duty with the schedule plus a risk that names it in `recurring`. Don't put the schedule in the risk.
+- **Who decides**: `decide` {`confirmed`, `cards[]`}; a card has `column` alone|check|principal, optional `limit` {`amount`, `currency`} and `approver` {`role`} or {`stakeholder`}.
+- **Finishing**: `finalCheck[]` (seven fixed ids; a `fail` needs `owner` and `due`), `signoff` (who signed, `frozen`, later `notes`), `followUps`, `catchUps`, `history`.
+- **Sharing**: `audience` (roles the file is for) and `profile` (`newcomer` or `record`). An item with `visibleTo` must only appear in a file whose whole audience is in it; a file without `audience` must have no `visibleTo` at all.
+- **For 1.0 readers**: `rendered` lists the `sections` generated from the structured data. Regenerate them with `render`; never edit them by hand.
+
+`check` enforces uniqueness in every list and that every reference resolves (`step.ask`, `risk.recurring`, `approver.stakeholder`, `rendered`).
+
+Read `references/SPEC.md` when you need the exact rules, such as overdue logic, visibility or versioning.
 
 ## Tasks
 
 ### Create a handover by interviewing the outgoing person
 
-Follow `references/interview-prompt.md`: ask one question at a time, cover systems and access, people, every recurring duty with its exact day, money and approvals, what goes wrong, decisions and why, and a four-stage first month. Then write the file, check it, and give the user the `.handover` file. Suggest the file name `<id>.handover`.
+Follow `references/interview-prompt.md`: ask one question at a time, cover people and stakeholders, systems and who grants access, every recurring duty with its exact day, money and approvals (limits and approvers), what goes wrong, rules and decisions, work in progress, and a four-stage first month. Then write the file, check it, and give the user the `.handover` file. Suggest the file name `<id>.handover`.
 
 ### Convert existing material
 
@@ -54,8 +70,8 @@ When the user gives notes, a document, an SOP, a wiki export or an old handover 
 
 ### Check, review or fill gaps
 
-- `node scripts/handover.cjs check <file>`: errors with exact paths, such as `recurring[3].day: must be 1 to 31, or "last"`.
-- `node scripts/handover.cjs gaps <file>`: every gap and where it is. To fill them, ask the user about each gap in turn and replace the marker with the answer.
+- `node scripts/handover.cjs check <file>`: errors with exact paths, such as `recurring[3].day: must be 1 to 31, or "last"`, then the gap counts: `TODO` markers by area and, for 1.1, open and blocking items on the `gaps` list.
+- `node scripts/handover.cjs gaps <file>`: every `TODO` gap and where it is, then the open items on the `gaps` list. To fill them, ask the user about each gap in turn and replace the marker with the answer.
 - `node scripts/handover.cjs summary <file>`: counts, useful for a quick review. A good handover usually has 3–5 stages, every duty the role really has, 8–12 questions and a section per topic.
 
 ### Preview the schedule
@@ -64,13 +80,14 @@ When the user gives notes, a document, an SOP, a wiki export or an old handover 
 
 ### Update a handover
 
-Edit the JSON in place: keep ids (rule 4), keep `x-` fields, set `updated` to today, then check. Removing a task or duty is fine; its old progress is ignored.
+Edit the JSON in place: keep ids (rule 4), keep `x-` fields, set `updated` to today, then check. Removing a task or duty is fine; its old progress is ignored. If the file has `rendered`, run `node scripts/handover.cjs render <file> <file>` after editing 1.1 data so the sections for 1.0 readers match.
 
 ### Share or move progress
 
-- For someone new: `node scripts/handover.cjs strip <file> <out>` removes `progress`.
+- For someone new: `node scripts/handover.cjs strip <file> <out>` (profile `newcomer`) removes `progress`, process state (plan, asks, final check, sign-off, history), closed items, item metadata and anything the audience may not see, then renders the sections again. Use `--audience incoming,principal` to export for other roles.
+- A full record (for a backup or another tool): `node scripts/handover.cjs strip <file> <out> --profile record --audience outgoing,owner`.
 - To combine a reader's exported progress with a newer version of the content: `node scripts/handover.cjs merge <new-content> <with-progress> <out>`. It keeps every completion from both, the earlier `firstSeen`, and the existing notes unless they are empty. Both files must have the same `id`.
 
 ## Building other tools on the format
 
-`scripts/core.js` is the reference implementation, with no dependencies: `validate(h)` returns `{errors, warnings}`; `schedule(h, progress, today)` returns `{overdue, due, next, later}`; plus `occursOn(duty, date)`, `mergeProgress(state, progress)` and `contentOnly(h)`. It runs in Node (`require`) and in browsers (`window.HandoverCore`). Readers of 1.0 should open any 1.x file and ignore unknown fields, and refuse a different major version.
+`scripts/core.js` is the reference implementation, with no dependencies: `validate(h)` returns `{errors, warnings}`; `schedule(h, progress, today)` returns `{overdue, due, next, later}`; plus `occursOn(duty, date)`, `mergeProgress(state, progress)` and `contentOnly(h)`. For 1.1: `findGaps`, `gapCounts`, `overlap`, `phases`, `gates`, `askMinutes`, `canSee`, `exportProfile(h, profile, audience)`, `renderSections` and `withRendered`. It runs in Node (`require`) and in browsers (`window.HandoverCore`). Readers should open any 1.x file, treat unknown fields in a newer minor version as warnings, and refuse a different major version.

@@ -9,6 +9,7 @@ PAIRS=(
   "spec/SPEC.md:skills/handover/references/SPEC.md"
   "site/schema/v1.json:skills/handover/references/schema.json"
   "site/examples/sample.handover:skills/handover/references/sample.handover"
+  "site/examples/ea-no-overlap.handover:skills/handover/references/ea-no-overlap.handover"
   "site/prompt.md:skills/handover/references/interview-prompt.md"
 )
 status=0
