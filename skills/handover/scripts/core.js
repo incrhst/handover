@@ -298,38 +298,138 @@ function clone(v){ return JSON.parse(JSON.stringify(v)); }
 function textFields(h){
   var out = [], skip = {};
   (Array.isArray(h.rendered) ? h.rendered : []).forEach(function(id){ skip[id] = true; });
-  function add(area, where, v){ if (typeof v === "string") out.push({area: area, where: where, text: v}); }
-  add("summary", "summary", h.summary);
+  function add(area, where, v, path){ if (typeof v === "string") out.push({area: area, where: where, text: v, path: path}); }
+  add("summary", "summary", h.summary, ["summary"]);
   (h.path || []).forEach(function(s, i){
-    add("path", "path[" + i + '] "' + s.title + '" summary', s.summary);
-    if (s.tip) add("path", "path[" + i + '] "' + s.title + '" tip', s.tip.text);
-    (s.tasks || []).forEach(function(t, j){ add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") text", t.text); add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") detail", t.detail); });
+    add("path", "path[" + i + '] "' + s.title + '" summary', s.summary, ["path", i, "summary"]);
+    if (s.tip) add("path", "path[" + i + '] "' + s.title + '" tip', s.tip.text, ["path", i, "tip", "text"]);
+    (s.tasks || []).forEach(function(t, j){ add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") text", t.text, ["path", i, "tasks", j, "text"]); add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") detail", t.detail, ["path", i, "tasks", j, "detail"]); });
   });
-  (h.recurring || []).forEach(function(r, i){ add("recurring", "recurring[" + i + "] (" + r.id + ") text", r.text); add("recurring", "recurring[" + i + "] (" + r.id + ") detail", r.detail); });
-  (h.questions || []).forEach(function(q, i){ add("questions", "questions[" + i + '] "' + q.q + '"', q.a); });
-  (h.sections || []).forEach(function(s, i){ if (!skip[s.id]) add("sections", "sections[" + i + "] (" + s.id + ") body", s.body); });
-  if (h.from && typeof h.from === "object") ["contact","hours"].forEach(function(k){ add("from", "from." + k, h.from[k]); });
+  (h.recurring || []).forEach(function(r, i){ add("recurring", "recurring[" + i + "] (" + r.id + ") text", r.text, ["recurring", i, "text"]); add("recurring", "recurring[" + i + "] (" + r.id + ") detail", r.detail, ["recurring", i, "detail"]); });
+  (h.questions || []).forEach(function(q, i){ add("questions", "questions[" + i + '] "' + q.q + '"', q.a, ["questions", i, "a"]); });
+  (h.sections || []).forEach(function(s, i){ if (!skip[s.id]) add("sections", "sections[" + i + "] (" + s.id + ") body", s.body, ["sections", i, "body"]); });
+  if (h.from && typeof h.from === "object") ["contact","hours"].forEach(function(k){ add("from", "from." + k, h.from[k], ["from", k]); });
   /* 1.1: every string inside the new objects. Ids, enums and dates never contain TODO:, so walking them all is safe. */
-  function walk(area, where, v){
-    if (typeof v === "string") add(area, where, v);
-    else if (Array.isArray(v)) v.forEach(function(x, i){ walk(area, where + "[" + i + "]" + (x && typeof x === "object" && typeof x.id === "string" ? " (" + x.id + ")" : ""), x); });
-    else if (v && typeof v === "object") Object.keys(v).forEach(function(k){ if (k !== "id") walk(area, where + "." + k, v[k]); });
+  function walk(area, where, v, path){
+    if (typeof v === "string") add(area, where, v, path);
+    else if (Array.isArray(v)) v.forEach(function(x, i){ walk(area, where + "[" + i + "]" + (x && typeof x === "object" && typeof x.id === "string" ? " (" + x.id + ")" : ""), x, path.concat([i])); });
+    else if (v && typeof v === "object") Object.keys(v).forEach(function(k){ if (k !== "id") walk(area, where + "." + k, v[k], path.concat([k])); });
   }
-  V11.forEach(function(k){ if (k !== "rendered" && k !== "audience" && h[k] !== undefined) walk(k, k, h[k]); });
+  V11.forEach(function(k){ if (k !== "rendered" && k !== "audience" && h[k] !== undefined) walk(k, k, h[k], [k]); });
   return out;
 }
-function lineGaps(line){
+/* The gaps on one line, in order. Each is {what, start, end}: the text from start to end is what filling it replaces. */
+function lineGapSpans(line){
   var found = [], m, re = /\{TODO:\s*([^}]*)\}/g;
-  while ((m = re.exec(line))) found.push(m[1].trim() || "(no description)");
-  line.split("|").forEach(function(cell){ var c = cell.trim().match(/^TODO:\s*(.*)$/); if (c) found.push(c[1].trim() || "(no description)"); });
-  if (line.indexOf("|") < 0){ var t = line.match(/(?:^|\s)TODO:\s*(.*)$/); if (t && !/^\s*TODO:/.test(line) && !/\{TODO:/.test(line)) found.push(t[1].trim()); }
+  while ((m = re.exec(line))) found.push({what: m[1].trim() || "(no description)", start: m.index, end: m.index + m[0].length});
+  /* A table cell, or a whole line, that is only "TODO: …" */
+  var pos = 0, table = line.indexOf("|") > -1;
+  line.split("|").forEach(function(cell){
+    var c = cell.match(/^(\s*)TODO:\s*(.*?)(\s*)$/);
+    if (c) found.push({what: c[2].trim() || "(no description)", start: pos + c[1].length, end: pos + cell.length - c[3].length, cell: table});
+    pos += cell.length + 1;
+  });
+  /* "… TODO: …" at the end of a line of text */
+  if (!table){
+    var t = line.match(/(^|\s)TODO:\s*(.*)$/);
+    if (t && !/^\s*TODO:/.test(line) && !/\{TODO:/.test(line)) found.push({what: t[2].trim(), start: t.index + t[1].length, end: line.length});
+  }
   return found;
 }
+function lineGaps(line){ return lineGapSpans(line).map(function(g){ return g.what; }); }
 /* Every TODO gap: [{area, where, what}] */
 function findGaps(h){
   var found = [];
   textFields(h).forEach(function(f){ f.text.split("\n").forEach(function(line){ lineGaps(line).forEach(function(what){ found.push({area: f.area, where: f.where, what: what}); }); }); });
   return found;
+}
+
+/* ================= Filling gaps in a tool (spec sections 2 and 4) ================= */
+var GAP_AREA = {summary: "Summary", path: "First weeks", recurring: "Jobs", questions: "Questions and answers", sections: "Reference", from: "Contact after the handover",
+  people: "Who's who", stakeholders: "People to know", plan: "Handover plan", asks: "Questions for the principal", gaps: "Gaps", inProgress: "In progress", rules: "When this happens",
+  decisions: "Decisions", risks: "Risks", systems: "Systems and access", documents: "Documents", decide: "Who decides what", finalCheck: "Final check", signoff: "Sign-off",
+  followUps: "Follow-ups", catchUps: "Check-ins", history: "History", profile: "Profile"};
+function getAt(o, path){ return path.reduce(function(v, k){ return v === undefined || v === null ? undefined : v[k]; }, o); }
+/* Something a person would recognise: the area, then the item it sits in */
+function gapLabel(h, path){
+  var parts = [GAP_AREA[path[0]] || String(path[0])];
+  for (var i = 1; i < path.length; i++){
+    var o = getAt(h, path.slice(0, i + 1));
+    if (o && typeof o === "object" && !Array.isArray(o)){
+      var name = o.title || o.name || o.text || o.q || o.system || o.what;
+      if (typeof name === "string" && name.indexOf("TODO") < 0){ parts.push(oneLine(name).replace(/\*\*/g, "").slice(0, 60)); }
+    }
+  }
+  return parts.join(" › ");
+}
+/* Every gap with what filling it needs: [{key, area, label, what, path, n, line}]. n counts the gaps within one field, in order. */
+function gapList(h){
+  var out = [];
+  textFields(h).forEach(function(f){
+    var n = 0;
+    f.text.split("\n").forEach(function(line){
+      lineGapSpans(line).forEach(function(g){
+        out.push({key: f.path.join(".") + "#" + n, area: f.area, label: gapLabel(h, f.path), what: g.what, path: f.path, n: n, line: line, start: g.start, end: g.end, cell: !!g.cell});
+        n++;
+      });
+    });
+  });
+  return out;
+}
+/* A copy of h with gap n of the field at path replaced by text. Table cells can't hold "|" or line breaks, and no gap can. */
+function fillGap(h, path, n, text){
+  var o = clone(h), field = getAt(o, path);
+  if (typeof field !== "string") throw new Error("No text field at " + path.join("."));
+  var value = String(text).replace(/\s*\r?\n\s*/g, " ").trim(), count = 0, done = false;
+  if (!value) throw new Error("Write something to fill the gap with.");
+  var lines = field.split("\n").map(function(line){
+    if (done) return line;
+    var spans = lineGapSpans(line);
+    for (var i = 0; i < spans.length; i++){
+      if (count++ === n){ done = true; var g = spans[i]; return line.slice(0, g.start) + (g.cell ? value.replace(/\|/g, "/") : value) + line.slice(g.end); }
+    }
+    return line;
+  });
+  if (!done) throw new Error("That gap isn't there any more.");
+  var parent = getAt(o, path.slice(0, -1)); parent[path[path.length - 1]] = lines.join("\n");
+  return o;
+}
+/* The no-secrets rule (spec section 2): a reason this text looks like a secret, or "" */
+function luhn(d){ var sum = 0; for (var i = 0; i < d.length; i++){ var x = +d[d.length - 1 - i]; if (i % 2){ x *= 2; if (x > 9) x -= 9; } sum += x; } return sum % 10 === 0; }
+function secretReason(text){
+  var t = String(text || "");
+  var digits = t.match(/(?:\d[ -]?){13,19}/g) || [];
+  if (digits.some(function(d){ var x = d.replace(/\D/g, ""); return x.length >= 13 && x.length <= 19 && luhn(x); })) return "This looks like a card number.";
+  if (/\b(?:password|passcode|passwd|pwd|pin|otp|one[- ]time code|recovery code|security code|cvv|cvc|api[ _-]?key|secret|token)\b\s*(?:is|=|:)\s*\S+/i.test(t)) return "This looks like a password, PIN, code or key.";
+  if (/\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|\bsk-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bAKIA[0-9A-Z]{16}\b|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bAIza[0-9A-Za-z_-]{30,}/.test(t)) return "This looks like an API key or token.";
+  if (/\b[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}\b/.test(t)) return "This looks like a bank account number (IBAN).";
+  if (/(?:^|\s)(?=[A-Za-z0-9+\/_=-]*[0-9])(?=[A-Za-z0-9+\/_=-]*[a-z])(?=[A-Za-z0-9+\/_=-]*[A-Z])[A-Za-z0-9+\/_=-]{24,}(?=\s|$)/.test(t)) return "This looks like a key or token.";
+  return "";
+}
+/* Fill several gaps at once ({key: text}), record it in the history (1.1) and the date, and write the 1.0 sections again.
+   Returns {h, filled} or throws with a message for the person. */
+function fillGaps(h, answers, o){
+  o = o || {};
+  var list = gapList(h), byKey = {}, picked = [];
+  list.forEach(function(g){ byKey[g.key] = g; });
+  Object.keys(answers).forEach(function(k){ if (String(answers[k] || "").trim() && byKey[k]) picked.push(byKey[k]); });
+  if (!picked.length) throw new Error("Nothing to fill in yet.");
+  picked.forEach(function(g){ var why = secretReason(answers[g.key]); if (why) { var e = new Error(why + " Handover files MUST NOT hold passwords, PINs, codes, keys or card and bank numbers. Write where it is kept and who grants access instead, e.g. \"In the team password manager, Finance folder; Ravi grants access\"."); e.key = g.key; throw e; } });
+  /* Later gaps first within a field, so the earlier ones keep their numbers */
+  picked.sort(function(a, b){ var pa = a.path.join("."), pb = b.path.join("."); return pa === pb ? b.n - a.n : 0; });
+  var out = h;
+  picked.forEach(function(g){ out = fillGap(out, g.path, g.n, answers[g.key]); });
+  if (o.date) out.updated = o.date;
+  if (out.handover !== "1.0"){
+    var hist = out.history || [], used = {}; hist.forEach(function(x){ used[x.id] = true; });
+    var id = "fill-" + (o.date || "x"), k = 2; while (used[id]) id = "fill-" + (o.date || "x") + "-" + k++;
+    var areas = []; picked.forEach(function(g){ var a = GAP_AREA[g.area] || g.area; if (areas.indexOf(a) < 0) areas.push(a); });
+    var entry = {id: id, at: o.at || new Date().toISOString().replace(/\.\d+Z$/, "Z"), source: "app", text: "Filled " + picked.length + (picked.length === 1 ? " gap" : " gaps") + " in the app: " + areas.join(", ") + "."};
+    if (o.role) entry.role = o.role;
+    out.history = hist.concat([entry]);
+  }
+  if (out.rendered) out = withRendered(out);
+  return {h: out, filled: picked.length};
 }
 /* TODO gaps counted by top-level area, plus the open items on the gaps list */
 function gapCounts(h){
@@ -1043,6 +1143,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

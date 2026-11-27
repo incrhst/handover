@@ -72,6 +72,14 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
 .dlg header{padding:20px 22px 8px}.dlg header h2{margin:0 0 4px;font-size:1.3rem}.dlg header p{margin:0;color:var(--ink-3);font-size:14px}
 .dlg .dlg-body{overflow:auto;padding:8px 22px 4px}
 .dlg footer{display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;padding:14px 22px 18px;border-top:1px solid var(--line)}
+.fgap{border:1px solid var(--line);border-radius:12px;margin:0 0 10px;padding:10px 12px;background:var(--surface)}
+.fgap.err{border-color:#b3261e}
+.fgap .where{font-size:12.5px;color:var(--ink-3);font-weight:650;margin:0 0 4px}
+.fgap .ctx{font-size:14px;margin:0 0 8px;overflow-wrap:anywhere}
+.fgap .ctx .here{background:var(--todo-bg);color:var(--todo-ink);border:1px dashed var(--todo-line);border-radius:6px;padding:.05em .45em;font-weight:700}
+.fgap input{width:100%;box-sizing:border-box;font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#fff);color:inherit}
+.fgap .msg{color:#b3261e;font-size:13px;margin:6px 0 0}
+#main .todo{cursor:pointer}
 .xkind{border:1px solid var(--line);border-radius:12px;margin:0 0 8px;background:var(--surface)}
 .xkind-row{display:flex;align-items:center;gap:10px;padding:10px 12px}
 .xkind-row label{flex:1;display:flex;align-items:baseline;gap:8px;cursor:pointer;min-width:0}
@@ -356,7 +364,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <div class="brand" id="brand">Handover</div>
       <nav class="topnav" id="topnav" aria-label="Sections"></nav>
       <button class="btn" id="searchJump" type="button">Search</button>
-      <button class="gapchip" id="gaps" type="button" title="Jump to the next part that still needs filling in" hidden></button>
+      <button class="gapchip" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
       <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
       <details class="menu" id="shareMenu">
         <summary class="btn primary">Share &amp; export</summary>
@@ -468,6 +476,14 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       </div>
     </div>
     <footer><span class="sub" id="exportCount" style="margin-right:auto;color:var(--ink-3);font-size:13px"></span><button class="btn" type="button" id="exportCancel">Cancel</button><button class="btn primary" type="submit" id="exportGo">Export</button></footer>
+  </form>
+</dialog>
+
+<dialog class="dlg" id="fillDlg" aria-labelledby="fillDlgTitle">
+  <form method="dialog" id="fillForm">
+    <header><h2 id="fillDlgTitle">Fill the gaps</h2><p>Type what each gap is missing. Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
+    <div class="dlg-body"><div id="fillList"></div></div>
+    <footer><span class="sub" id="fillCount" style="margin-right:auto;color:var(--ink-3);font-size:13px"></span><button class="btn" type="button" id="fillCancel">Cancel</button><button class="btn primary" type="submit" id="fillGo">Save</button></footer>
   </form>
 </dialog>
 
@@ -755,7 +771,7 @@ function renderRefs(){
   $("shelf").innerHTML = secs.map(function(s){ return '<a href="#sec-' + esc(s.id) + '">' + esc(s.title) + '<span class="n" hidden></span></a>'; }).join("");
 }
 function countGaps(){
-  var all = document.querySelectorAll("#main .todo").length, chip = $("gaps");
+  var all = C.gapList(H).length, chip = $("gaps");
   chip.hidden = !all; chip.textContent = all + (all === 1 ? " gap" : " gaps") + " to fill";
   var shelfLinks = $("shelf").querySelectorAll("a");
   visibleSections().forEach(function(s, i){
@@ -971,6 +987,7 @@ document.addEventListener("click", function(e){
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
   var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
+  var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
   var a = t.closest('a[href^="#"]');
   if (a && $("app").contains(a)){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
@@ -982,10 +999,56 @@ function rerenderKeepSearch(){
   var term = $("q").value; renderHero(); renderToday(); renderPath(); countGaps();
   if (term.trim().length > 1) search(term);
 }
-$("gaps").addEventListener("click", (function(){
-  var idx = -1;
-  return function(){ clearSearch(); var list = document.querySelectorAll("#main .todo"); if (!list.length) return; idx = (idx + 1) % list.length; var t = list[idx]; reveal(t); setTimeout(function(){ t.scrollIntoView({block: "center"}); flash(t); }, 30); };
-})());
+$("gaps").addEventListener("click", function(){ openFill(); });
+
+/* Fill the gaps: every {TODO: …} in the file, filled in place and saved back to the handover */
+var FILL = [];
+function openFill(focusWhat){
+  FILL = C.gapList(H);
+  if (!FILL.length){ toast("No gaps left to fill"); return; }
+  $("fillList").innerHTML = FILL.map(function(g, i){
+    var before = g.line.slice(0, g.start), after = g.line.slice(g.end);
+    return '<div class="fgap" data-i="' + i + '"><div class="where">' + esc(g.label) + '</div><div class="ctx">' + esc(trimCtx(before, true)) + '<span class="here">' + esc(g.what) + "</span>" + esc(trimCtx(after, false)) + "</div>" +
+      '<input type="text" autocomplete="off" spellcheck="true" data-key="' + esc(g.key) + '" placeholder="' + esc(g.what) + '" aria-label="' + esc(g.label + ": " + g.what) + '"><div class="msg" hidden></div></div>';
+  }).join("");
+  fillCount();
+  $("fillDlg").showModal();
+  var all = [].slice.call($("fillList").querySelectorAll("input")), at = 0;
+  if (focusWhat) FILL.forEach(function(g, i){ if (!at && g.what === focusWhat) at = i + 1; });
+  var box = all[at ? at - 1 : 0]; box.focus(); if (at) box.closest(".fgap").scrollIntoView({block: "center"});
+}
+function trimCtx(t, left){ t = t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/\{TODO:\s*([^}]*)\}/g, "[$1]").replace(/TODO:\s*([^|]*?)\s*(?=\||$)/g, "[$1]").replace(/\*\*/g, "").replace(/\s*\|\s*/g, " · ").replace(/^ · | · $/g, " "); return t.length > 90 ? (left ? "…" + t.slice(-90) : t.slice(0, 90) + "…") : t; }
+function fillCount(){
+  var n = [].slice.call($("fillList").querySelectorAll("input")).filter(function(x){ return x.value.trim(); }).length;
+  $("fillCount").textContent = n + " of " + FILL.length + " filled in"; $("fillGo").disabled = !n;
+}
+$("fillList").addEventListener("input", function(e){ var row = e.target.closest(".fgap"); if (row){ row.classList.remove("err"); row.querySelector(".msg").hidden = true; } fillCount(); });
+$("fillCancel").addEventListener("click", function(){ $("fillDlg").close(); });
+$("fillForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var answers = {}; [].slice.call($("fillList").querySelectorAll("input")).forEach(function(x){ if (x.value.trim()) answers[x.dataset.key] = x.value; });
+  var res;
+  try { res = C.fillGaps(H, answers, {date: TODAY}); }
+  catch (err){
+    var input = err.key && $("fillList").querySelector('input[data-key="' + CSS.escape(err.key) + '"]');
+    if (input){ var row = input.closest(".fgap"); row.classList.add("err"); var m = row.querySelector(".msg"); m.textContent = err.message; m.hidden = false; input.focus(); row.scrollIntoView({block: "center"}); }
+    else toast(err.message);
+    return;
+  }
+  var v = validate(res.h);
+  if (v.errors.length){ toast("Not saved: the file would not be valid (" + v.errors[0] + ")"); return; }
+  call("adopt", {id: res.h.id, title: res.h.title, text: JSON.stringify(res.h, null, 2), name: SOURCE_NAME}).then(function(r){
+    if (!r){ toast("Couldn't save the handover"); return; }
+    var y = window.scrollY;
+    H = res.h;
+    sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
+    renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
+    render(); window.scrollTo(0, y);
+    $("fillDlg").close();
+    var left = C.gapList(H).length;
+    toast("Filled " + res.filled + (res.filled === 1 ? " gap" : " gaps") + (left ? " · " + left + " left" : " · no gaps left"));
+  });
+});
 
 /* Search */
 var q = $("q"), qinfo = $("qinfo"), qtimer;
