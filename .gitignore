@@ -4,7 +4,9 @@ dist/
 *.p12
 *.p8
 # Real handover files can hold private details about people and clients.
-# Only the example belongs in this repo.
+# Only the examples belong in this repo.
 *.handover
 !site/examples/sample.handover
 !skills/handover/references/sample.handover
+!site/examples/ea-no-overlap.handover
+!skills/handover/references/ea-no-overlap.handover

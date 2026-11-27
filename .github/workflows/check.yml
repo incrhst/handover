@@ -8,5 +8,6 @@ jobs:
       - uses: actions/checkout@v7
       - run: scripts/sync-shared.sh --check
       - run: node skills/handover/scripts/handover.cjs check site/examples/sample.handover
-      - run: node -e "JSON.parse(require('fs').readFileSync('site/schema/v1.json','utf8'))"
+      - run: node skills/handover/scripts/handover.cjs check site/examples/ea-no-overlap.handover
+      - run: node --test test/*.test.cjs
       - run: scripts/build-app.sh 0.0.0

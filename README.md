@@ -27,7 +27,9 @@ The app checks GitHub for a new release once a day (or **Handover › Check for 
 
 ## The format
 
-A `.handover` file is UTF-8 JSON: a `path` of stages and tasks, `recurring` duties on a schedule, `questions` with short answers and reference `sections`. See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) and [an example](site/examples/sample.handover). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
+A `.handover` file is UTF-8 JSON: a `path` of stages and tasks, `recurring` duties on a schedule, `questions` with short answers and reference `sections`. Version 1.1 adds the full record of an assistant handover: people and stakeholders, the plan and the questions for the principal, gaps, rules, decisions, risks, systems and documents, who decides what (with limits and approvers), the final check, sign-off and check-ins. Every 1.0 file is still a valid 1.1 file.
+
+See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) (frozen copies: [1.0](site/schema/v1.0.json), [1.1](site/schema/v1.1.json)) and two examples: [an operations lead](site/examples/sample.handover) (1.0) and [an executive assistant with no overlap](site/examples/ea-no-overlap.handover) (1.1). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
 
 Never put passwords or keys in a handover file. Say where they're kept instead.
 
@@ -39,7 +41,7 @@ The [handover skill](skills/handover/SKILL.md) teaches Claude Code and other age
 npx skills add incrhst/handover
 ```
 
-It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip`, `… merge`.
+It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… merge`.
 
 ## Repository
 
@@ -49,7 +51,8 @@ It includes a validator and schedule preview: `node scripts/handover.cjs check r
 | `site/` | The website, schema, example and AI prompt (published to GitHub Pages) |
 | `app/web/` | The dashboard page (`index.html`) and the shared format logic (`core.js`) |
 | `app/macos/` | The Mac app: a native window around the page, plus files, scheduling and backups |
-| `skills/handover/` | The agent skill. Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, example or prompt |
+| `skills/handover/` | The agent skill. Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, examples or prompt |
+| `test/` | Format tests: `node --test test/*.test.cjs` |
 | `scripts/` | Icon, build, notarisation and DMG scripts |
 
 ### Build it yourself
