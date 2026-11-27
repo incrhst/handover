@@ -9,6 +9,7 @@ How to work:
    - **Areas of work**: the main parts of the role, such as "Finance", "Office" or one property or business I look after. Use these names for every job below.
    - **Exact days**: what I do every day, week, month, quarter and year. For each, pin down the exact day and time ("every Thursday by 11:00", "the 7th of the second month of each quarter"). "Weekly" or "around month end" is not enough.
    - **Lead times**: for each job on a date that takes more than a day (renewals, licences, permits, insurance, filings, events), how many days before the date the work has to start. If one date needs several things started at different times, such as a vehicle's registration and fitness 90 days ahead and its insurance 30 days ahead, ask about each one.
+   - **Guides**: for each job and first-weeks task, anything already written down or recorded about how to do it, such as a step-by-step guide, an SOP, a checklist, a template or a screen recording, and where it is kept.
    - **As needed**: jobs with no schedule, done when something calls for them ("draft an employment letter when someone joins"), and what calls for each one.
    - **Money and approvals**: what I decide alone, what I check first, and what always goes to the person I work for. For each: the spending limit and currency, if there is one, and who approves above it. Who signs off what.
    - **What goes wrong**: what has gone wrong before or would hurt most if missed, how often, and whether only I know how to do it.
@@ -28,14 +29,15 @@ Rules for the file:
 - Put what you learn in the lists, not in prose: people in `stakeholders`, logins in `systems`, limits and approvers in `decide`, what goes wrong in `risks`, unanswered questions in `gaps`. A risk that happens on an exact day gets a `recurring` duty with that schedule, and the risk names it in `recurring`.
 - Write `sections` only for topics the lists don't cover. Don't write `rendered`: the Handover tools add the summary sections for older readers.
 - Mark everything you wrote yourself with `"aiDrafted": true` on items in the lists, so we review it.
+- Put each guide, SOP, template or recording in `documents` once, with its link or where it is kept, and list its id in `guides` on every task and job that uses it, so the new person can open it from there. A task can also point at a section with `see`.
 - Give every job in `recurring` and `asNeeded` an `area`, spelled the same way each time. To put an area under a larger one, use a slash with a space each side: `"Villa / Bookings"`.
 
-The format (version 1.3, full spec at https://incrhst.github.io/handover/):
+The format (version 1.4, full spec at https://incrhst.github.io/handover/):
 
 ```json
 {
   "$schema": "https://incrhst.github.io/handover/schema/v1.json",
-  "handover": "1.3",
+  "handover": "1.4",
   "id": "short-id-for-this-role",
   "title": "What this handover is for",
   "summary": "Two or three sentences: what the role is and how to use this handover.",
@@ -66,13 +68,16 @@ The format (version 1.3, full spec at https://incrhst.github.io/handover/):
       "title": "Week 1 · Get in",
       "summary": "What this stage is about.",
       "tip": { "title": "Why it matters", "text": "One helpful line." },
-      "tasks": [ { "id": "access", "text": "**Get access** to every system on the systems list.", "detail": "Optional extra detail." } ]
+      "tasks": [
+        { "id": "access", "text": "**Get access** to every system on the systems list.", "detail": "Optional extra detail." },
+        { "id": "first-expenses", "text": "**Submit Thursday's expense claims** using the step guide.", "guides": ["expenses-guide"] }
+      ]
     }
   ],
   "recurring": [
     { "id": "inbox", "text": "Clear the shared inbox", "area": "Office", "every": "weekday", "time": "09:30" },
-    { "id": "expenses", "text": "Submit expense claims", "area": "Finance", "every": "week", "on": "thu", "time": "11:00" },
-    { "id": "payroll", "text": "Run payroll", "area": "Finance / Payroll", "every": "month", "day": 25 },
+    { "id": "expenses", "text": "Submit expense claims", "area": "Finance", "every": "week", "on": "thu", "time": "11:00", "guides": ["expenses-guide"] },
+    { "id": "payroll", "text": "Run payroll", "area": "Finance / Payroll", "every": "month", "day": 25, "guides": ["payroll-recording"] },
     { "id": "reconcile", "text": "Reconcile the bank account", "area": "Finance", "every": "month", "day": "last" },
     { "id": "vat", "text": "File the VAT return", "area": "Finance", "every": "quarter", "day": 7, "monthOfQuarter": 2 },
     { "id": "insurance", "text": "Renew the office insurance", "area": "Office", "every": "year", "date": "03-01", "lead": 30 },
@@ -87,6 +92,10 @@ The format (version 1.3, full spec at https://incrhst.github.io/handover/):
   ],
   "systems": [
     { "id": "bank", "name": "Online banking", "purpose": "Payments", "credentialLocation": "Company password manager, Finance vault", "grantedBy": "Finance director", "aiDrafted": true }
+  ],
+  "documents": [
+    { "id": "expenses-guide", "title": "Expense claims, step by step", "type": "guide", "url": "https://drive.example.com/finance/expenses-guide", "aiDrafted": true },
+    { "id": "payroll-recording", "title": "Running payroll (screen recording)", "type": "recording", "url": "https://drive.example.com/finance/payroll-recording", "aiDrafted": true }
   ],
   "decide": {
     "cards": [
@@ -108,10 +117,10 @@ The format (version 1.3, full spec at https://incrhst.github.io/handover/):
 }
 ```
 
-Lists: `column` is `alone`, `check` or `principal`; an `approver` is `{"stakeholder": "<id>"}` or `{"role": "principal"}`. A risk's `list` is `weekly`, `occasional` or `spof` (only I know it), `severity` is `high`, `medium` or `low`, and `treatment` is `record`, `write` or `brief`. Roles are `outgoing`, `incoming`, `principal`, `owner` and `facilitator`. This file is for the person taking over: if I say something should only be seen by some of us, leave it out and list it for me after the file.
+Lists: a document's `type` is `guide` (a step-by-step guide or SOP), `recording`, `template`, `folder` or `other`. `column` is `alone`, `check` or `principal`; an `approver` is `{"stakeholder": "<id>"}` or `{"role": "principal"}`. A risk's `list` is `weekly`, `occasional` or `spof` (only I know it), `severity` is `high`, `medium` or `low`, and `treatment` is `record`, `write` or `brief`. Roles are `outgoing`, `incoming`, `principal`, `owner` and `facilitator`. This file is for the person taking over: if I say something should only be seen by some of us, leave it out and list it for me after the file.
 
 Schedules: `every` is `day`, `weekday`, `week` (with `on`: a day or list of days, `mon` to `sun`), `month` (with `day`: 1 to 31 or `"last"`), `quarter` (with `day` and `monthOfQuarter`: 1 = Jan/Apr/Jul/Oct, 2 = Feb/May/Aug/Nov, 3 = Mar/Jun/Sep/Dec) or `year` (with `date`: `"MM-DD"`). Optional `time` (`"HH:MM"`), `start` and `end` dates, `area`, `detail`, `see` (a section id) and `lead`: the number of days before the date the work has to start, for a job that takes time (the date stays the deadline; the job goes on the list that many days ahead). When one date needs several things started at different times, write one duty for each, with the same date and its own `lead`. A job that happens on a date, even a rough one, goes in `recurring`, with the rule it can't express in `detail`; only jobs with no date at all go in `asNeeded`.
 
-Aim for four stages in `path`, every recurring duty I mention with its exact day and, if it takes time, its lead time, every job done as needed, eight to twelve questions, every person, system and limit I mention, and a gap for everything I couldn't answer. Every `see` must match a section id.
+Aim for four stages in `path`, every recurring duty I mention with its exact day and, if it takes time, its lead time, every job done as needed, eight to twelve questions, every person, system and limit I mention, and a gap for everything I couldn't answer. Every `see` must match a section id, and every id in `guides` must match a document.
 
 Start now with your first question.
