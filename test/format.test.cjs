@@ -636,6 +636,57 @@ test("editing the role", () => {
   assert.deepEqual(C.validate(s), {errors: [], warnings: []}); assert.deepEqual(check(schema.v12, s), []);
 });
 
+test("combined reports: several reports as parts of one document", () => {
+  const h = ea(), o = {date: "2026-11-27"};
+  // One report on its own is exactly the single report
+  assert.deepEqual(C.principalReports(h, ["needs"], o), C.principalReport(h, "needs", o));
+  // Several: in the menu's order, whatever order they were asked in
+  const d = C.principalReports(h, ["needs", "working", "jobs"], Object.assign({title: "  Friday   update "}, o));
+  assert.deepEqual(d.reports, ["working", "jobs", "needs"]);
+  assert.equal(d.title, "Friday update");
+  // With no title, it says where the handover is: counting down to the last day, then the incoming assistant's weeks
+  assert.equal(C.principalReports(h, ["working", "jobs"], o).title, "Handover update: Marcus's week 8");
+  const T = d => C.reportTitle(h, d);
+  assert.deepEqual(["2026-09-10", "2026-09-19", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-11", "2026-10-12"].map(T),
+    ["Handover update: 3 weeks to Priya's last day", "Handover update: Priya's last week", "Handover update: Priya's last day",
+     "Handover update: week 1 since Priya left", "Handover update: Marcus's week 1", "Handover update: Marcus's week 1", "Handover update: Marcus's week 2"]);
+  const ov = JSON.parse(JSON.stringify(h)); ov.plan.firstDay = "2026-09-14";
+  assert.equal(C.reportTitle(ov, "2026-09-16"), "Handover update: 2 weeks to Priya's last day", "overlapping: the countdown comes first");
+  assert.equal(C.reportTitle(ov, "2026-10-01"), "Handover update: Marcus's week 3");
+  const np = JSON.parse(JSON.stringify(h)); delete np.plan;
+  assert.deepEqual(["2026-11-27", "2021-01-03", "2026-12-31"].map(d => C.reportTitle(np, d)), ["Handover update: week 48, 2026", "Handover update: week 53, 2020", "Handover update: week 53, 2026"], "no plan: the ISO week");
+  assert.equal(d.preparedFor, "Dana Whitfield");
+  assert.deepEqual(d.chapters.map(c => c.title), C.reports.filter(r => r.key !== "jd").map(r => r.title));
+  // Each part is the single report, figures, summary and sections unchanged
+  for (const c of d.chapters){
+    const one = C.principalReport(h, c.key, o);
+    assert.deepEqual([c.figures, c.intro, c.parts], [one.figures, one.intro, one.parts], c.key);
+  }
+  assert.equal(d.parts.length, d.chapters.reduce((n, c) => n + c.parts.length, 0));
+  // The overview gives each part's first summary line, and nothing else
+  assert.deepEqual(d.intro, d.chapters.map((c, i) => "**" + (i + 1) + ". " + c.title + ".** " + c.intro[0]));
+  // Every format draws the parts; sections are numbered right through
+  const md = C.docMarkdown(d);
+  assert.match(md, /^# Friday update/);
+  assert.deepEqual(md.match(/^## Part \d: .*/gm), ["## Part 1: What we're working on", "## Part 2: The assistant's jobs", "## Part 3: What needs you"]);
+  const html = C.docHtml(d);
+  assert.equal((html.match(/class="partno"/g) || []).length, 3);
+  assert.ok(html.includes('<span class="num">' + String(d.parts.length).padStart(2, "0") + "</span>"), "section numbers carry on across parts");
+  const pdf = C.docPdf(d);
+  assert.ok(pdf.startsWith("%PDF-1.4") && pdf.includes("(PART 3 OF 3)"));
+  const docx = Buffer.from(C.docDocx(d)).toString("latin1");
+  assert.equal((docx.match(/w:type="page"/g) || []).length, 2, "parts 2 and 3 start on a new page in Word");
+  // The job description can go in too, with its own filtering
+  const withJd = C.principalReports(h, ["jobs", "jd"], o);
+  assert.deepEqual(withJd.chapters[1].parts, C.principalReport(h, "jd", o).parts);
+  // Asking for nothing, or for a report that doesn't exist, is refused
+  assert.throws(() => C.principalReports(h, [], o), /at least one/);
+  assert.throws(() => C.principalReports(h, ["working", "gossip"], o), /No report called gossip/);
+  // The skill's command takes several kinds
+  const out = execFileSync(process.execPath, [path.join(root, "skills/handover/scripts/handover.cjs"), "report", path.join(root, "site/examples/ea-no-overlap.handover"), "--kind", "working,needs", "--title", "Friday update"]).toString();
+  assert.match(out, /^# Friday update[\s\S]*## Part 2: What needs you/);
+});
+
 test("job description: only what the file shows, grouped by area, nothing restricted", () => {
   const o = {date: "2026-11-27"}, h = ea();
   assert.ok(C.reports.some(r => r.key === "jd" && r.title === "Job description"));

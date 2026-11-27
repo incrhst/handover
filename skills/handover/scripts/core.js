@@ -1233,15 +1233,65 @@ function jobDescription(h, date, meta){
     kicker: ro.organisation || "Job description", role: ro.organisation ? line : (hasP ? "Reports to " + P : ""), preparedFor: "", preparedBy: "", date: nice(date, "long"),
     figures: [], introLabel: "Purpose of the role", intro: ro.purpose ? parseBlocks(ro.purpose).filter(function(b){ return b.text; }).map(function(b){ return b.text; }) : [], parts: parts};
 }
+/* A combined report's title, placed in the handover's own time: counting down to the outgoing assistant's last day,
+   then the incoming assistant's weeks (week 1 is their first seven days). With no last day, the ISO week of the year. */
+function reportTitle(h, date){
+  var pl = h.plan || {}, days = function(a, b){ return Math.round((utc(b) - utc(a)) / 864e5); };
+  var first = function(role, dflt){ var has = (h.people || []).some(function(p){ return (p.roles || []).indexOf(role) > -1; }); return has ? who(h, role).split(" ")[0] : dflt; };
+  var Out = first("outgoing", "the outgoing assistant"), In = first("incoming", "the incoming assistant"), poss = function(n){ return n + "'s"; };
+  var t;
+  if (pl.lastDay && DATE.test(pl.lastDay) && DATE.test(date)){
+    var left = days(date, pl.lastDay);
+    if (left > 6) t = plural(Math.ceil(left / 7), "week") + " to " + poss(Out) + " last day";
+    else if (left > 0) t = poss(Out) + " last week";
+    else if (left === 0) t = poss(Out) + " last day";
+    else if (pl.firstDay && DATE.test(pl.firstDay) && date >= pl.firstDay) t = poss(In) + " week " + (Math.floor(days(pl.firstDay, date) / 7) + 1);
+    else t = "week " + (Math.floor((-left - 1) / 7) + 1) + " since " + Out + " left";
+  } else if (DATE.test(date)){
+    var d = new Date(utc(date)), dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow + 3);
+    var jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4)), wk = 1 + Math.round(((d - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    t = "week " + wk + ", " + d.getUTCFullYear();
+  }
+  return "Handover update" + (t ? ": " + t : "");
+}
+/* Several reports in one document: a cover, a short "In this report" box, then each report as a part with its own
+   figures, summary and sections. One key gives the single report unchanged. o = {date, since, title}; the title defaults to reportTitle. */
+function principalReports(h, keys, o){
+  o = o || {};
+  keys = [].concat(keys || []);
+  var pick = REPORTS.map(function(r){ return r.key; }).filter(function(k){ return keys.indexOf(k) > -1; });
+  keys.forEach(function(k){ if (pick.indexOf(k) < 0) throw new Error("No report called " + k + "."); });
+  if (!pick.length) throw new Error("Choose at least one report.");
+  if (pick.length === 1) return principalReport(h, pick[0], o);
+  var date = o.date || new Date().toISOString().slice(0, 10), docs = pick.map(function(k){ return principalReport(h, k, o); });
+  var lead = docs.filter(function(d){ return d.preparedFor; })[0] || docs[0], title = String(o.title || "").replace(/\s+/g, " ").trim() || reportTitle(h, date);
+  var chapters = docs.map(function(d){ return {key: d.report, title: d.name, figures: d.figures || [], intro: d.intro || [], introLabel: d.introLabel || "", parts: d.parts}; });
+  return {style: "report", report: "combined", reports: pick, name: title, title: title,
+    subtitle: h.title + " · for " + lead.preparedFor + " · " + nice(date, "long") + " · " + listWords(docs.map(function(d){ return d.name; })),
+    kicker: "Handover report", role: h.title, preparedFor: lead.preparedFor, preparedBy: lead.preparedBy, date: nice(date, "long"),
+    figures: [], introLabel: "In this report",
+    intro: chapters.map(function(c, i){ return "**" + (i + 1) + ". " + c.title + ".** " + (c.intro[0] || (c.parts.length ? "" : "Nothing to report.")); }),
+    chapters: chapters, parts: [].concat.apply([], chapters.map(function(c){ return c.parts; }))};
+}
+/* The parts of a report document: its chapters, or the whole document as one */
+function docChapters(doc){ return doc.chapters || [{title: "", figures: doc.figures || [], intro: doc.intro || [], introLabel: doc.introLabel || "", parts: doc.parts}]; }
 function docMarkdown(doc){
-  var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""];
-  if (doc.intro && doc.intro.length){ if (doc.introLabel) L.push("## " + doc.introLabel, ""); doc.intro.forEach(function(s){ L.push(s, ""); }); }
-  doc.parts.forEach(function(p){
-    L.push("## " + p.title, "");
+  var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""], ch = !!doc.chapters, d = ch ? 1 : 0;
+  function summary(intro, label, lv){ if (intro && intro.length){ if (label) L.push(hashes(lv) + " " + label, ""); intro.forEach(function(s){ L.push(s, ""); }); } }
+  if (ch) summary(doc.intro, doc.introLabel, 2);
+  docChapters(doc).forEach(function(c, ci){
+  if (ch){
+    L.push("## Part " + (ci + 1) + ": " + c.title, "");
+    if (c.figures.length) L.push(c.figures.map(function(f){ return "**" + f.value + "** " + f.label; }).join(" · "), "");
+    summary(c.intro, c.introLabel, 3);
+    if (!c.parts.length) L.push("Nothing to report.", "");
+  } else summary(c.intro, c.introLabel, 2);
+  c.parts.forEach(function(p){
+    L.push(hashes(2 + d) + " " + p.title, "");
     p.groups.forEach(function(g){
-      if (g.title) L.push("### " + g.title, "");
+      if (g.title) L.push(hashes(3 + d) + " " + g.title, "");
       g.items.forEach(function(it){
-        var t = oneLine(it.title), lv = g.title ? 4 : 3;
+        var t = oneLine(it.title), lv = (g.title ? 4 : 3) + d;
         if (it.block){
           if (t) L.push(hashes(lv) + " " + t, "");
           if (it.body) L.push(mdBody(it.body, lv), "");
@@ -1256,6 +1306,7 @@ function docMarkdown(doc){
       });
       L.push("");
     });
+  });
   });
   return L.join("\n");
 }
@@ -1546,9 +1597,10 @@ function reportPdf(doc, o){
   text(M, yy, (doc.preparedFor ? "Prepared for " + doc.preparedFor + "  ·  " : "") + (doc.date || ""), "F1", 10, RPT.band);
   y = Hh - bandH - 3 - 26;
   /* Key figures */
-  var F = doc.figures || [];
+  function figures(F){
   if (F.length){
     var gap = 10, tw = (CW - gap * (F.length - 1)) / F.length, th = 64;
+    need(th + 4);
     F.forEach(function(f, i){
       var x = M + i * (tw + gap), t = RPT.tones[f.tone] || RPT.tones.neutral, vs = f.value.length > 6 ? 15 : 22;
       rect(x, y - th, tw, th, t[1]); rect(x, y - th, 3, th, t[0]);
@@ -1557,16 +1609,19 @@ function reportPdf(doc, o){
     });
     y -= th + 22;
   }
+  }
   /* Summary */
-  if (doc.intro && doc.intro.length){
+  function summary(intro, label){
+  if (intro && intro.length){
     var lines = [];
-    doc.intro.forEach(function(s, i){ wrap(s, false, 10.5, CW - 48).forEach(function(l, j){ lines.push({t: l, first: j === 0, gap: j === 0 && i > 0}); }); });
-    var bh = 46 + lines.length * 14.5 + (doc.intro.length - 1) * 4;
+    intro.forEach(function(s, i){ wrap(s, false, 10.5, CW - 48).forEach(function(l, j){ lines.push({t: l, first: j === 0, gap: j === 0 && i > 0}); }); });
+    var bh = 46 + lines.length * 14.5 + (intro.length - 1) * 4;
     need(bh); rect(M, y - bh, CW, bh, RPT.tint); rect(M, y - bh, 3, bh, RPT.accent);
-    text(M + 18, y - 20, (doc.introLabel || "Summary").toUpperCase(), "F2", 7.5, RPT.accent, 1.2);
+    text(M + 18, y - 20, (label || "Summary").toUpperCase(), "F2", 7.5, RPT.accent, 1.2);
     var sy = y - 38;
     lines.forEach(function(l){ if (l.gap) sy -= 4; if (l.first) rect(M + 18, sy + 2.5, 4, 4, RPT.gold); text(M + 32, sy, l.t, "F1", 10.5, RPT.ink); sy -= 14.5; });
     y -= bh + 28;
+  }
   }
   function pill(x, top, st){
     var t = RPT.tones[st.tone] || RPT.tones.neutral, w = textWidth(st.text, true, 7.5) + 12;
@@ -1615,8 +1670,24 @@ function reportPdf(doc, o){
     if (nl.length){ cy -= 4; nl.forEach(function(l){ text(M + 18, cy, l, "F3", 9, RPT.grey); cy -= 12; }); }
     y -= hgt + 10;
   }
-  /* Sections */
-  doc.parts.forEach(function(p, pi){
+  /* Parts (a combined report), each with its figures, summary and sections; sections are numbered right through */
+  var chs = docChapters(doc), sec = 0;
+  if (doc.chapters){ figures(doc.figures || []); summary(doc.intro, doc.introLabel); }
+  chs.forEach(function(c, ci){
+    if (doc.chapters){
+      if (ci > 0) newPage(); else need(140);
+      text(M, y - 10, ("Part " + (ci + 1) + " of " + chs.length).toUpperCase(), "F2", 8, RPT.gold, 1.2);
+      var ctl = wrap(c.title, true, 20, CW); y -= 18;
+      ctl.forEach(function(l){ y -= 22; text(M, y, l, "F2", 20, RPT.accent); });
+      y -= 10; rect(M, y, CW, 1.5, RPT.accent); y -= 22;
+      if (!c.parts.length && !c.intro.length){ text(M, y - 10, "Nothing to report.", "F1", 10.5, RPT.grey); y -= 30; }
+    }
+    figures(c.figures); summary(c.intro, c.introLabel);
+    sections(c.parts);
+  });
+  function sections(parts){
+  parts.forEach(function(p){
+    var pi = sec++;
     need(90);
     text(M, y - 14, (pi < 9 ? "0" : "") + (pi + 1), "F2", 11, RPT.gold);
     text(M + 24, y - 14, plainText(p.title), "F2", 14, RPT.ink);
@@ -1627,6 +1698,7 @@ function reportPdf(doc, o){
     });
     y -= 12;
   });
+  }
   var n = pages.length;
   pages.forEach(function(pg, i){
     ops = pg;
@@ -1642,9 +1714,18 @@ function reportHtml(doc){
   var pillH = function(st){ return st ? '<span class="pill ' + (T[st.tone] ? st.tone : "neutral") + '">' + escHtml(st.text) + "</span>" : ""; };
   b.push('<header class="band"><div class="kicker">' + escHtml(doc.kicker || "Report") + "</div><h1>" + inlineHtml(doc.title) + "</h1>" + (doc.role ? '<div class="line">' + inlineHtml(doc.role) + "</div>" : "") +
     '<div class="line">' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " &middot; " : "") + escHtml(doc.date || "") + "</div></header>");
-  if ((doc.figures || []).length) b.push('<div class="figs">' + doc.figures.map(function(f){ return '<div class="fig ' + (T[f.tone] ? f.tone : "neutral") + '"><b>' + escHtml(f.value) + "</b><span>" + escHtml(f.label) + "</span></div>"; }).join("") + "</div>");
-  if ((doc.intro || []).length) b.push('<div class="summary"><div class="kick">' + escHtml(doc.introLabel || "Summary") + '</div><ul>' + doc.intro.map(function(s){ return "<li>" + inlineHtml(s) + "</li>"; }).join("") + "</ul></div>");
-  doc.parts.forEach(function(p, pi){
+  var figs = function(F){ if ((F || []).length) b.push('<div class="figs">' + F.map(function(f){ return '<div class="fig ' + (T[f.tone] ? f.tone : "neutral") + '"><b>' + escHtml(f.value) + "</b><span>" + escHtml(f.label) + "</span></div>"; }).join("") + "</div>"); };
+  var summary = function(intro, label){ if ((intro || []).length) b.push('<div class="summary"><div class="kick">' + escHtml(label || "Summary") + '</div><ul>' + intro.map(function(s){ return "<li>" + inlineHtml(s) + "</li>"; }).join("") + "</ul></div>"); };
+  var chs = docChapters(doc), sec = 0;
+  if (doc.chapters){ figs(doc.figures); summary(doc.intro, doc.introLabel); }
+  chs.forEach(function(c, ci){
+  if (doc.chapters){
+    b.push('<div class="chapter"><div class="partno">Part ' + (ci + 1) + " of " + chs.length + "</div><h2 class=\"ch\">" + inlineHtml(c.title) + "</h2></div>");
+    if (!c.parts.length && !c.intro.length) b.push('<p class="none">Nothing to report.</p>');
+  }
+  figs(c.figures); summary(c.intro, c.introLabel);
+  c.parts.forEach(function(p){
+    var pi = sec++;
     b.push('<h2><span class="num">' + (pi < 9 ? "0" : "") + (pi + 1) + "</span>" + inlineHtml(p.title) + "</h2>");
     p.groups.forEach(function(g){
       if (g.title) b.push('<h3>' + inlineHtml(g.title) + "</h3>");
@@ -1656,6 +1737,7 @@ function reportHtml(doc){
       b.push("<table>" + (noHead(C) ? "" : "<thead><tr>" + C.map(function(c){ return "<th" + (c.k === "status" ? ' class="st"' : "") + ">" + escHtml(c.label) + "</th>"; }).join("") + "</tr></thead>") + "<tbody>" +
         g.items.map(function(it){ return "<tr>" + C.map(function(c){ return c.k === "status" ? '<td class="st">' + pillH(it.status) + "</td>" : "<td" + (c.k === "title" && !p.plain ? ' class="t"' : "") + ">" + inlineHtml(cellOf(it, c)) + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>");
     });
+  });
   });
   b.push('<footer>' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " from the handover file" : "From the handover file") + (doc.date ? " &middot; " + escHtml(doc.date) : "") + "</footer>");
   var tone = function(k){ return "." + k + "{--fg:#" + T[k][0] + ";--bg:#" + T[k][1] + "}"; };
@@ -1673,6 +1755,8 @@ function reportHtml(doc){
     "td{border-bottom:1px solid #" + RPT.rule + ";padding:6px;vertical-align:top}td.t{font-weight:700}th.st,td.st{width:1%;white-space:nowrap}" +
     ".pill{display:inline-block;background:var(--bg);color:var(--fg);font-weight:700;font-size:7.5pt;padding:2px 7px}" +
     ".card{background:#" + RPT.card + ";border-left:3px solid #" + RPT.gold + ";padding:10px 16px;margin:0 0 10px}.card h4{margin:0 0 4px;font-size:11pt}.card p{margin:4px 0}.cmeta{color:#" + RPT.accent + ";font-weight:700;font-size:8.5pt}.cnote{color:#" + RPT.grey + ";font-style:italic;font-size:9pt}" +
+    ".chapter{margin:40px 0 18px;padding-bottom:10px;border-bottom:2px solid #" + RPT.accent + "}.chapter:first-child{margin-top:4px}.partno{color:#" + RPT.gold + ";font-weight:700;font-size:8pt;letter-spacing:.14em;text-transform:uppercase}h2.ch{color:#" + RPT.accent + ";font-size:20pt;margin:4px 0 0}.none{color:#" + RPT.grey + "}" +
+    "@media print{.chapter{break-before:page}.chapter:first-child{break-before:auto}}" +
     "footer{border-top:1px solid #" + RPT.rule + ";color:#" + RPT.grey + ";font-size:8pt;padding:8px 40px 20px;margin-top:10px}" +
     "@media print{.band,.fig,.summary,.pill,.card{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
     "</style></head><body>\n" + b[0] + "\n<main>" + b.slice(1, -1).join("\n") + "</main>\n" + b[b.length - 1] + "\n</body></html>\n";
@@ -1794,7 +1878,7 @@ function docDocx(doc){
       para(r((doc.preparedFor ? "Prepared for " + doc.preparedFor + "  ·  " : "") + (doc.date || ""), {color: RPT.band, size: 20}), sp(0, 0))}]));
     body.push(para("", sp(0, 0) + '<w:pBdr><w:top w:val="single" w:sz="24" w:space="0" w:color="' + RPT.gold + '"/></w:pBdr>'));
     /* Key figures */
-    var F = doc.figures || [];
+    function figures(F){
     if (F.length){
       var g = 160, fw = Math.floor((TWD - g * (F.length - 1)) / F.length), cells = [];
       F.forEach(function(f, i){
@@ -1804,15 +1888,32 @@ function docDocx(doc){
       });
       body.push(gapP(160)); body.push(box(cells));
     }
+    }
     /* Summary */
-    if ((doc.intro || []).length){
+    function summary(intro, label){
+    if ((intro || []).length){
       body.push(gapP(240));
       body.push(box([{w: TWD, fill: RPT.tint, left: RPT.accent, pad: 180, padX: 300, body:
-        para(r((doc.introLabel || "Summary").toUpperCase(), {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
-        doc.intro.map(function(s){ return para(r("■  ", {color: RPT.gold, size: 14}) + runs(s, {size: 21}), sp(0, 80) + '<w:ind w:left="300" w:hanging="300"/>'); }).join("")}]));
+        para(r((label || "Summary").toUpperCase(), {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
+        intro.map(function(s){ return para(r("■  ", {color: RPT.gold, size: 14}) + runs(s, {size: 21}), sp(0, 80) + '<w:ind w:left="300" w:hanging="300"/>'); }).join("")}]));
     }
-    /* Sections */
-    doc.parts.forEach(function(pt, pi){
+    }
+    /* Parts (a combined report): each starts on a new page; sections are numbered right through */
+    var chs = docChapters(doc), sec = 0;
+    if (doc.chapters){ figures(doc.figures || []); summary(doc.intro, doc.introLabel); }
+    chs.forEach(function(c, ci){
+      if (doc.chapters){
+        if (ci > 0) body.push(para('<w:r><w:br w:type="page"/></w:r>', sp(0, 0))); else body.push(gapP(400));
+        body.push(para(r(("Part " + (ci + 1) + " of " + chs.length).toUpperCase(), {bold: true, color: RPT.gold, size: 16, spacing: 30}), "<w:keepNext/>" + sp(0, 60)));
+        body.push(para(r(plainText(c.title), {bold: true, color: RPT.accent, size: 40}), "<w:keepNext/>" + sp(0, 120) + '<w:pBdr><w:bottom w:val="single" w:sz="12" w:space="6" w:color="' + RPT.accent + '"/></w:pBdr>'));
+        if (!c.parts.length && !c.intro.length) body.push(para(r("Nothing to report.", {color: RPT.grey, size: 21}), sp(120, 0)));
+      }
+      figures(c.figures); summary(c.intro, c.introLabel);
+      sections(c.parts);
+    });
+    function sections(parts){
+    parts.forEach(function(pt){
+      var pi = sec++;
       body.push(para(r((pi < 9 ? "0" : "") + (pi + 1) + "   ", {bold: true, color: RPT.gold, size: 22}) + r(plainText(pt.title), {bold: true, size: 28}), "<w:keepNext/>" + sp(400, 120)));
       pt.groups.forEach(function(gr){
         if (gr.title) body.push(para(r(plainText(gr.title), {bold: true, caps: true, color: RPT.accent, size: 15, spacing: 16}), "<w:keepNext/>" + sp(160, 60)));
@@ -1826,7 +1927,7 @@ function docDocx(doc){
           });
           return;
         }
-        var C = reportColumns(pt.columns || [], gr.items), nat = C.map(function(c){ var w = Math.max(6, c.label.length); gr.items.forEach(function(it){ w = Math.max(w, Math.min(c.k === "title" ? 70 : 28, plainText(cellOf(it, c)).length + (c.k === "status" ? 3 : 0))); }); return w; });
+        var C = reportColumns(pt.columns || [], gr.items), nat = C.map(function(c){ var w = Math.max(8, c.label.length); gr.items.forEach(function(it){ w = Math.max(w, Math.min(c.k === "title" ? 70 : 28, plainText(cellOf(it, c)).length + (c.k === "status" ? 3 : 0))); }); return w; });
         var other = 0; C.forEach(function(c, i){ if (c.k !== "title") other += nat[i]; });
         var titleShare = C.length === 1 ? 1 : Math.max(0.42, Math.min(0.7, nat[0] / (nat[0] + other)));
         var widths = C.map(function(c, i){ return c.k === "title" ? Math.round(TWD * titleShare) : Math.round(TWD * (1 - titleShare) * nat[i] / other); });
@@ -1842,6 +1943,7 @@ function docDocx(doc){
         body.push(gapP(120));
       });
     });
+    }
   }
   var body = [];
   if (doc.style === "report") reportBody(body); else {
@@ -1950,6 +2052,6 @@ function docXlsx(doc){
 var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);
