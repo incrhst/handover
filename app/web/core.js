@@ -407,6 +407,117 @@ function ticksSince(progress, since){
   return Object.keys(done).filter(function(k){ return done[k] && k.split("@")[1] >= since; }).sort();
 }
 
+/* ================= Calendar file (.ics, RFC 5545) ================= */
+/* The regular jobs as one calendar file that Apple Calendar, Google Calendar and Outlook can import. Each job is one event that
+   repeats on the job's schedule, from its first date on or after o.from (default: today in the handover's zone) until its end.
+   A job with a time is an event at that time in the handover's zone (a VTIMEZONE is written for it); one without is all-day.
+   A job with a lead time gets an alert that many days before. The UID is the job's id, so importing again can update it.
+   o: {ids (only these jobs), from (YYYY-MM-DD), now (ms, for DTSTAMP)}. Returns {text, count}. No change to the format. */
+var ICS_DAY = {mon: "MO", tue: "TU", wed: "WE", thu: "TH", fri: "FR", sat: "SA", sun: "SU"}, ICS_DOW = ["SU","MO","TU","WE","TH","FR","SA"];
+function icsText(s){ return String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n"); }
+/* Lines longer than 75 octets go on in a line that starts with a space, never splitting a character */
+function icsFold(line){
+  var out = [], cur = "", n = 0;
+  for (var i = 0; i < line.length; i++){
+    var c = line.charAt(i), code = line.charCodeAt(i);
+    if (code >= 0xD800 && code <= 0xDBFF && i + 1 < line.length){ c += line.charAt(++i); }
+    var b = code < 0x80 ? 1 : code < 0x800 ? 2 : c.length > 1 ? 4 : 3;
+    if (n + b > (out.length ? 74 : 75)){ out.push(cur); cur = ""; n = 0; }
+    cur += c; n += b;
+  }
+  out.push(cur);
+  return out.join("\r\n ");
+}
+function icsDate(s){ return s.replace(/-/g, ""); }
+function icsUtc(t){ return new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z"); }
+function icsOffset(ms){ var m = Math.round(ms / 60000), a = Math.abs(m); return (m < 0 ? "-" : "+") + ("0" + Math.floor(a / 60)).slice(-2) + ("0" + a % 60).slice(-2); }
+function validZone(tz){ if (!tz) return false; try { new Intl.DateTimeFormat("en-GB", {timeZone: tz}); return true; } catch(e){ return false; } }
+/* The nth (or, for -1, the last) weekday dow (0 = Sunday) of month m in year y, as a day of the month */
+function nthWeekday(y, m, dow, n){
+  if (n < 0){ var last = dim(y, m), ld = new Date(Date.UTC(y, m - 1, last)).getUTCDay(); return last - ((ld - dow + 7) % 7); }
+  var fd = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); return 1 + ((dow - fd + 7) % 7) + (n - 1) * 7;
+}
+/* The zone's rules as worked out for year: each change of offset that year as a yearly rule (nth or last weekday of a month) */
+function vtimezone(tz, year){
+  function off(t){ return zoneClock(t, tz).offset; }
+  var lines = ["BEGIN:VTIMEZONE", "TZID:" + tz], prev = Date.UTC(year, 0, 1, 12), was = off(prev), found = 0;
+  for (var i = 1; i <= 366; i++){
+    var t = Date.UTC(year, 0, 1 + i, 12), now = off(t);
+    if (now === was){ prev = t; continue; }
+    var lo = prev, hi = t;
+    while (hi - lo > 60000){ var mid = Math.floor((lo + hi) / 2 / 60000) * 60000; if (off(mid) === was) lo = mid; else hi = mid; }
+    var wall = new Date(hi + was), m = wall.getUTCMonth() + 1, d = wall.getUTCDate(), dow = wall.getUTCDay();
+    var n = d + 7 > dim(year, m) ? -1 : Math.ceil(d / 7), kind = now > was ? "DAYLIGHT" : "STANDARD";
+    var hm = ("0" + wall.getUTCHours()).slice(-2) + ("0" + wall.getUTCMinutes()).slice(-2) + "00";
+    lines.push("BEGIN:" + kind, "DTSTART:1970" + ("0" + m).slice(-2) + ("0" + nthWeekday(1970, m, dow, n)).slice(-2) + "T" + hm,
+      "RRULE:FREQ=YEARLY;BYMONTH=" + m + ";BYDAY=" + n + ICS_DOW[dow], "TZOFFSETFROM:" + icsOffset(was), "TZOFFSETTO:" + icsOffset(now), "END:" + kind);
+    found++; was = now; prev = t;
+  }
+  if (!found) lines.push("BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:" + icsOffset(was), "TZOFFSETTO:" + icsOffset(was), "END:STANDARD");
+  lines.push("END:VTIMEZONE");
+  return lines;
+}
+/* The day of the month as a rule: a day past a month's end falls on its last day (spec section 5), so 29 to 31 take the last of 28..n */
+function icsMonthDay(day){
+  if (day === "last") return "BYMONTHDAY=-1";
+  var n = day || 1; if (n <= 28) return "BYMONTHDAY=" + n;
+  var ds = []; for (var k = 28; k <= n; k++) ds.push(k);
+  return "BYMONTHDAY=" + ds.join(",") + ";BYSETPOS=-1";
+}
+function icsRule(r){
+  switch (r.every){
+    case "day": return "FREQ=DAILY";
+    case "weekday": return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR";
+    case "week": var on = [].concat(r.on || "mon"); return "FREQ=WEEKLY;BYDAY=" + DAYS.filter(function(d){ return on.indexOf(d) > -1; }).map(function(d){ return ICS_DAY[d]; }).join(",");
+    case "month": return "FREQ=MONTHLY;" + icsMonthDay(r.day);
+    case "quarter": return "FREQ=MONTHLY;INTERVAL=3;" + icsMonthDay(r.day);
+    case "year": var md = r.date.split("-").map(Number); return "FREQ=YEARLY;BYMONTH=" + md[0] + ";" + icsMonthDay(md[1]);
+  }
+  return "";
+}
+/* The first date on or after from that the job falls on, or null when it has none left */
+function firstOn(r, from){
+  var s = r.start && r.start > from ? r.start : from;
+  for (var i = 0; i <= 400; i++){ var d = addDays(s, i); if (r.end && d > r.end) return null; if (occursOn(r, d)) return d; }
+  return null;
+}
+function calendarFile(h, o){
+  o = o || {};
+  var tz = validZone(h.timezone) ? h.timezone : "", from = o.from || zoneParts(h.timezone).date, now = o.now || Date.now();
+  var title = plainText(h.title || "Handover"), events = [], timed = false;
+  (h.recurring || []).forEach(function(r){
+    if (!r || r.visibleTo || (o.ids && o.ids.indexOf(r.id) < 0)) return;
+    var first = firstOn(r, from); if (!first) return;
+    var at = TIME.test(r.time || "") ? r.time : "", lead = leadOf(r), rule = icsRule(r);
+    if (!rule) return;
+    var ev = ["BEGIN:VEVENT", "UID:" + r.id + "@" + (h.id || "handover") + ".handover", "DTSTAMP:" + icsUtc(now), "SUMMARY:" + icsText(plainText(r.text))];
+    if (at){
+      timed = true;
+      var local = icsDate(first) + "T" + at.replace(":", "") + "00";
+      ev.push(tz ? "DTSTART;TZID=" + tz + ":" + local : "DTSTART:" + local, "DURATION:PT30M");
+      if (r.end) rule += ";UNTIL=" + (tz ? icsUtc(zoneTime(r.end, at, tz)) : icsDate(r.end) + "T" + at.replace(":", "") + "00");
+    } else {
+      ev.push("DTSTART;VALUE=DATE:" + icsDate(first), "DTEND;VALUE=DATE:" + icsDate(addDays(first, 1)), "TRANSP:TRANSPARENT");
+      if (r.end) rule += ";UNTIL=" + icsDate(r.end);
+    }
+    ev.push("RRULE:" + rule);
+    var desc = [cadence(r) + (at ? ", at " + at : "") + "."];
+    if (r.detail) desc.push(String(r.detail).split("\n").map(plainText).join("\n").trim());
+    desc.push("From the handover: " + title);
+    ev.push("DESCRIPTION:" + icsText(desc.filter(Boolean).join("\n\n")));
+    if (r.area) ev.push("CATEGORIES:" + icsText(plainText(r.area)));
+    if (lead) ev.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + icsText("Start now: " + plainText(r.text) + " (due in " + leadWords(lead) + ")"), "TRIGGER:-P" + lead + "D", "END:VALARM");
+    ev.push("END:VEVENT");
+    events.push(ev);
+  });
+  var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//incrhst//Handover//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:" + icsText(title)];
+  if (tz) lines.push("X-WR-TIMEZONE:" + tz);
+  if (timed && tz) lines = lines.concat(vtimezone(tz, +from.slice(0, 4)));
+  events.forEach(function(ev){ lines = lines.concat(ev); });
+  lines.push("END:VCALENDAR");
+  return {text: lines.map(icsFold).join("\r\n") + "\r\n", count: events.length};
+}
+
 /* ================= Progress (spec section 6) ================= */
 function mergeProgress(state, p){
   if (!p) return state;
@@ -2255,7 +2366,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, calendarFile: calendarFile, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
