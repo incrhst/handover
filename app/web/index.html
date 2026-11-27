@@ -66,6 +66,24 @@ button{font:inherit}
 .menu-panel button:hover{background:var(--surface-2)}
 .menu-panel small{display:block;color:var(--ink-3);font-size:12.5px}
 .menu-panel hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+dialog.dlg{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:0;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
+.dlg form{display:flex;flex-direction:column;max-height:calc(100vh - 48px)}
+.dlg header{padding:20px 22px 8px}.dlg header h2{margin:0 0 4px;font-size:1.3rem}.dlg header p{margin:0;color:var(--ink-3);font-size:14px}
+.dlg .dlg-body{overflow:auto;padding:8px 22px 4px}
+.dlg footer{display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;padding:14px 22px 18px;border-top:1px solid var(--line)}
+.xkind{border:1px solid var(--line);border-radius:12px;margin:0 0 8px;background:var(--surface)}
+.xkind-row{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.xkind-row label{flex:1;display:flex;align-items:baseline;gap:8px;cursor:pointer;min-width:0}
+.xkind-row label small{color:var(--ink-3);font-size:12.5px}
+.xkind-row .linkbtn{border:0;background:none;color:var(--accent);font-weight:650;font-size:13px;cursor:pointer;padding:4px 6px;white-space:nowrap}
+.xitems{padding:2px 12px 10px 36px;display:flex;flex-direction:column;gap:4px}
+.xitems label{display:flex;gap:8px;align-items:flex-start;font-size:14px;cursor:pointer}
+.xitems .xgroup{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;margin-top:6px}
+.xopts{display:flex;flex-direction:column;gap:8px;margin:12px 0 6px;font-size:14px}
+.xopts label{display:flex;gap:8px;align-items:center;cursor:pointer}
+.xopts input[type=text]{flex:1;min-width:0;font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.xopts .fmt{display:flex;gap:16px;flex-wrap:wrap}
 
 /* Hero */
 .hero{background:var(--hero);color:var(--hero-ink);padding:44px 0 92px}
@@ -342,6 +360,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
         <summary class="btn primary">Share &amp; export</summary>
         <div class="menu-panel" role="menu">
           <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
+          <button type="button" data-cmd="exportItems">Export items as a document…<small>Jobs, tasks or any other list, as PDF, Word or Excel</small></button>
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
           <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
@@ -429,6 +448,27 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   </main>
 </div>
 
+<dialog class="dlg" id="exportDlg" aria-labelledby="exportDlgTitle">
+  <form method="dialog" id="exportForm">
+    <header><h2 id="exportDlgTitle">Export items as a document</h2><p>Tick what goes in. Use “Pick items” to choose single ones.</p></header>
+    <div class="dlg-body">
+      <div id="exportKinds"></div>
+      <div class="xopts">
+        <label>Title <input type="text" id="exportTitle" autocomplete="off"></label>
+        <label id="exportClosedRow"><input type="checkbox" id="exportClosed"> Include closed items</label>
+        <label id="exportPrivateRow"><input type="checkbox" id="exportPrivate"> Include items only some people may see</label>
+        <div class="fmt" role="radiogroup" aria-label="Format">
+          <label><input type="radio" name="exportFmt" value="pdf" checked> PDF</label>
+          <label><input type="radio" name="exportFmt" value="docx"> Word (.docx)</label>
+          <label><input type="radio" name="exportFmt" value="xlsx"> Excel (.xlsx)</label>
+          <label><input type="radio" name="exportFmt" value="md"> Markdown</label>
+        </div>
+      </div>
+    </div>
+    <footer><span class="sub" id="exportCount" style="margin-right:auto;color:var(--ink-3);font-size:13px"></span><button class="btn" type="button" id="exportCancel">Cancel</button><button class="btn primary" type="submit" id="exportGo">Export</button></footer>
+  </form>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
@@ -451,7 +491,11 @@ var browser = {
   saveState: function(p){ var s = lsGet(); if (s.items[p.id]){ s.items[p.id].state = p.state; lsSet(s); } return {ok: true}; },
   switchTo: function(p){ var s = lsGet(); var it = s.items[p.id]; if (!it) return null; s.last = p.id; lsSet(s); return {source: it.text, state: it.state}; },
   close: function(){ var s = lsGet(); delete s.last; lsSet(s); return {ok: true}; },
-  saveAs: function(p){ download(p.filename, p.content, p.mime); return {ok: true}; },
+  saveAs: function(p){
+    var data = p.content;
+    if (p.base64){ var bin = atob(p.base64); data = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i); }
+    download(p.filename, data, p.mime); return {ok: true};
+  },
   exportSheet: function(p){ if (!p.auto) download(p.filename, p.content, "text/markdown"); return {ok: !p.auto}; },
   copy: function(p){ if (navigator.clipboard) navigator.clipboard.writeText(p.text); return {ok: true}; },
   print: function(){ window.print(); return {ok: true}; },
@@ -1005,6 +1049,7 @@ function command(c){
   switch (c){
     case "open": return openFile();
     case "close": return closeHandover();
+    case "exportItems": return openExportDialog();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "exportRecord": return call("saveAs", {filename: H.id + "-record.handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Export the full record"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1019,6 +1064,77 @@ function command(c){
   }
 }
 window.handoverCommand = command;
+
+/* Export items as a document: choose kinds (and single items), then save as Word or Markdown */
+var XP = {kinds: {jobs: true, tasks: true}, only: {}, open: {}, titleEdited: false};
+function xpOpts(){ return {closed: $("exportClosed").checked, "private": $("exportPrivate").checked}; }
+function xpList(){ return C.exportKinds(H, xpOpts()); }
+function xpChosen(){ return xpList().filter(function(k){ return XP.kinds[k.key] && (!XP.only[k.key] || XP.only[k.key].length); }); }
+function xpAutoTitle(){
+  var t = xpChosen().map(function(k, i){ return i ? k.title.charAt(0).toLowerCase() + k.title.slice(1) : k.title; });
+  return t.length ? (t.length > 1 ? t.slice(0, -1).join(", ") + " and " + t[t.length - 1] : t[0]) : H.title;
+}
+function xpRender(){
+  var list = xpList();
+  $("exportKinds").innerHTML = list.map(function(k){
+    var only = XP.only[k.key], on = !!XP.kinds[k.key], n = on ? (only ? only.length : k.count) : 0, last = null;
+    var items = XP.open[k.key] ? '<div class="xitems">' + k.items.map(function(it){
+      var g = it.group && it.group !== last ? '<div class="xgroup">' + esc(it.group) + "</div>" : ""; last = it.group;
+      var ticked = on && (!only || only.indexOf(it.id) > -1);
+      return g + '<label><input type="checkbox" data-xitem="' + esc(k.key) + '" value="' + esc(it.id) + '"' + (ticked ? " checked" : "") + "> <span>" + esc(plain(it.title).replace(/\*\*/g, "")) + "</span></label>";
+    }).join("") + "</div>" : "";
+    return '<div class="xkind"><div class="xkind-row"><label><input type="checkbox" data-xkind="' + esc(k.key) + '"' + (on ? " checked" : "") + "> <span><b>" + esc(k.title) + "</b> " + chip(on && only ? n + " of " + k.count : String(k.count), "") + " <small>" + esc(k.hint) + '</small></span></label><button type="button" class="linkbtn" data-xopen="' + esc(k.key) + '" aria-expanded="' + (XP.open[k.key] ? "true" : "false") + '">' + (XP.open[k.key] ? "Done" : "Pick items") + "</button></div>" + items + "</div>";
+  }).join("");
+  list.forEach(function(k){ var box = document.querySelector('[data-xkind="' + k.key + '"]'); var only = XP.only[k.key]; if (box) box.indeterminate = !!(XP.kinds[k.key] && only && only.length < k.count); });
+  var total = xpChosen().reduce(function(n, k){ return n + (XP.only[k.key] ? XP.only[k.key].length : k.count); }, 0);
+  $("exportCount").textContent = total + (total === 1 ? " item" : " items");
+  $("exportGo").disabled = !total;
+  if (!XP.titleEdited) $("exportTitle").value = xpAutoTitle();
+}
+function openExportDialog(){
+  $("shareMenu").open = false;
+  var anyClosed = false, anyPrivate = false;
+  ["gaps","inProgress","rules","decisions","risks","systems","documents","stakeholders"].forEach(function(k){ (H[k] || []).forEach(function(x){ if (x.closed) anyClosed = true; if (x.visibleTo || x.contactVisibleTo) anyPrivate = true; }); });
+  ((H.decide && H.decide.cards) || []).forEach(function(x){ if (x.closed) anyClosed = true; if (x.visibleTo) anyPrivate = true; });
+  $("exportClosedRow").hidden = !anyClosed; $("exportPrivateRow").hidden = !anyPrivate;
+  $("exportClosed").checked = false; $("exportPrivate").checked = false;
+  XP.only = {}; XP.open = {}; XP.titleEdited = false;
+  var keys = xpList().map(function(k){ return k.key; });
+  if (!keys.some(function(k){ return XP.kinds[k]; })) XP.kinds[keys[0]] = true;
+  xpRender();
+  $("exportDlg").showModal();
+}
+$("exportKinds").addEventListener("change", function(e){
+  var t = e.target, list = xpList();
+  if (t.dataset.xkind){ XP.kinds[t.dataset.xkind] = t.checked; delete XP.only[t.dataset.xkind]; }
+  else if (t.dataset.xitem){
+    var key = t.dataset.xitem, k = list.filter(function(x){ return x.key === key; })[0];
+    var picked = [].slice.call(document.querySelectorAll('[data-xitem="' + key + '"]:checked')).map(function(b){ return b.value; });
+    XP.kinds[key] = picked.length > 0;
+    if (picked.length && picked.length < k.count) XP.only[key] = picked; else delete XP.only[key];
+  }
+  xpRender();
+});
+$("exportKinds").addEventListener("click", function(e){ var b = e.target.closest("[data-xopen]"); if (!b) return; XP.open[b.dataset.xopen] = !XP.open[b.dataset.xopen]; xpRender(); });
+["exportClosed","exportPrivate"].forEach(function(id){ $(id).addEventListener("change", function(){ XP.only = {}; xpRender(); }); });
+$("exportTitle").addEventListener("input", function(){ XP.titleEdited = !!this.value.trim(); });
+$("exportCancel").addEventListener("click", function(){ $("exportDlg").close(); });
+$("exportForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var chosen = xpChosen(); if (!chosen.length) return;
+  var o = xpOpts(); o.kinds = chosen.map(function(k){ return k.key; }); o.only = XP.only; o.title = $("exportTitle").value.trim() || xpAutoTitle(); o.date = TODAY;
+  var doc = C.itemsDocument(H, o), fmt = (document.querySelector('[name="exportFmt"]:checked') || {}).value || "pdf";
+  var slug = o.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "items";
+  var out = {
+    pdf: {content: C.docPdf(doc, {timezone: H.timezone}), mime: "application/pdf"},
+    docx: {base64: C.base64(C.docDocx(doc)), mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    xlsx: {base64: C.base64(C.docXlsx(doc)), mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+    md: {content: C.docMarkdown(doc), mime: "text/markdown"}
+  }[fmt];
+  $("exportDlg").close();
+  call("saveAs", {filename: H.id + "-" + slug + "." + fmt, content: out.content, base64: out.base64, mime: out.mime, title: "Export items as a document"})
+    .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Exported " + o.title); });
+});
 
 /* Closing: save what's pending, forget the open file and go back to the start screen */
 function closeHandover(){

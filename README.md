@@ -11,6 +11,7 @@ Take over a role, one step at a time. **Handover** is a free Mac app that turns 
 3. Save the answer as `role.handover` and open it in Handover.
 4. Follow the first-month path, tick off today's duties and search when you need an answer.
 5. Share the file with the next person (**Share & export › Share handover file**), or export it with your progress to move it to another Mac or tool.
+6. For someone who won't use the app, such as the principal, use **Share & export › Export items as a document…**: pick jobs, tasks or any other list, and save it as PDF, Word or Excel.
 
 The app keeps its files in `~/Documents/Handover` (you can choose another folder, such as one in iCloud Drive or Google Drive):
 
@@ -41,7 +42,7 @@ The [handover skill](skills/handover/SKILL.md) teaches Claude Code and other age
 npx skills add incrhst/handover
 ```
 
-It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… merge`.
+It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… export` (items as PDF, Word or Excel), `… merge`.
 
 ## Repository
 
