@@ -933,7 +933,7 @@ const desk = () => ({handover: "1.3", id: "desk", title: "Front desk", timezone:
 const jam = (date, time) => Date.parse(date + "T" + time + ":00-05:00");
 
 test("reminders: a morning summary of what's to do, and each timed job at its time, in the handover's zone", () => {
-  const r = C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"));   // a Friday
+  const r = C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3});   // a Friday
   assert.deepEqual(r.map(x => [x.id, new Date(x.at).toISOString()]), [
     ["summary.2026-11-27", "2026-11-27T12:30:00.000Z"],
     ["job.post@2026-11-27", "2026-11-27T14:00:00.000Z"],
@@ -944,7 +944,7 @@ test("reminders: a morning summary of what's to do, and each timed job at its ti
   assert.equal(sum.title, "Front desk");
   assert.equal(sum.subtitle, "4 things to do today");
   assert.equal(sum.body, "Due: Open the post (09:00), Count the petty cash (16:00)\nOverdue: Open the post\nUnder way: Renew the van's insurance (13 days left)");
-  assert.deepEqual([post.kind, post.key, post.title, post.subtitle, post.body], ["job", "post@2026-11-27", "Open the post", "Front desk", "Due at 09:00"]);
+  assert.deepEqual([post.kind, post.key, post.date, post.title, post.subtitle, post.body], ["job", "post@2026-11-27", "2026-11-27", "Open the post", "Front desk", "Due at 09:00"]);
   assert.equal(petty.body, "Due at 16:00. Use the blue tin.");
   // the weekend: nothing due, but the lead-time job and the overdue post are still there
   assert.equal(r[3].body, "Overdue: Open the post, Count the petty cash\nUnder way: Renew the van's insurance (12 days left)");
@@ -962,13 +962,23 @@ test("reminders: ticks, the time of day and the settings decide what is left", (
   // overdue work in progress says so
   assert.match(C.reminders(h, p, jam("2026-12-01", "10:00"), {days: 2})[0].body, /In progress: Get the boiler serviced \(overdue\)/);
   // turned off, one kind at a time
-  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {morning: false}).map(x => x.kind), ["job", "job"]);
-  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {jobs: false}).map(x => x.kind), ["summary", "summary", "summary"]);
-  // a day with nothing to do has no summary; with no setting the summary is at 07:00
+  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3, morning: false}).map(x => x.kind), ["job", "job"]);
+  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3, jobs: false}).map(x => x.kind), ["summary", "summary", "summary"]);
+  // a day with nothing to do has no summary; with no setting the summary is at 07:00; the schedule reaches two weeks ahead
   const quiet = {handover: "1.0", id: "q", title: "Quiet", timezone: "Europe/London", recurring: [{id: "a", text: "A", every: "week", on: "mon"}]};
-  assert.deepEqual(C.reminders(quiet, {}, Date.parse("2026-07-05T00:00:00Z")).map(x => [x.id, new Date(x.at).toISOString()]), [["summary.2026-07-06", "2026-07-06T06:00:00.000Z"]]);
-  // never more than the limit
+  assert.deepEqual(C.reminders(quiet, {}, Date.parse("2026-07-05T00:00:00Z")).map(x => [x.id, new Date(x.at).toISOString()]),
+    [["summary.2026-07-06", "2026-07-06T06:00:00.000Z"], ["summary.2026-07-13", "2026-07-13T06:00:00.000Z"]]);
+  assert.equal(C.reminders(quiet, {}, Date.parse("2026-07-07T00:00:00Z")).map(x => x.id).join(), "summary.2026-07-13,summary.2026-07-20");
+  // never more than the limit, and only whole days: Monday's summary fits but its post doesn't, so Monday goes
+  const full = C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {limit: 6});
+  assert.deepEqual(full.map(x => x.id), ["summary.2026-11-27", "job.post@2026-11-27", "job.petty@2026-11-27", "summary.2026-11-28", "summary.2026-11-29"]);
   assert.equal(C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {days: 30, limit: 7}).length, 7);
+  // two weeks of a busy desk fit under the default limit
+  const two = C.reminders(desk(), {}, jam("2026-11-27", "06:00"));
+  assert.ok(two.length <= 60);
+  assert.equal(two[two.length - 1].date, "2026-12-10");
+  // a single day with more than the limit still schedules the earliest
+  assert.equal(C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {limit: 1}).length, 1);
 });
 
 test("reminders: a wall-clock time becomes the right instant either side of a clock change", () => {

@@ -353,15 +353,17 @@ function zoneTime(date, time, tz){
   return wall - zoneClock(t, tz).offset;
 }
 function firstFew(names, n){ return names.length <= n ? names.join(", ") : names.slice(0, n).join(", ") + " and " + (names.length - n) + " more"; }
-/* The reminders to schedule from now until the end of the next `days` days, each {id, at, kind, title, subtitle, body, key}:
-   at is the instant (ms) it goes off. Two kinds:
+/* The reminders to schedule from now until the end of the next `days` days (default 14), each {id, at, date, kind, title,
+   subtitle, body, key}: at is the instant (ms) it goes off, date the day it is for. Two kinds:
    - "summary": each morning at settings.dailyExportTime, what needs doing that day (jobs due, overdue and under way, and open
      things in progress due by then). None on a day with nothing to do.
    - "job": a job with a time, at that time on the day it is due, unless it is ticked. key is its occurrence, <id>@<date>.
-   Ticks are taken from progress as it is now, so call this again whenever they change. o: {morning, jobs, days, limit}. */
+   Ticks are taken from progress as it is now, so call this again whenever they change. o: {morning, jobs, days, limit}.
+   At most limit (default 60: macOS keeps 64 per app, which leaves room for reminders put off for an hour). When there are
+   more, the list stops at the last day that fits whole, so no day has only some of its reminders. */
 function reminders(h, progress, now, o){
   o = o || {}; progress = progress || {};
-  var tz = h.timezone, today = zoneClock(now, tz).date, days = o.days || 3, done = progress.recurring || {}, out = [];
+  var tz = h.timezone, today = zoneClock(now, tz).date, days = o.days || 14, done = progress.recurring || {}, out = [];
   var morning = (h.settings && TIME.test(h.settings.dailyExportTime || "") && h.settings.dailyExportTime) || "07:00";
   function open(x){ return !done[x.r.id + "@" + x.date]; }
   function name(x){ return plainText(x.r.text); }
@@ -370,7 +372,7 @@ function reminders(h, progress, now, o){
     if (o.jobs !== false) (h.recurring || []).forEach(function(r){
       if (!r.time || !occursOn(r, d) || done[r.id + "@" + d]) return;
       var at = zoneTime(d, r.time, tz);
-      if (at > now) out.push({id: "job." + r.id + "@" + d, at: at, kind: "job", key: r.id + "@" + d, title: plainText(r.text), subtitle: h.title, body: "Due at " + r.time + (r.detail ? ". " + plainText(String(r.detail).split("\n")[0]) : "")});
+      if (at > now) out.push({id: "job." + r.id + "@" + d, at: at, date: d, kind: "job", key: r.id + "@" + d, title: plainText(r.text), subtitle: h.title, body: "Due at " + r.time + (r.detail ? ". " + plainText(String(r.detail).split("\n")[0]) : "")});
     });
     if (o.morning === false) continue;
     var at0 = zoneTime(d, morning, tz);
@@ -383,10 +385,13 @@ function reminders(h, progress, now, o){
     if (start.length){ count += start.length; lines.push("Under way: " + firstFew(start.map(function(x){ return name(x) + " (" + (x.daysLeft === 1 ? "1 day" : x.daysLeft + " days") + " left)"; }), 2)); }
     if (work.length){ count += work.length; lines.push("In progress: " + firstFew(work.map(function(x){ return plainText(x.text) + (x.due < d ? " (overdue)" : ""); }), 2)); }
     if (!count) continue;
-    out.push({id: "summary." + d, at: at0, kind: "summary", key: "", title: h.title, subtitle: (count === 1 ? "1 thing" : count + " things") + " to do today", body: lines.join("\n")});
+    out.push({id: "summary." + d, at: at0, date: d, kind: "summary", key: "", title: h.title, subtitle: (count === 1 ? "1 thing" : count + " things") + " to do today", body: lines.join("\n")});
   }
   out.sort(function(a, b){ return a.at - b.at || (a.id < b.id ? -1 : 1); });
-  return out.slice(0, o.limit || 60);
+  var limit = o.limit || 60;
+  if (out.length <= limit) return out;
+  var cut = out[limit].date, whole = out.filter(function(x){ return x.date < cut; });
+  return whole.length ? whole : out.slice(0, limit);
 }
 
 /* The occurrences ticked that are due on or after since, so a reminder put off for later can be dropped once its job is done */

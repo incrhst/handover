@@ -747,7 +747,7 @@ function save(){
 
 /* ================= Reminders: the Mac app posts them as notifications ================= */
 var REMIND = {morning: true, jobs: true}, sentReminders = null, remindTimer = null, pendingReminder = null;
-/* Hand the Mac app every reminder from now to the end of the day after tomorrow. It replaces the ones it had,
+/* Hand the Mac app every reminder for the next two weeks (core.js reminders). It replaces the ones it had,
    so ticks, edits and switching handover all take effect. ticked lists the jobs done since yesterday, so a reminder
    put off for an hour doesn't go off for a job that is already done. Nothing is sent when nothing changed. */
 function syncReminders(){
