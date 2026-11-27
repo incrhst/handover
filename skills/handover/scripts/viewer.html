@@ -587,7 +587,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
 
 <dialog class="dlg" id="editDlg" aria-labelledby="editDlgTitle">
   <form method="dialog" id="editForm">
-    <header><h2 id="editDlgTitle">Edit</h2><p>Change what isn't accurate. The item keeps its place, its ticks and its history. Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
+    <header><h2 id="editDlgTitle">Edit</h2><p id="editDlgIntro">Change what isn't accurate. The item keeps its place, its ticks and its history. Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
     <div class="dlg-body">
       <div id="editFields"></div>
       <label class="cfield">Edited by <select id="editBy"></select></label>
@@ -1100,7 +1100,8 @@ function renderHandover(){
   var w = $("handoverWrap"), pl = H.plan, parts = [];
   if (!pl && !H.asks && !H.finalCheck && !H.signoff && !H.followUps && !H.history){ w.innerHTML = ""; return; }
   var ov = C.overlap(pl), steps = (pl && pl.steps) || [];
-  var head = pl ? '<div class="dates">' + [["Preparation from", nice(pl.prepStart)], [who("outgoing") + "'s last day", nice(pl.lastDay)], [pl.firstDay ? who("incoming") + "'s first day" : "First day", pl.firstDay ? nice(pl.firstDay) : "Not hired yet"], ["Mode", (ov ? "Overlap" : "No overlap: " + who("principal") + " holds the desk in between")], ["Track", pl.track === "full" ? "Full" : "Light"]].map(function(x){ return "<div><b>" + esc(x[0]) + "</b>" + esc(x[1]) + "</div>"; }).join("") + "</div>" : "";
+  var hired = (H.people || []).some(function(p){ return (p.roles || []).indexOf("incoming") > -1; });
+  var head = pl ? '<div class="dates">' + [["Preparation from", nice(pl.prepStart)], [who("outgoing") + "'s last day", nice(pl.lastDay)], [pl.firstDay || hired ? who("incoming") + "'s first day" : "First day", pl.firstDay ? nice(pl.firstDay) : hired ? "Not known yet" : "Not hired yet"], ["Mode", (ov ? "Overlap" : "No overlap: " + who("principal") + " holds the desk in between")], ["Track", pl.track === "full" ? "Full" : "Light"]].map(function(x){ return "<div><b>" + esc(x[0]) + "</b>" + esc(x[1]) + "</div>"; }).join("") + "</div>" : "";
   if (steps.length){
     var g = C.gates(H), fails = (H.finalCheck || []).filter(function(c){ return c.result === "fail"; }).length;
     head += '<div class="gates">' + Object.keys(g).map(function(k){ var x = g[k]; return '<div class="card"><h4>' + esc(x.title) + "</h4>" + (x.steps ? (x.met ? chip("Met", "ok") : chip(x.left + " of " + x.steps + " steps left", "warn")) : chip("No steps", "")) + (k === "done" && fails ? " " + chip(fails + (fails === 1 ? " check failed" : " checks failed"), "bad") : "") + "</div>"; }).join("") + "</div>";
@@ -1133,7 +1134,7 @@ function renderHandover(){
     parts.push(block("plan-after", "After the handover", "", b2));
   }
   if ((H.history || []).length) parts.push(block("plan-history", "Change log", H.history.length + "", '<div class="rec-list">' + H.history.slice().reverse().map(function(x){ return '<div class="card"><div>' + inline(x.text) + '</div><div class="meta-line">' + esc(day(x.at)) + (x.role ? " · " + esc(who(x.role)) : "") + " " + (x.source === "ai" ? chip("AI", "ai") : "") + "</div></div>"; }).join("") + "</div>"));
-  w.innerHTML = '<section class="panel block" id="handover"><div class="panel-head"><h2>The handover</h2>' + (pl && pl.practice ? chip("Practice run", "warn") : "") + xbtn("overview,steps,asks,finalCheck,signoff") + "</div>" + head + parts.join("") + "</section>";
+  w.innerHTML = '<section class="panel block" id="handover"><div class="panel-head"><h2>The handover</h2>' + (pl && pl.practice ? chip("Practice run", "warn") : "") + (pl && !KIT ? '<button class="btn no-print" type="button" data-edit="plan:" title="Change when preparation starts, the last day, the first day or the track">Edit dates…</button>' : "") + xbtn("overview,steps,asks,finalCheck,signoff") + "</div>" + head + parts.join("") + "</section>";
 }
 function tableHtml(head, rows){ return '<div class="table-wrap"><table class="stack"><thead><tr>' + head.map(function(h){ return "<th>" + esc(h) + "</th>"; }).join("") + "</tr></thead><tbody>" + rows.map(function(r){ return "<tr>" + r.map(function(c, i){ return '<td data-label="' + esc(head[i] || "") + '">' + c + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table></div>"; }
 
@@ -1488,21 +1489,30 @@ $("addForm").addEventListener("submit", function(e){
 });
 
 /* Edit a record, a first-weeks task or a regular job */
-var EDITING = null;
+var EDITING = null, EDIT_INTRO = $("editDlgIntro").textContent;
 function openEdit(ref){
-  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), role = list === "role";
-  var values = role ? C.roleValues(H) : C.editValues(H, list, id);
+  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), role = list === "role", plan = list === "plan";
+  var values = role ? C.roleValues(H) : plan ? C.planValues(H) : C.editValues(H, list, id);
   if (!values){ toast("That item isn't in the file any more"); return; }
   EDITING = {list: list, id: id};
   var noun = C.listNoun[list];
-  $("editDlgTitle").textContent = role ? (H.role ? "Edit the role" : "Describe the role") : "Edit " + (/^[aeiou]/.test(noun) ? "an " : "a ") + noun;
+  $("editDlgTitle").textContent = role ? (H.role ? "Edit the role" : "Describe the role") : plan ? "Edit the handover dates" : "Edit " + (/^[aeiou]/.test(noun) ? "an " : "a ") + noun;
+  $("editDlgIntro").textContent = plan ? "The steps keep their order and status; their dates are worked out from these. The change log records it." : EDIT_INTRO;
   $("editDelete").hidden = C.deletable.indexOf(list) < 0;
-  $("editFields").innerHTML = fieldsHtml(role ? C.roleFields : C.editFields(list), "editF-", values);
+  $("editFields").innerHTML = fieldsHtml(role ? C.roleFields : plan ? planFields() : C.editFields(list), "editF-", values);
   fieldsShown($("editFields"));
   $("editBy").innerHTML = roleOptions("Not recorded", peopleRoles().some(function(r){ return r[0] === "incoming"; }) ? "incoming" : "");
   $("editMsg").hidden = true;
   $("editDlg").showModal();
-  var first = $("editFields").querySelector("textarea, input[type=text]"); if (first) first.focus();
+  var first = $("editFields").querySelector("textarea, input[type=text], input[type=date]"); if (first) first.focus();
+}
+/* The dates form, with the assistants' names where the file has them */
+function planFields(){
+  var named = function(r){ return (H.people || []).some(function(p){ return (p.roles || []).indexOf(r) > -1; }); };
+  return C.planFields.map(function(d){
+    var label = d.k === "lastDay" && named("outgoing") ? who("outgoing") + "'s last day" : d.k === "firstDay" && named("incoming") ? who("incoming") + "'s first day" : d.label;
+    return Object.assign({}, d, {label: label});
+  });
 }
 $("editFields").addEventListener("change", function(){ fieldsShown($("editFields")); });
 $("addFields").addEventListener("change", function(){ fieldsShown($("addFields")); });
@@ -1524,7 +1534,7 @@ $("editForm").addEventListener("submit", function(e){
   e.preventDefault();
   var res;
   var o = {role: $("editBy").value || undefined, date: TODAY}, values = formValues($("editFields"));
-  try { res = EDITING.list === "role" ? C.editRole(H, values, o) : C.editItem(H, EDITING.list, EDITING.id, values, o); }
+  try { res = EDITING.list === "role" ? C.editRole(H, values, o) : EDITING.list === "plan" ? C.editPlan(H, values, o) : C.editItem(H, EDITING.list, EDITING.id, values, o); }
   catch (err){ fieldError($("editFields"), "editF-", $("editMsg"), err); return; }
   var allOpen = $("alljobs") && $("alljobs").open;
   saveContent(res.h).then(function(ok){

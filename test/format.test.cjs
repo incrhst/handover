@@ -414,6 +414,45 @@ test("adding records in the app (spec section 11)", () => {
   assert.throws(() => C.addItem(json("site/examples/sample.handover"), "gaps", {text: "x"}, o()), /format 1\.0/);
 });
 
+test("editing the handover dates, with the first day unknown", () => {
+  const h = ea(), o = {role: "outgoing", date: "2026-09-01"};
+  assert.deepEqual(C.planValues(h), {track: h.plan.track || "light", prepStart: h.plan.prepStart, lastDay: h.plan.lastDay, firstDay: "2026-10-05"});
+  assert.equal(C.planValues({handover: "1.1"}), null);
+  const base = C.planValues(h);
+  // Nobody hired yet: the first day can be left empty, and the handover runs with no overlap
+  const r = C.editPlan(h, Object.assign({}, base, {firstDay: ""}), o);
+  assert.equal(r.h.plan.firstDay, undefined);
+  assert.equal("firstDay" in r.h.plan, false);
+  assert.deepEqual(r.changed, ["the first day (now not known)"]);
+  assert.equal(C.overlap(r.h.plan), false);
+  assert.match(r.h.history[r.h.history.length - 1].text, /Edited the handover dates in the app: the first day \(now not known\)\./);
+  assert.deepEqual(C.validate(r.h).errors, []);
+  assert.deepEqual(check(schema.latest, r.h), []);
+  assert.equal(h.plan.firstDay, "2026-10-05", "the original is untouched");
+  assert.equal(r.h.plan.steps.length, h.plan.steps.length, "the steps stay");
+  // Setting a first day before the last day makes it an overlap
+  const r2 = C.editPlan(r.h, Object.assign({}, base, {firstDay: "2026-09-21"}), o);
+  assert.equal(r2.h.plan.firstDay, "2026-09-21");
+  assert.equal(C.overlap(r2.h.plan), true);
+  assert.deepEqual(r2.changed, ["the first day"]);
+  // Light is the default track, so choosing it on a file that names none changes nothing
+  const nt = ea(); delete nt.plan.track;
+  assert.throws(() => C.editPlan(nt, Object.assign({}, C.planValues(nt)), o), /Nothing has changed/);
+  const full = C.editPlan(nt, Object.assign({}, C.planValues(nt), {track: "full"}), o);
+  assert.equal(full.h.plan.track, "full");
+  // The dates must make sense
+  assert.throws(() => C.editPlan(h, Object.assign({}, base, {lastDay: ""}), o), e => e.field === "lastDay");
+  assert.throws(() => C.editPlan(h, Object.assign({}, base, {prepStart: "2026-10-01"}), o), e => e.field === "prepStart" && /on or before the last day/.test(e.message));
+  assert.throws(() => C.editPlan(h, Object.assign({}, base, {firstDay: "2026-01-01"}), o), e => e.field === "firstDay");
+  assert.throws(() => C.editPlan(h, Object.assign({}, base, {firstDay: "next spring"}), o), e => e.field === "firstDay" && /a date like/.test(e.message));
+  assert.throws(() => C.editPlan({handover: "1.1"}, base, o), /no handover plan/);
+  // The overview says "Not known yet" when the incoming assistant is named, "Not hired yet" when nobody is
+  const first = x => C.itemsDocument(x, {kinds: ["overview"], date: "2026-09-01"}).parts[0].groups.flatMap(g => g.items).find(i => i.id === "d-first");
+  assert.deepEqual([first(r.h).title, first(r.h).meta[0]], ["Marcus Hale's first day", "Not known yet"]);
+  const nobody = JSON.parse(JSON.stringify(r.h)); nobody.people = nobody.people.filter(p => !p.roles.includes("incoming"));
+  assert.deepEqual([first(nobody).title, first(nobody).meta[0]], ["First day", "Not hired yet"]);
+});
+
 test("editing records, first-weeks tasks and regular jobs in the app", () => {
   const h = ea(), at = "2026-11-27T10:00:00Z", o = () => ({role: "incoming", date: "2026-11-27", at});
   // Saving any item as it is changes nothing, in both examples
