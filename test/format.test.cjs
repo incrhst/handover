@@ -269,12 +269,36 @@ test("Word export is a valid package with styles, bullets and external links", (
 test("Excel export has a sheet per kind, a header row and one row per item", () => {
   const h = ea(), files = unzipStored(C.docXlsx(C.itemsDocument(h, {kinds: ["jobs", "decide"]})));
   const wb = files["xl/workbook.xml"];
-  assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what"]);
+  assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what", "Made with Handover"]);
   const jobs = files["xl/worksheets/sheet1.xml"];
   const n = h.recurring.length + h.asNeeded.length;
   assert.equal((jobs.match(/<row /g) || []).length, n + 1);
   assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<") && jobs.includes(">As needed<") && jobs.includes(">Expenses<"));
   assert.match(jobs, new RegExp('<autoFilter ref="A1:G' + (n + 1) + '"/>'));
+});
+
+test("every report and export says it was made with Handover, by Incrementic, and how to get it", () => {
+  const h = ea(), site = "https://incrhst.github.io/handover/", dmg = "https://github.com/incrhst/handover/releases/latest/download/Handover.dmg", maker = "https://incrementic.com";
+  const docs = [C.itemsDocument(h, {kinds: ["jobs"]}), C.principalReport(h, "jd", {date: "2026-09-01"}), C.principalReports(h, ["working", "needs"], {date: "2026-09-01"})];
+  docs.forEach(doc => {
+    const md = C.docMarkdown(doc);
+    assert.match(md, /\n---\n\n\*\*Made with Handover\*\*\n/, "Markdown ends with the note");
+    [site, dmg, maker].forEach(u => assert.ok(md.includes("](" + u + ")"), "Markdown links " + u));
+    const html = C.docHtml(doc);
+    assert.ok(html.includes('<aside class="app">') && [site, dmg, maker].every(u => html.includes('href="' + u + '"')), "HTML links all three");
+    assert.ok(html.indexOf('<aside class="app">') > html.lastIndexOf("<h2"), "HTML puts it after the last section");
+    const pdf = C.docPdf(doc, {timezone: h.timezone});
+    assert.ok(pdf.includes("(Made with Handover)") || pdf.includes("(MADE WITH HANDOVER)"), "PDF says it");
+    assert.ok(pdf.includes("incrhst.github.io/handover"), "PDF shows the website");
+    [site, dmg, maker].forEach(u => assert.ok(pdf.includes("/URI (" + u + ")"), "PDF links " + u));
+    assert.match(pdf, /\/Annots \[\d+ 0 R/);
+    const docx = unzipStored(C.docDocx(doc));
+    assert.ok(docx["word/document.xml"].includes(">Made with Handover<"));
+    [site, dmg, maker].forEach(u => assert.ok(docx["word/_rels/document.xml.rels"].includes('Target="' + u + '"'), "Word links " + u));
+  });
+  const xl = unzipStored(C.docXlsx(docs[0])), about = xl["xl/worksheets/sheet2.xml"];
+  assert.ok(about.includes(">Made with Handover<") && [site, dmg, maker].every(u => about.includes("HYPERLINK(&quot;" + u + "&quot;")), "Excel gets a last sheet with the links");
+  assert.equal((xl["xl/workbook.xml"].match(/_FilterDatabase/g) || []).length, 1, "only the data sheet has a filter");
 });
 
 test("components export: overview, people, reference sections, asks, final check and sign-off", () => {
