@@ -977,3 +977,10 @@ test("reminders: a wall-clock time becomes the right instant either side of a cl
   assert.equal(new Date(C.zoneTime("2026-11-02", "07:00", "America/New_York")).toISOString(), "2026-11-02T12:00:00.000Z");
   assert.equal(new Date(C.zoneTime("2026-10-30", "07:00", "America/New_York")).toISOString(), "2026-10-30T11:00:00.000Z");
 });
+
+test("reminders: the jobs ticked since a day, so a reminder put off for later can be dropped", () => {
+  const p = {recurring: {"post@2026-11-26": "x", "post@2026-11-27": "x", "petty@2026-11-27": "x", "van-insurance@2026-12-10": "x", "old@2026-11-01": "x", "gone@2026-11-28": ""}};
+  assert.deepEqual(C.ticksSince(p, "2026-11-27"), ["petty@2026-11-27", "post@2026-11-27", "van-insurance@2026-12-10"]);
+  assert.deepEqual(C.ticksSince({}, "2026-11-27"), []);
+  assert.deepEqual(C.ticksSince(undefined, "2026-11-27"), []);
+});

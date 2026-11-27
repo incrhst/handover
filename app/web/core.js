@@ -389,6 +389,12 @@ function reminders(h, progress, now, o){
   return out.slice(0, o.limit || 60);
 }
 
+/* The occurrences ticked that are due on or after since, so a reminder put off for later can be dropped once its job is done */
+function ticksSince(progress, since){
+  var done = (progress && progress.recurring) || {};
+  return Object.keys(done).filter(function(k){ return done[k] && k.split("@")[1] >= since; }).sort();
+}
+
 /* ================= Progress (spec section 6) ================= */
 function mergeProgress(state, p){
   if (!p) return state;
@@ -2237,7 +2243,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};

@@ -748,13 +748,15 @@ function save(){
 /* ================= Reminders: the Mac app posts them as notifications ================= */
 var REMIND = {morning: true, jobs: true}, sentReminders = null, remindTimer = null, pendingReminder = null;
 /* Hand the Mac app every reminder from now to the end of the day after tomorrow. It replaces the ones it had,
-   so ticks, edits and switching handover all take effect. Nothing is sent when nothing changed. */
+   so ticks, edits and switching handover all take effect. ticked lists the jobs done since yesterday, so a reminder
+   put off for an hour doesn't go off for a job that is already done. Nothing is sent when nothing changed. */
 function syncReminders(){
   if (!native) return;
   clearTimeout(remindTimer);
   remindTimer = setTimeout(function(){
     var items = H ? C.reminders(H, S, Date.now(), REMIND).map(function(r){ return {id: r.id, at: new Date(r.at).toISOString().replace(/\.\d+Z$/, "Z"), kind: r.kind, key: r.key, title: r.title, subtitle: r.subtitle, body: r.body}; }) : [];
-    var payload = {handover: H ? H.id : "", items: items}, sig = JSON.stringify(payload);
+    var ticked = H ? C.ticksSince(S, C.addDays(zoneParts(H.timezone).date, -1)) : [];
+    var payload = {handover: H ? H.id : "", items: items, ticked: ticked}, sig = JSON.stringify(payload);
     if (sig === sentReminders) return;
     sentReminders = sig;
     call("reminders", payload).then(remindStatus);

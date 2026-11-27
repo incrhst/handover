@@ -415,7 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         case "reminders":
             // Everything to remind about from now on, worked out by the page (core.js reminders). It replaces what was scheduled.
             let items = payload["items"] as? [[String: Any]] ?? []
-            reminders.schedule(handover: str("handover"), items: items) { status in reply(["status": status]) }
+            reminders.schedule(handover: str("handover"), items: items, ticked: payload["ticked"] as? [String] ?? []) { status in reply(["status": status]) }
         case "setReminderPrefs":
             reminders.prefs = ["morning": payload["morning"] as? Bool ?? true, "jobs": payload["jobs"] as? Bool ?? true]; reply(["ok": true])
         case "notificationSettings":
@@ -553,9 +553,14 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         switch s { case .notDetermined: return "notDetermined"; case .denied: return "denied"; default: return "authorized" }
     }
 
-    /// Replace the scheduled reminders with these. The first time there is something to schedule, macOS asks
-    /// whether Handover may send notifications. Replies with "authorized", "denied" or "notDetermined".
-    func schedule(handover: String, items: [[String: Any]], done: @escaping (String) -> Void) {
+    /// A job's reminder put off with Remind Me in an Hour. One per job occurrence, so it can be dropped once the job is ticked.
+    func snoozeID(_ handover: String, _ key: String) -> String { snoozed + handover + "." + key }
+
+    /// Replace the scheduled reminders with these, and drop any put off for later whose job is now ticked.
+    /// The first time there is something to schedule, macOS asks whether Handover may send notifications.
+    /// Replies with "authorized", "denied" or "notDetermined".
+    func schedule(handover: String, items: [[String: Any]], ticked: [String], done: @escaping (String) -> Void) {
+        if validID(handover) && !ticked.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ticked.map { snoozeID(handover, $0) }) }
         let iso = ISO8601DateFormatter()
         let now = Date()
         let requests: [UNNotificationRequest] = items.compactMap { it in
@@ -575,7 +580,7 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
         center.getNotificationSettings { settings in
             let go = { (status: UNAuthorizationStatus) in
                 self.center.getPendingNotificationRequests { pending in
-                    // Snoozed reminders stay: the person asked for them.
+                    // Reminders put off for later stay, unless their job was ticked (above): the person asked for them.
                     let stale = pending.map { $0.identifier }.filter { $0.hasPrefix(self.prefix) }
                     self.center.removePendingNotificationRequests(withIdentifiers: stale)
                     if status != .denied { requests.forEach { r in self.center.add(r) { e in if let e = e { NSLog("Handover: couldn't schedule a reminder: \(e)") } } } }
@@ -608,7 +613,8 @@ final class Reminders: NSObject, UNUserNotificationCenterDelegate {
                 self.send(["done", handover, key])
             case "later":
                 let again = content.mutableCopy() as! UNMutableNotificationContent
-                let r = UNNotificationRequest(identifier: self.snoozed + UUID().uuidString, content: again, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false))
+                let id = validID(handover) && !key.isEmpty ? self.snoozeID(handover, key) : self.snoozed + UUID().uuidString
+                let r = UNNotificationRequest(identifier: id, content: again, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false))
                 self.center.add(r, withCompletionHandler: nil)
             case UNNotificationDismissActionIdentifier: break
             default:
