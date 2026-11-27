@@ -456,7 +456,7 @@ function reopenItem(h, list, id, o){
 /* The fields a person fills in for each list. t: md (several lines), line, date, role, bool, or options [[value, label]]. */
 var ADD_FIELDS = {
   inProgress: [{k: "text", t: "md", req: true, label: "What's under way", hint: "What it is and where it has got to"}, {k: "owner", t: "role", label: "Who owns it now"}, {k: "due", t: "date", label: "Due"}],
-  gaps: [{k: "text", t: "md", req: true, label: "What's missing", hint: "What someone still needs to find out, get or be given"}, {k: "blocks", t: "bool", label: "It blocks work today"}],
+  gaps: [{k: "text", t: "md", req: true, label: "What's missing", hint: "What someone still needs to find out, get or be given"}, {k: "blocks", t: "bool", label: "It blocks work today", n: "whether it blocks work"}],
   rules: [{k: "text", t: "md", req: true, label: "The rule", hint: "If this happens, then do that"}, {k: "situation", t: "line", label: "Situation", hint: "The situation it belongs to, e.g. \"Principal travelling\""}],
   decisions: [{k: "text", t: "md", req: true, label: "What was decided"}, {k: "reason", t: "md", label: "Why"}, {k: "date", t: "date", label: "When it was decided"}],
   risks: [{k: "text", t: "md", req: true, label: "What could go wrong"},
@@ -479,28 +479,55 @@ function slugFor(text, noun){
   return s || noun.replace(/[^a-z]+/g, "-");
 }
 function addError(message, field){ var e = new Error(message); e.field = field; return e; }
+var SECRET_HELP = " Handover files MUST NOT hold passwords, PINs, codes, keys or card and bank numbers. Write where it is kept and who grants access instead, e.g. \"In the team password manager, Finance folder; Ravi grants access\".";
+/* Whether a field applies, given the other values (a regular job's schedule fields depend on how often it happens) */
+function fieldApplies(d, values){ return !d.when || d.when.is.indexOf(String(values[d.when.k] || "")) > -1; }
+/* One field's value from a form: returns the value to store, or undefined to leave it out. Throws with .field set. */
+function fieldValue(d, v, values){
+  if (d.t === "bool") return v === true || v === "true" || v === "on" ? true : undefined;
+  if (d.t === "days"){
+    var on = [].concat(v || []).map(function(x){ return String(x).trim(); }).filter(Boolean);
+    if (on.some(function(x){ return DAYS.indexOf(x) < 0; })) throw addError("Choose the days for “" + d.label + "”.", d.k);
+    on = DAYS.filter(function(x){ return on.indexOf(x) > -1; });
+    return !on.length ? undefined : on.length === 1 ? on[0] : on;
+  }
+  v = String(v === undefined || v === null ? "" : v).trim();
+  if (d.t !== "md") v = v.replace(/\s*\r?\n\s*/g, " ");
+  if (!v){ if (d.req || (d.reqWhen && fieldApplies({when: d.reqWhen}, values))) throw addError("Fill in “" + d.label + "”.", d.k); return undefined; }
+  if (Array.isArray(d.t)){
+    if (!d.t.some(function(x){ return x[0] === v; })) throw addError("Choose one of the options for “" + d.label + "”.", d.k);
+    return d.num ? +v : v;
+  }
+  if (d.t === "role"){ if (ROLES.indexOf(v) < 0) throw addError("Choose who for “" + d.label + "”.", d.k); return v; }
+  if (d.t === "date"){ if (!DATE.test(v)) throw addError("“" + d.label + "” needs a date like 2026-12-31.", d.k); return v; }
+  if (d.t === "time"){ if (!TIME.test(v)) throw addError("“" + d.label + "” needs a time like 09:30.", d.k); return v; }
+  if (d.t === "monthday"){
+    if (/^last$/i.test(v)) return "last";
+    if (!/^\d{1,2}$/.test(v) || +v < 1 || +v > 31) throw addError("“" + d.label + "” needs a day from 1 to 31, or “last”.", d.k);
+    return +v;
+  }
+  if (d.t === "mmdd"){ if (!/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v)) throw addError("“" + d.label + "” needs a month and day like 03-01 (1 March).", d.k); return v; }
+  var why = secretReason(v);
+  if (why) throw addError(why + SECRET_HELP, d.k);
+  return v;
+}
+/* Every field of a list from a form, checked: {field: value} with left-out fields absent */
+function readFields(defs, values){
+  var item = {};
+  defs.forEach(function(d){
+    if (!fieldApplies(d, values)) return;
+    var v = fieldValue(d, values[d.k], values);
+    if (v !== undefined) item[d.k] = v;
+  });
+  return item;
+}
 /* A copy of h with one new record: values = {field: value}, o = {role (who added it), date, at}. Returns {h, id}; throws with .field set. */
 function addItem(h, list, values, o){
   o = o || {}; values = values || {};
   var defs = ADD_FIELDS[list];
   if (!defs) throw new Error("Items can't be added to " + list + ".");
   if (!h.handover || h.handover === "1.0") throw new Error("This file uses format 1.0, which has no records. Ask the AI to write it again as format 1.1.");
-  var item = {};
-  defs.forEach(function(d){
-    var v = values[d.k];
-    if (d.t === "bool"){ if (v === true || v === "true" || v === "on") item[d.k] = true; return; }
-    v = String(v === undefined || v === null ? "" : v).trim();
-    if (d.t !== "md") v = v.replace(/\s*\r?\n\s*/g, " ");
-    if (!v){ if (d.req) throw addError("Fill in “" + d.label + "”.", d.k); return; }
-    if (Array.isArray(d.t)){ if (!d.t.some(function(x){ return x[0] === v; })) throw addError("Choose one of the options for “" + d.label + "”.", d.k); }
-    else if (d.t === "role"){ if (ROLES.indexOf(v) < 0) throw addError("Choose who for “" + d.label + "”.", d.k); }
-    else if (d.t === "date"){ if (!DATE.test(v)) throw addError("“" + d.label + "” needs a date like 2026-12-31.", d.k); }
-    else {
-      var why = secretReason(v);
-      if (why) throw addError(why + " Handover files MUST NOT hold passwords, PINs, codes, keys or card and bank numbers. Write where it is kept and who grants access instead, e.g. \"In the team password manager, Finance folder; Ravi grants access\".", d.k);
-    }
-    item[d.k] = v;
-  });
+  var item = readFields(defs, values);
   if (list === "documents" && !item.url && !item.location) throw addError("Give a link, or say where the document is kept.", "url");
   var out = clone(h), items = recordList(out, list), used = {};
   items.forEach(function(x){ used[x.id] = true; });
@@ -515,6 +542,60 @@ function addItem(h, list, values, o){
   o.idPrefix = "add";
   logChange(out, o, "Added " + LIST_NOUN[list] + " " + id + " in the app.");
   return {h: finish(out, o), id: id};
+}
+
+/* ================= Editing (records, first-weeks tasks and regular jobs) ================= */
+var EVERY_OPTS = [["day", "Every day"], ["weekday", "Monday to Friday"], ["week", "Every week"], ["month", "Every month"], ["quarter", "Every quarter"], ["year", "Every year"]];
+var EDIT_FIELDS = {
+  path: [{k: "text", t: "line", req: true, label: "The task", n: "the task"}, {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
+  recurring: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
+    {k: "every", t: EVERY_OPTS, req: true, label: "How often", n: "how often"},
+    {k: "on", t: "days", label: "On", hint: "Monday if none is ticked", when: {k: "every", is: ["week"]}, n: "the days"},
+    {k: "day", t: "monthday", label: "Day of the month", hint: "1 to 31, or “last”. A day past the month's end falls on its last day. The 1st if left empty", when: {k: "every", is: ["month", "quarter"]}, n: "the day"},
+    {k: "monthOfQuarter", t: [["1", "First month (Jan, Apr, Jul, Oct)"], ["2", "Second month (Feb, May, Aug, Nov)"], ["3", "Third month (Mar, Jun, Sep, Dec)"]], num: true, label: "Which month of the quarter", when: {k: "every", is: ["quarter"]}, n: "the month"},
+    {k: "date", t: "mmdd", label: "Date each year", hint: "Month and day, e.g. 03-01 for 1 March", when: {k: "every", is: ["year"]}, reqWhen: {k: "every", is: ["year"]}, n: "the date"},
+    {k: "time", t: "time", label: "Time of day", hint: "e.g. 09:30", n: "the time"},
+    {k: "start", t: "date", label: "From", hint: "Leave empty if it already applies", n: "the start"},
+    {k: "end", t: "date", label: "Until", hint: "Leave empty if it carries on", n: "the end"},
+    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}]
+};
+LIST_NOUN.path = "first-weeks task"; LIST_NOUN.recurring = "regular job";
+function editFields(list){ return EDIT_FIELDS[list] || ADD_FIELDS[list]; }
+function fieldName(d){ return d.n || (d.k === "text" ? "the text" : d.label.charAt(0).toLowerCase() + d.label.slice(1)); }
+function editList(h, list){
+  if (list === "path"){ var all = []; (h.path || []).forEach(function(s){ all = all.concat(s.tasks || []); }); return all; }
+  return list === "recurring" ? h.recurring || [] : recordList(h, list);
+}
+/* A form's starting values for one item: {field: value}, numbers and lists as the form shows them */
+function editValues(h, list, id){
+  var item = editList(h, list).filter(function(x){ return x.id === id; })[0];
+  if (!item) return null;
+  var v = {};
+  editFields(list).forEach(function(d){ var x = item[d.k]; if (x === undefined) return; v[d.k] = d.t === "days" ? [].concat(x) : typeof x === "number" ? String(x) : x; });
+  return v;
+}
+/* A copy of h with one item changed: values = every field of the form, o = {role (who edited it), date, at}.
+   Keeps the id (so progress stays), the provenance and closure, and fields the form doesn't show. Returns {h, changed}; throws with .field set. */
+function editItem(h, list, id, values, o){
+  o = o || {}; values = values || {};
+  var defs = editFields(list);
+  if (!defs) throw new Error("Items on " + list + " can't be edited.");
+  if (!EDIT_FIELDS[list] && (!h.handover || h.handover === "1.0")) throw new Error("This file uses format 1.0, which has no records.");
+  var next = readFields(defs, values);
+  if (list === "documents" && !next.url && !next.location) throw addError("Give a link, or say where the document is kept.", "url");
+  var out = clone(h), item = editList(out, list).filter(function(x){ return x.id === id; })[0];
+  if (!item) throw new Error("That item isn't in the file any more.");
+  var changed = [];
+  defs.forEach(function(d){
+    if (d.t === "bool" ? !!item[d.k] === !!next[d.k] : JSON.stringify(item[d.k]) === JSON.stringify(next[d.k])) return;
+    changed.push(fieldName(d));
+    if (next[d.k] === undefined) delete item[d.k]; else item[d.k] = next[d.k];
+  });
+  if (!changed.length) throw new Error("Nothing has changed.");
+  if (!EDIT_FIELDS[list]) delete item.aiDrafted;  /* a person has now checked it */
+  o.idPrefix = "edit";
+  logChange(out, o, "Edited " + LIST_NOUN[list] + " " + id + " in the app: " + listWords(changed) + ".");
+  return {h: finish(out, o), changed: changed};
 }
 
 /* Fill several gaps at once ({key: text}), record it in the history (1.1) and the date, and write the 1.0 sections again.
@@ -1619,6 +1700,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);
