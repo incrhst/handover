@@ -12,7 +12,7 @@ const root = path.join(__dirname, "..");
 const json = f => JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
 const sample = () => json("site/examples/sample.handover");
 const ea = () => json("site/examples/ea-no-overlap.handover");
-const schema = { latest: json("site/schema/v1.json"), v10: json("site/schema/v1.0.json"), v11: json("site/schema/v1.1.json"), v12: json("site/schema/v1.2.json") };
+const schema = { latest: json("site/schema/v1.json"), v10: json("site/schema/v1.0.json"), v11: json("site/schema/v1.1.json"), v12: json("site/schema/v1.2.json"), v13: json("site/schema/v1.3.json") };
 const errorsOf = h => C.validate(h).errors;
 const expectError = (h, re) => { const e = errorsOf(h); assert.ok(e.some(x => re.test(x)), "expected an error matching " + re + ", got:\n" + e.join("\n")); };
 
@@ -122,7 +122,7 @@ test("visibility: nothing the audience may not see", () => {
 });
 
 test("versions: newer minors warn, a 1.0 file using 1.1 fields warns, 1.0 stays strict", () => {
-  let h = sample(); h.handover = "1.3"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
+  let h = sample(); h.handover = "1.4"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
   let v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.length === 2, v.warnings.join("\n"));
   h = ea(); h.handover = "1.0"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.some(w => /says "1\.0" but uses 1\.2 fields\. Set it to "1\.2"/.test(w)));
   h = ea(); h.handover = "1.1"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, ['handover: the file says "1.1" but uses 1.2 fields. Set it to "1.2"']);
@@ -179,11 +179,12 @@ test("the CLI check reports TODO gaps by area and open gap items", () => {
   assert.match(old, /valid handover 1\.0 .* 7 TODO gap\(s\)/);
 });
 
-test("the AI prompt's example file is a valid 1.2 file", () => {
+test("the AI prompt's example file is a valid 1.3 file", () => {
   const text = fs.readFileSync(path.join(root, "site/prompt.md"), "utf8");
   const h = JSON.parse(text.match(/```json\n([\s\S]*?)\n```/)[1]);
-  assert.equal(h.handover, "1.2");
+  assert.equal(h.handover, "1.3");
   assert.ok(h.role && h.asNeeded && h.recurring.every(r => r.area), "the prompt shows the 1.2 fields");
+  assert.ok(h.recurring.some(r => r.lead), "the prompt shows a lead time");
   const v = C.validate(h);
   assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, []);
   assert.deepEqual(check(schema.latest, h), []);
@@ -841,4 +842,83 @@ test("the kit command writes a kit the format accepts", () => {
   assert.equal(kit.profile, "newcomer");
   assert.deepEqual(C.validate(kit.handover).errors, []);
   assert.ok(!out.includes("Sam Whitfield"));
+});
+
+/* ================= 1.3: lead time on regular jobs ================= */
+const vehicle = () => ({handover: "1.3", id: "fleet", title: "Fleet handover", timezone: "America/Jamaica", recurring: [
+  {id: "van-registration", text: "Renew the van's registration and fitness", area: "Vehicles", every: "year", date: "03-15", lead: 90},
+  {id: "van-insurance", text: "Renew the van's insurance", area: "Vehicles", every: "year", date: "03-15", lead: 30},
+  {id: "payroll", text: "Run payroll", every: "month", day: 25}]});
+
+test("1.3: a lead time is checked, and needs format 1.3", () => {
+  assert.deepEqual(C.validate(vehicle()), {errors: [], warnings: []});
+  assert.deepEqual(check(schema.latest, vehicle()), []); assert.deepEqual(check(schema.v13, vehicle()), []);
+  assert.ok(check(schema.v12, vehicle()).length, "the frozen 1.2 schema rejects lead");
+  assert.equal(C.usesMinor(vehicle()), 3);
+  let h = vehicle(); h.handover = "1.2";
+  assert.deepEqual(C.validate(h).warnings, ['handover: the file says "1.2" but uses 1.3 fields. Set it to "1.3"']);
+  for (const bad of [0, 367, 1.5, "90"]) { h = vehicle(); h.recurring[0].lead = bad; expectError(h, /recurring\[0\]\.lead: must be a whole number of days, 1 to 366/); }
+  h = vehicle(); h.recurring[2].lead = 28;
+  assert.match(C.validate(h).warnings.join("\n"), /recurring\[2\]\.lead: 28 days ahead reaches back past the previous occurrence/);
+  h = vehicle(); h.recurring.push({id: "post", text: "Open the post", every: "weekday", lead: 2});
+  assert.match(C.validate(h).warnings.join("\n"), /recurring\[3\]\.lead: a lead time has no effect on a job done every day or weekday/);
+  h = vehicle(); h.recurring.push({id: "flowers", text: "Order the flowers", every: "week", on: ["mon", "thu"], lead: 3});
+  assert.match(C.validate(h).warnings.join("\n"), /about every 3 days/);
+});
+
+test("1.3: a job goes on the list its lead time before its date and stays until it is done", () => {
+  const h = vehicle(), p = {firstSeen: "2026-12-01"};
+  const at = d => C.schedule(h, p, d), ids = l => l.map(o => o.r.id);
+  // a week before the registration's start day: in Next 7 days, by its start day
+  let sc = at("2026-12-10");
+  assert.deepEqual(sc.start, []);
+  assert.deepEqual(sc.next.map(o => [o.r.id, o.starts, o.date]), [["van-registration", "2026-12-15", "2027-03-15"]]);
+  assert.deepEqual(sc.later.filter(o => o.starts).map(o => [o.r.id, o.starts]), [["van-insurance", "2027-02-13"]]);
+  // the start day: 90 days ahead
+  sc = at("2026-12-15");
+  assert.deepEqual(sc.start.map(o => [o.r.id, o.date, o.starts, o.daysLeft, o.done]), [["van-registration", "2027-03-15", "2026-12-15", 90, false]]);
+  assert.deepEqual(sc.next, []);
+  // both under way, most urgent first; the insurance from 30 days ahead
+  sc = at("2027-02-13");
+  assert.deepEqual(sc.start.map(o => [o.r.id, o.daysLeft]), [["van-registration", 30], ["van-insurance", 30]]);
+  // ticking it ahead of time marks the due date's occurrence done
+  const done = C.schedule(h, {firstSeen: "2026-12-01", recurring: {"van-registration@2027-03-15": "2027-02-01T10:00:00-05:00"}}, "2027-02-13");
+  assert.deepEqual(done.start.map(o => [o.r.id, o.done]), [["van-registration", true], ["van-insurance", false]]);
+  // on the date it is due, and after it, overdue unless done
+  assert.deepEqual(ids(at("2027-03-15").due), ["van-registration", "van-insurance"]);
+  assert.deepEqual(ids(at("2027-03-16").overdue).filter(id => id !== "payroll"), ["van-registration", "van-insurance"]);
+  const after = C.schedule(h, {firstSeen: "2026-12-01", recurring: {"van-registration@2027-03-15": "2027-02-01T10:00:00-05:00"}}, "2027-03-16");
+  assert.deepEqual(ids(after.overdue).filter(id => id !== "payroll"), ["van-insurance"]);
+  // a job without a lead time is unchanged
+  assert.deepEqual(at("2026-12-20").next.map(o => [o.r.id, o.date, o.starts]), [["payroll", "2026-12-25", undefined]]);
+});
+
+test("1.3: the lead time shows with how often a job happens, and can be edited", () => {
+  assert.equal(C.cadence(vehicle().recurring[0]), "Every year, 15 Mar, starting 90 days before");
+  assert.equal(C.cadence({every: "week", on: "fri", lead: 14}), "Every Friday, starting 2 weeks before");
+  assert.equal(C.cadence({every: "month", day: 1, lead: 1}), "Monthly, the 1st, starting 1 day before");
+  // a 1.2 file given a lead time in the app becomes 1.3, and keeps its progress keys
+  const h = ea(), id = h.recurring.find(r => r.every === "month").id;
+  const v = C.editValues(h, "recurring", id); v.lead = "10";
+  const res = C.editItem(h, "recurring", id, v, {role: "incoming", date: "2026-11-27"});
+  assert.equal(res.h.handover, "1.3"); assert.deepEqual(res.changed, ["the lead time"]);
+  assert.equal(res.h.recurring.find(r => r.id === id).lead, 10);
+  assert.deepEqual(C.validate(res.h), {errors: [], warnings: []});
+  assert.equal(C.editValues(res.h, "recurring", id).lead, "10");
+  for (const bad of ["0", "abc", "400", "2.5"]) { const w = Object.assign({}, v, {lead: bad}); assert.throws(() => C.editItem(h, "recurring", id, w, {}), /Lead time in days/); }
+  // emptying it removes it
+  const back = C.editItem(res.h, "recurring", id, Object.assign({}, v, {lead: ""}), {date: "2026-11-27"});
+  assert.equal(back.h.recurring.find(r => r.id === id).lead, undefined);
+  // a daily job's form has no lead time
+  assert.equal(C.fieldApplies(C.editFields("recurring").find(d => d.k === "lead"), {every: "day"}), false);
+});
+
+test("1.3: the CLI lists what to start now and when the work starts", () => {
+  const f = path.join(require("os").tmpdir(), "fleet-" + process.pid + ".handover");
+  fs.writeFileSync(f, JSON.stringify(vehicle()));
+  try {
+    const out = execFileSync(process.execPath, [path.join(root, "skills/handover/scripts/handover.cjs"), "due", f, "2027-02-10", "--days", "5"], {encoding: "utf8"});
+    assert.match(out, /Start now:\n  Mon 15 Mar  Renew the van's registration and fitness  \(due in 33 days, on the list since Tue 15 Dec\)/);
+    assert.match(out, /Next 5 days:\n  Sat 13 Feb  Start: Renew the van's insurance  \(due Mon 15 Mar\)/);
+  } finally { fs.unlinkSync(f); }
 });

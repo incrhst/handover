@@ -8,6 +8,7 @@ How to work:
    - **Systems**: each system I use, what it is for, where the login is kept (never the login itself) and who grants access.
    - **Areas of work**: the main parts of the role, such as "Finance", "Office" or one property or business I look after. Use these names for every job below.
    - **Exact days**: what I do every day, week, month, quarter and year. For each, pin down the exact day and time ("every Thursday by 11:00", "the 7th of the second month of each quarter"). "Weekly" or "around month end" is not enough.
+   - **Lead times**: for each job on a date that takes more than a day (renewals, licences, permits, insurance, filings, events), how many days before the date the work has to start. If one date needs several things started at different times, such as a vehicle's registration and fitness 90 days ahead and its insurance 30 days ahead, ask about each one.
    - **As needed**: jobs with no schedule, done when something calls for them ("draft an employment letter when someone joins"), and what calls for each one.
    - **Money and approvals**: what I decide alone, what I check first, and what always goes to the person I work for. For each: the spending limit and currency, if there is one, and who approves above it. Who signs off what.
    - **What goes wrong**: what has gone wrong before or would hurt most if missed, how often, and whether only I know how to do it.
@@ -29,12 +30,12 @@ Rules for the file:
 - Mark everything you wrote yourself with `"aiDrafted": true` on items in the lists, so we review it.
 - Give every job in `recurring` and `asNeeded` an `area`, spelled the same way each time. To put an area under a larger one, use a slash with a space each side: `"Villa / Bookings"`.
 
-The format (version 1.2, full spec at https://incrhst.github.io/handover/):
+The format (version 1.3, full spec at https://incrhst.github.io/handover/):
 
 ```json
 {
   "$schema": "https://incrhst.github.io/handover/schema/v1.json",
-  "handover": "1.2",
+  "handover": "1.3",
   "id": "short-id-for-this-role",
   "title": "What this handover is for",
   "summary": "Two or three sentences: what the role is and how to use this handover.",
@@ -74,7 +75,9 @@ The format (version 1.2, full spec at https://incrhst.github.io/handover/):
     { "id": "payroll", "text": "Run payroll", "area": "Finance / Payroll", "every": "month", "day": 25 },
     { "id": "reconcile", "text": "Reconcile the bank account", "area": "Finance", "every": "month", "day": "last" },
     { "id": "vat", "text": "File the VAT return", "area": "Finance", "every": "quarter", "day": 7, "monthOfQuarter": 2 },
-    { "id": "insurance", "text": "Renew the insurance", "area": "Office", "every": "year", "date": "03-01" }
+    { "id": "insurance", "text": "Renew the office insurance", "area": "Office", "every": "year", "date": "03-01", "lead": 30 },
+    { "id": "van-registration", "text": "Renew the van's registration and fitness", "area": "Vehicles", "every": "year", "date": "03-15", "lead": 90, "detail": "Book the fitness test first: the registration needs the certificate." },
+    { "id": "van-insurance", "text": "Renew the van's insurance", "area": "Vehicles", "every": "year", "date": "03-15", "lead": 30 }
   ],
   "asNeeded": [
     { "id": "new-starter", "text": "Draft the employment letter and show the new person round", "area": "Office", "when": "When someone joins", "detail": "Optional extra detail." }
@@ -107,8 +110,8 @@ The format (version 1.2, full spec at https://incrhst.github.io/handover/):
 
 Lists: `column` is `alone`, `check` or `principal`; an `approver` is `{"stakeholder": "<id>"}` or `{"role": "principal"}`. A risk's `list` is `weekly`, `occasional` or `spof` (only I know it), `severity` is `high`, `medium` or `low`, and `treatment` is `record`, `write` or `brief`. Roles are `outgoing`, `incoming`, `principal`, `owner` and `facilitator`. This file is for the person taking over: if I say something should only be seen by some of us, leave it out and list it for me after the file.
 
-Schedules: `every` is `day`, `weekday`, `week` (with `on`: a day or list of days, `mon` to `sun`), `month` (with `day`: 1 to 31 or `"last"`), `quarter` (with `day` and `monthOfQuarter`: 1 = Jan/Apr/Jul/Oct, 2 = Feb/May/Aug/Nov, 3 = Mar/Jun/Sep/Dec) or `year` (with `date`: `"MM-DD"`). Optional `time` (`"HH:MM"`), `start` and `end` dates, `area`, `detail` and `see` (a section id). A job that happens on a date, even a rough one, goes in `recurring`, with the rule it can't express in `detail`; only jobs with no date at all go in `asNeeded`.
+Schedules: `every` is `day`, `weekday`, `week` (with `on`: a day or list of days, `mon` to `sun`), `month` (with `day`: 1 to 31 or `"last"`), `quarter` (with `day` and `monthOfQuarter`: 1 = Jan/Apr/Jul/Oct, 2 = Feb/May/Aug/Nov, 3 = Mar/Jun/Sep/Dec) or `year` (with `date`: `"MM-DD"`). Optional `time` (`"HH:MM"`), `start` and `end` dates, `area`, `detail`, `see` (a section id) and `lead`: the number of days before the date the work has to start, for a job that takes time (the date stays the deadline; the job goes on the list that many days ahead). When one date needs several things started at different times, write one duty for each, with the same date and its own `lead`. A job that happens on a date, even a rough one, goes in `recurring`, with the rule it can't express in `detail`; only jobs with no date at all go in `asNeeded`.
 
-Aim for four stages in `path`, every recurring duty I mention with its exact day, every job done as needed, eight to twelve questions, every person, system and limit I mention, and a gap for everything I couldn't answer. Every `see` must match a section id.
+Aim for four stages in `path`, every recurring duty I mention with its exact day and, if it takes time, its lead time, every job done as needed, eight to twelve questions, every person, system and limit I mention, and a gap for everything I couldn't answer. Every `see` must match a section id.
 
 Start now with your first question.

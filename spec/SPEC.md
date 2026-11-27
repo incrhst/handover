@@ -1,13 +1,19 @@
-# The handover format, version 1.2
+# The handover format, version 1.3
 
 A handover file describes how to take over a role. It's built for people: the Handover app turns it into a guided first month, a daily dashboard and a reference you can search. It's also built for tools: the format is plain JSON with a published schema, so anything can read it, write it or add to it.
 
 - **File extension:** `.handover`
 - **Encoding:** UTF-8 JSON
-- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json), [`v1.2.json`](../site/schema/v1.2.json))
+- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json), [`v1.2.json`](../site/schema/v1.2.json), [`v1.3.json`](../site/schema/v1.3.json))
 - **Examples:** [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.2, an executive assistant handover with no overlap: the reference case, and the one for sections 9 to 17) and [`sample.handover`](../site/examples/sample.handover) (1.0, a simpler operations lead handover)
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
+
+## What's new in 1.3
+
+Version 1.3 lets a regular job say how far ahead the work has to start. Renewing a vehicle can mean starting the registration and fitness 90 days before the date and the insurance 30 days before; a job that is only shown on its date would come up too late. Everything is optional, and every 1.0, 1.1 and 1.2 file stays valid with the same meaning.
+
+- **Lead time** (section 18): `lead` on a `recurring` duty, in days. The job goes on the daily list that many days before its date and stays there until it is done. The date is still when it is due.
 
 ## What's new in 1.2
 
@@ -46,7 +52,7 @@ A tool that finds a secret in a file it is writing MUST leave it out and SHOULD 
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
-| `handover` | yes | string | Format version: the lowest that has every field the file uses: `"1.2"`, `"1.1"` or `"1.0"`. |
+| `handover` | yes | string | Format version: the lowest that has every field the file uses: `"1.3"`, `"1.2"`, `"1.1"` or `"1.0"`. |
 | `id` | yes | id | Stable identifier. Keep it the same across versions of the same handover so a reader's progress carries over. |
 | `title` | yes | string | What the handover is for, e.g. "Operations lead handover". |
 | `$schema` | no | string | The schema URL above. Helps editors and validators. |
@@ -95,7 +101,7 @@ Roles are a fixed list, not references: a step can belong to `incoming` before a
 
 **Task** (`path[].tasks[]`): `id`, `text` required. Optional `detail`.
 
-**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below, and since 1.2 `area` (section 17).
+**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below, since 1.2 `area` (section 17) and since 1.3 `lead` (section 18).
 
 **Question** (`questions[]`): `q` (the question, plain text) and `a` (the answer, markdown) required. Optional `id`, `tag` (a short category label) and `see`.
 
@@ -139,6 +145,8 @@ Tools SHOULD make gaps easy to see and count them, so the author knows what's le
 
 `start` and `end` (inclusive dates) limit when a duty applies. `time` is informational: the duty is due on the day, and `time` says when in the day.
 
+Since 1.3, `lead` says how many days before the date the work has to start (section 18). The schedule still gives the date the duty is due.
+
 An **occurrence** is one duty on one date, written `<id>@<YYYY-MM-DD>`, e.g. `payroll@2026-12-25`.
 
 Tools SHOULD treat a past occurrence as **overdue** only if it is the duty's most recent occurrence, it isn't done, and it falls on or after `progress.firstSeen`. Missing a daily duty last week should not pile up seven overdue items.
@@ -171,12 +179,12 @@ Any object MAY carry extra fields whose names start with `x-`, for example `"x-o
 
 **Readers.** A tool that reads 1.x MUST open any later 1.x file. It MUST NOT reject the file because of fields it doesn't know. It SHOULD ignore them, tell the person that some parts may not show, and keep them if it rewrites the file.
 
-**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` when it uses 1.1 fields but none added in 1.2, and `"1.2"` otherwise. A file that declares a version lower than the fields it uses is still readable; validators SHOULD warn about it. A tool that adds a newer field to a file SHOULD raise the declared version to match.
+**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` when it uses 1.1 fields but none added in 1.2, `"1.2"` when it uses 1.2 fields but no `lead`, and `"1.3"` otherwise. A file that declares a version lower than the fields it uses is still readable; validators SHOULD warn about it. A tool that adds a newer field to a file SHOULD raise the declared version to match.
 
 **Schemas.** The schema rejects unknown fields (`additionalProperties: false`, apart from `x-` fields) so that writers catch typos. That strictness is a check for writers, not readers. To stop a strict schema from rejecting newer files:
 
 - `schema/v1.json` is always the schema for the newest 1.x. Because a minor version only adds optional fields, every older 1.x file is valid against it.
-- `schema/v1.0.json`, `schema/v1.1.json`, `schema/v1.2.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
+- `schema/v1.0.json`, `schema/v1.1.json`, `schema/v1.2.json`, `schema/v1.3.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
 - A validator that has only an older schema and meets a file with a higher minor version SHOULD treat unknown fields as warnings, not errors. The reference implementation (`core.js`) does this.
 
 ## 9. People (1.1)
@@ -386,7 +394,32 @@ Like every text field, the role, area and job fields MUST NOT hold passwords, PI
 
 **Job descriptions.** A tool that writes a job description from a file SHOULD say only what the file shows. A job description usually goes beyond the people in the handover, to HR or to candidates, so it SHOULD leave out every item with `visibleTo`, every stakeholder `contact`, and closed items. It SHOULD group the jobs by `area` when the file gives areas, and by how often they happen otherwise.
 
+## 18. Lead time (1.3)
+
+Some jobs take longer than a day. A vehicle's registration and fitness can take three months to renew, its insurance a month, a work permit or a passport longer. The date on the schedule is the deadline, and the work has to start well before it.
+
+**Lead** (`lead`, an integer from 1 to 366, on a `recurring` duty): how many days before each date the work has to start.
+
+- **The date is still the due date.** `every` and its fields give the date the duty is due, as in section 5. An occurrence is still `<id>@<due date>`, so progress (section 6) is unchanged: ticking a job done ahead of time marks that occurrence done.
+- **On the list from the start day.** For an occurrence due on date D, the start day is D minus `lead` days. From the start day until it is done, tools SHOULD show the occurrence as work to start, with its due date and the days left. On D it is due like any other duty, and after D an occurrence that isn't done is overdue under the rule in section 5.
+- **Looking ahead.** Where a tool lists what is coming up, it SHOULD list a job with a lead time by its start day ("Start: renew the van insurance, due 15 March"), not only by its due date.
+- **One deadline, several lead times.** When one date needs several things started at different times, write one duty for each, with the same schedule, its own `lead` and the same `area`. A vehicle renewal with a 90-day registration and fitness and 30-day insurance is two duties:
+
+```json
+[
+  { "id": "van-registration", "text": "Renew the van's registration and fitness", "area": "Vehicles", "every": "year", "date": "03-15", "lead": 90, "detail": "Book the fitness test first: the registration can't be renewed without the certificate." },
+  { "id": "van-insurance", "text": "Renew the van's insurance", "area": "Vehicles", "every": "year", "date": "03-15", "lead": 30 }
+]
+```
+
+- **No longer than the time between occurrences.** A `lead` as long as the time between two occurrences (a month for a monthly duty, 7 days for a weekly one on one day) means one occurrence starts before the last is due. That is allowed, and validators SHOULD warn about it. A `lead` on a duty done every `day` or `weekday` has no effect, and validators SHOULD warn about it too.
+- **Rough lead times.** Lead time is in whole days. Write "about three months" as 90, and say anything the number can't, such as "start as soon as the insurer sends the renewal notice", in `detail`.
+
+A reader that doesn't know `lead` shows the duty on its date only, too late for the work it needs. A writer that expects such readers MAY also say the lead time in `detail` ("Start 90 days before the date").
+
 ## Changelog
+
+- **1.3** (2026-11-27). Added `lead` on `recurring` duties (section 18): how many days before its date a job has to start, so it goes on the list in time. Added `v1.3.json`. Changed the writers' rule to name 1.3. Nothing in 1.0, 1.1 or 1.2 changed meaning.
 
 - **1.2** (2026-11-27). Added `role`, `asNeeded` and `area` on `recurring` duties (section 17), so a file can describe the role for a job description. Added `v1.2.json`. Changed the writers' rule to name 1.2, and asked tools that add a newer field to raise the declared version. Nothing in 1.0 or 1.1 changed meaning.
 - **1.1** (2026-11-26). Added `audience`, `profile`, `people`, `stakeholders`, `plan`, `asks`, `gaps`, `inProgress`, `rules`, `decisions`, `risks`, `systems`, `documents`, `decide`, `finalCheck`, `signoff`, `followUps`, `catchUps`, `history` and `rendered`, plus `from.hours` and `from.paid`. Extended the no-secrets rule to every new text field. Added uniqueness and reference rules for the new lists, the visibility rules and the `newcomer` and `record` profiles, the list of values that are worked out rather than stored, and the rule to render structured data into `sections` for 1.0 readers. Settled the schema conflict: `v1.json` is the newest 1.x, frozen copies are published for each minor version, and readers MUST NOT reject a 1.x file for unknown fields. Nothing in 1.0 changed meaning.
