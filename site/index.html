@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handover: take over a role, one step at a time</title>
+<meta name="description" content="A free Mac app that turns a handover file into a guided first month, a daily list of what's due and a searchable reference. Write the file with any AI chat.">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.png">
+<meta property="og:title" content="Handover">
+<meta property="og:description" content="Take over a role, one step at a time. A free Mac app and an open file format.">
+<meta property="og:image" content="https://incrhst.github.io/handover/icon.png">
+<style>
+:root{
+  --bg:#f6f4ee; --surface:#fff; --surface-2:#efede6; --ink:#191b18; --ink-2:#3d413b; --ink-3:#5f645c; --line:#dedad0;
+  --hero:#1f4a36; --hero-ink:#f3f7f4; --hero-ink-2:#cfe3d7; --accent:#5b3f8c; --accent-ink:#fff; --accent-soft:#efeaf7;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#121412; --surface:#1b1e1c; --surface-2:#242825; --ink:#e8e6e0; --ink-2:#c0c4bd; --ink-3:#979d96; --line:#323733;
+    --hero:#16352a; --hero-ink:#eef4f0; --hero-ink-2:#b4d1c0; --accent:#b9a2e6; --accent-ink:#1a1229; --accent-soft:#2a2338; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--accent)}
+code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:.1em .35em;border-radius:5px}
+.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+header.hero{background:var(--hero);color:var(--hero-ink);padding:28px 0 72px}
+.nav{display:flex;align-items:center;gap:12px;margin-bottom:56px}
+.nav img{width:40px;height:40px}
+.nav b{font-size:19px;letter-spacing:-.01em;margin-right:auto}
+.nav a{color:var(--hero-ink-2);text-decoration:none;font-weight:600;font-size:15px;padding:8px 6px}
+.nav a:hover{color:var(--hero-ink)}
+.hero-grid{display:flex;flex-wrap:wrap;gap:40px;align-items:center}
+.hero-copy{flex:999 1 480px}
+.hero-art{flex:1 1 240px;display:flex;justify-content:center}
+.hero-art img{width:min(300px,70vw);height:auto}
+h1{font-size:clamp(2.3rem,6vw,3.6rem);line-height:1.03;letter-spacing:-.035em;margin:0 0 18px;font-weight:800}
+.lede{font-size:1.2rem;color:var(--hero-ink-2);max-width:600px;margin:0 0 30px}
+.btn{display:inline-flex;align-items:center;gap:10px;min-height:52px;padding:0 24px;border-radius:12px;font-weight:700;font-size:16px;text-decoration:none;border:1px solid transparent;cursor:pointer;font-family:inherit}
+.btn.primary{background:#fff;color:#1f4a36}
+.btn.primary:hover{background:#eef4f0}
+.btn.ghost{background:transparent;color:var(--hero-ink);border-color:color-mix(in srgb,var(--hero-ink) 35%,transparent)}
+.btn.small{min-height:42px;padding:0 16px;font-size:15px;background:var(--accent);color:var(--accent-ink)}
+.cta{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.req{font-size:14px;color:var(--hero-ink-2);margin-top:14px}
+section{padding:64px 0 8px}
+h2{font-size:clamp(1.6rem,3.6vw,2.2rem);letter-spacing:-.025em;line-height:1.1;margin:0 0 10px;font-weight:800}
+.sub{color:var(--ink-3);margin:0 0 28px;max-width:640px}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;counter-reset:s}
+.steps li{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 24px;counter-increment:s;position:relative}
+.steps li::before{content:counter(s);display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-weight:800;font-size:15px;margin-bottom:12px}
+.steps h3{margin:0 0 6px;font-size:1.12rem}
+.steps p{margin:0 0 10px;color:var(--ink-2);font-size:15.5px}
+.steps p:last-child{margin-bottom:0}
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.feature{border-top:3px solid var(--hero);padding:14px 2px 0}
+.feature h3{margin:0 0 4px;font-size:1.05rem}
+.feature p{margin:0;color:var(--ink-2);font-size:15.5px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:20px;padding:28px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+pre{font-family:var(--mono);font-size:14px;background:var(--surface-2);border-radius:12px;padding:14px 16px;overflow-x:auto;margin:10px 0}
+.links{list-style:none;padding:0;margin:12px 0 0}
+.links li{margin:6px 0}
+.note{background:var(--accent-soft);border-radius:14px;padding:14px 18px;font-size:15.5px;margin-top:16px}
+footer{padding:56px 0 64px;color:var(--ink-3);font-size:14.5px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:9px;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (max-width:640px){ .wrap{padding:0 16px} .nav a.hide-sm{display:none} header.hero{padding-bottom:52px} .nav{margin-bottom:36px} }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <nav class="nav" aria-label="Site">
+      <img src="icon.svg" alt="" width="40" height="40"><b>Handover</b>
+      <a href="#how">How it works</a>
+      <a href="#skill" class="hide-sm">AI skill</a>
+      <a href="#format" class="hide-sm">The format</a>
+      <a href="https://github.com/incrhst/handover">GitHub</a>
+    </nav>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <h1>Take over a role, one step at a time.</h1>
+        <p class="lede">Handover turns one file into a guided first month, a daily list of what's due and a reference you can search. You write the file with any AI chat. Everything stays on your Mac.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/incrhst/handover/releases/latest/download/Handover.dmg">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/></svg>
+            Download for Mac
+          </a>
+          <a class="btn ghost" href="#how">See how it works</a>
+        </div>
+        <p class="req">Free. macOS 13 or later, Apple silicon or Intel. Signed and notarised by Apple.</p>
+      </div>
+      <div class="hero-art"><img src="icon.svg" alt="The Handover app icon: a ticked checklist card" width="300" height="300"></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="how">
+    <div class="wrap">
+      <h2>From download to day one</h2>
+      <p class="sub">Five steps. The outgoing person does steps 2 and 3; the new person does the rest.</p>
+      <ol class="steps">
+        <li><h3>Download the app</h3><p>Open <code>Handover.dmg</code> and drag Handover to Applications.</p></li>
+        <li><h3>Write the file with AI</h3><p>Copy the prompt into Claude, ChatGPT or Gemini. It interviews you about the role, one question at a time, then writes the handover file. Using an AI agent? <a href="#skill">Install the skill</a> instead.</p><p><button class="btn small" id="copyPrompt" type="button">Copy the AI prompt</button> <a href="prompt.md">Read it</a></p></li>
+        <li><h3>Save it as a .handover file</h3><p>Save the AI's answer as <code>role.handover</code>. Anything it didn't know is marked as a gap, so you can fill it in later.</p></li>
+        <li><h3>Open it in Handover</h3><p>Double-click the file, or drop it on the app. If something's wrong, the app says exactly what, so the AI can fix it.</p></li>
+        <li><h3>Run the role from it</h3><p>Follow the first-month path, tick off today's duties and search when you need an answer. Share the file with the next person, or export it with your progress.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>What the app does</h2>
+      <p class="sub">It reads the file and does the rest.</p>
+      <div class="features">
+        <div class="feature"><h3>A guided first month</h3><p>Stages with checklists. "You are here" moves on as you tick tasks off.</p></div>
+        <div class="feature"><h3>Today, overdue, coming up</h3><p>Daily, weekly, monthly, quarterly and yearly duties appear on the right day. Anything missed stays visible.</p></div>
+        <div class="feature"><h3>A task sheet every morning</h3><p>The day's list is saved as a document at 7:00, ready to print or send.</p></div>
+        <div class="feature"><h3>Backed up</h3><p>Put the data folder in iCloud Drive or Google Drive. A dated copy is also kept every night.</p></div>
+        <div class="feature"><h3>Ask first</h3><p>One search box covers the path, the answers and every reference section.</p></div>
+        <div class="feature"><h3>Private</h3><p>No account, no server, no tracking. Your files never leave your Mac unless you share them.</p></div>
+        <div class="feature"><h3>Stays up to date</h3><p>The app checks for new versions and installs them in one click, after checking they're genuine.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="skill">
+    <div class="wrap">
+      <h2>Let your AI agent do the writing</h2>
+      <p class="sub">The <b>handover</b> skill teaches Claude Code and other coding agents the format. Install it once and ask in plain words: "turn my notes into a handover", "what's missing from this handover?", "is payroll on the right day?"</p>
+      <pre>npx skills add incrhst/handover</pre>
+      <div class="features" style="margin-top:22px">
+        <div class="feature"><h3>Interview and write</h3><p>It asks the outgoing person about the role, one question at a time, then writes a complete file.</p></div>
+        <div class="feature"><h3>Convert what you have</h3><p>Notes, an SOP, a wiki page or an old handover document become a path, duties, answers and reference sections, in your own words.</p></div>
+        <div class="feature"><h3>Check and fill gaps</h3><p>It validates the file, fixes every error it finds and lists what's still missing, so you can answer each one.</p></div>
+        <div class="feature"><h3>Preview the schedule</h3><p>It shows what's due on any date, so you can confirm that "the last day of the month" means what you think.</p></div>
+        <div class="feature"><h3>Update safely</h3><p>It changes content without breaking anyone's ticks, and keeps extension fields other tools rely on.</p></div>
+        <div class="feature"><h3>Share and merge</h3><p>It removes progress before you share a file with someone new, and merges progress into a newer version.</p></div>
+      </div>
+      <div class="note">The skill never writes passwords, keys or card numbers into a file, and marks anything it doesn't know as a gap instead of guessing. <a href="https://github.com/incrhst/handover/tree/main/skills/handover">Read the skill</a>.</div>
+    </div>
+  </section>
+
+  <section id="format">
+    <div class="wrap">
+      <h2>An open format</h2>
+      <p class="sub">A handover file is plain JSON with a published schema, so any tool can read it, write it or build on it.</p>
+      <div class="two">
+        <div class="panel">
+          <h3 style="margin-top:0">For people and tools</h3>
+          <ul class="links">
+            <li><a href="https://github.com/incrhst/handover/blob/main/spec/SPEC.md">The specification</a> (version 1.0)</li>
+            <li><a href="schema/v1.json">JSON Schema</a>: <code>https://incrhst.github.io/handover/schema/v1.json</code></li>
+            <li><a href="examples/sample.handover">An example file</a></li>
+            <li><a href="https://github.com/incrhst/handover">Source code</a> for the app, the format and the skill</li>
+          </ul>
+          <div class="note">Never put passwords or keys in a handover file. Say where they're kept instead.</div>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">For developers</h3>
+          <p style="margin:0">The skill ships the reference implementation, <code>core.js</code>: validation, schedules and progress merging, with no dependencies. It runs in Node and in browsers, and it powers the app too.</p>
+          <pre>node scripts/handover.cjs check role.handover
+node scripts/handover.cjs due role.handover 2026-12-01</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">Handover is free and open source. <a href="https://github.com/incrhst/handover/issues">Report a problem</a> · <a href="https://github.com/incrhst/handover/releases">All releases</a></div>
+</footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+document.getElementById("copyPrompt").addEventListener("click", function(){
+  var t = document.getElementById("toast");
+  function say(m){ t.textContent = m; t.classList.add("show"); setTimeout(function(){ t.classList.remove("show"); }, 2600); }
+  fetch("prompt.md").then(function(r){ if (!r.ok) throw 0; return r.text(); })
+    .then(function(text){ return navigator.clipboard.writeText(text); })
+    .then(function(){ say("Prompt copied. Paste it into an AI chat."); })
+    .catch(function(){ location.href = "prompt.md"; });
+});
+</script>
+</body>
+</html>

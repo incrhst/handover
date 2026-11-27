@@ -1,0 +1,59 @@
+# Builds, signs, notarises and publishes Handover.dmg when a version tag is pushed:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   MACOS_CERT_P12        base64 of your "Developer ID Application" certificate exported as .p12
+#   MACOS_CERT_PASSWORD   the .p12 password
+#   MACOS_SIGN_IDENTITY   e.g. "Developer ID Application: Your Name (TEAMID)"
+#   NOTARY_KEY_P8         base64 of an App Store Connect API key (.p8), Developer role
+#   NOTARY_KEY_ID         that key's id
+#   NOTARY_ISSUER         the issuer id shown on the API keys page
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Check shared files are in sync
+        run: scripts/sync-shared.sh --check
+      - name: Check the example and the skill
+        run: node skills/handover/scripts/handover.cjs check site/examples/sample.handover
+      - name: Import the signing certificate
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$P12" ]; then echo "::error::Signing secrets are missing. See the top of release.yml."; exit 1; fi
+          KC="$RUNNER_TEMP/signing.keychain-db"; KCPASS="$(uuidgen)"
+          security create-keychain -p "$KCPASS" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCPASS" "$KC"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KCPASS" "$KC" >/dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+      - name: Build, sign and notarise
+        env:
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          export NOTARY_KEY_PATH="$RUNNER_TEMP/notary.p8"
+          echo "$NOTARY_KEY_P8" | base64 --decode > "$NOTARY_KEY_PATH"
+          scripts/build-app.sh "${GITHUB_REF_NAME#v}"
+          scripts/build-dmg.sh
+          rm "$NOTARY_KEY_PATH"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Handover.dmg dist/Handover.dmg.sha256 \
+            --title "Handover ${GITHUB_REF_NAME#v}" --generate-notes

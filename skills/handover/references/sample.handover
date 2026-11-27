@@ -1,0 +1,103 @@
+{
+  "$schema": "https://incrhst.github.io/handover/schema/v1.json",
+  "handover": "1.0",
+  "id": "example-studio-ops-lead",
+  "title": "Operations lead handover",
+  "summary": "Everything you need to run operations at Example Studio, a twelve-person design studio. Follow the path for your first month. After that, use the daily view and ask the question box when you need something.",
+  "from": {
+    "name": "Sam Rivera",
+    "role": "Operations lead (outgoing)",
+    "contact": "Email or the studio chat",
+    "availableUntil": "2026-12-31"
+  },
+  "updated": "2026-11-26",
+  "timezone": "Europe/London",
+  "settings": { "dailyExportTime": "07:00" },
+  "path": [
+    {
+      "id": "week-1",
+      "title": "Week 1 · Get in",
+      "summary": "Access, the people, and how money moves. Start at the top: the first task unblocks most of the rest.",
+      "tip": { "title": "Why this week matters", "text": "You can't run anything until you can sign in to it. Chase access first." },
+      "tasks": [
+        { "id": "access", "text": "**Get access to every system** in [Systems and access](#systems). Ask Sam to share the password manager folder first." },
+        { "id": "people", "text": "**Meet the three people** in [People](#people). Sam makes the introductions." },
+        { "id": "money", "text": "**Read [Money](#money)** and find last month's invoices in the accounts tool." },
+        { "id": "calendar", "text": "**Add the recurring duties** to your own calendar, or keep this app open." }
+      ]
+    },
+    {
+      "id": "week-2",
+      "title": "Week 2 · Shadow",
+      "summary": "Watch how the work runs before you run it.",
+      "tasks": [
+        { "id": "shadow-payroll", "text": "**Sit with Sam** for the payroll run." },
+        { "id": "shadow-review", "text": "**Join the Monday studio review** and take the notes." },
+        { "id": "suppliers", "text": "**Call each supplier** in [Suppliers](#suppliers) to introduce yourself." }
+      ]
+    },
+    {
+      "id": "week-3",
+      "title": "Weeks 3–4 · Lead",
+      "summary": "You run it, with Sam watching.",
+      "tasks": [
+        { "id": "run-payroll", "text": "**Run payroll yourself**, with Sam checking before it's sent." },
+        { "id": "run-review", "text": "**Chair the Monday studio review.**" },
+        { "id": "first-invoice", "text": "**Send the month's client invoices.**" }
+      ]
+    },
+    {
+      "id": "yours",
+      "title": "It's yours",
+      "summary": "Close the gaps, then the role is yours.",
+      "tasks": [
+        { "id": "final-call", "text": "**Final handover call:** anything still in Sam's head gets written into this file." },
+        { "id": "decisions", "text": "**Read the [Decision log](#decisions)** so you know why things are the way they are." }
+      ]
+    }
+  ],
+  "recurring": [
+    { "id": "inbox", "text": "Clear the studio inbox", "every": "weekday", "time": "09:30" },
+    { "id": "studio-review", "text": "Run the studio review", "every": "week", "on": "mon", "time": "10:00", "detail": "Agenda: last week, this week, blockers. Notes go in the shared folder." },
+    { "id": "timesheets", "text": "Chase missing timesheets", "every": "week", "on": "fri", "time": "15:00" },
+    { "id": "invoices", "text": "Send client invoices", "every": "month", "day": 1, "see": "money" },
+    { "id": "payroll", "text": "Run payroll", "every": "month", "day": 25, "see": "money", "detail": "If the 25th is a weekend, run it on the Friday before." },
+    { "id": "month-end", "text": "Reconcile the bank account", "every": "month", "day": "last", "see": "money" },
+    { "id": "vat", "text": "File the VAT return", "every": "quarter", "day": 7, "monthOfQuarter": 2, "detail": "TODO: confirm the quarter dates with the accountant" },
+    { "id": "insurance", "text": "Renew the studio insurance", "every": "year", "date": "03-01", "see": "suppliers" }
+  ],
+  "questions": [
+    { "q": "Where are the passwords?", "a": "In the shared password manager, in the folder TODO: folder name", "tag": "Access", "see": "systems" },
+    { "q": "Who signs off spending?", "a": "Anything over £500 needs a director's approval in writing, email is fine.", "tag": "Money", "see": "money" },
+    { "q": "What happens if payroll fails?", "a": "Call the bank's business line first, then tell the directors. Never re-send a payroll file without checking it didn't go through.", "tag": "If this happens", "see": "money" },
+    { "q": "Who do I call when the internet is down?", "a": "The office landlord's IT contact, listed in Suppliers.", "tag": "People", "see": "suppliers" },
+    { "q": "Until when can I ask Sam?", "a": "Until 31 December 2026, by email or the studio chat.", "tag": "People", "see": "people" }
+  ],
+  "sections": [
+    {
+      "id": "systems",
+      "title": "Systems and access",
+      "body": "Every tool the role touches. Credentials live in the password manager, never in this file.\n\n| System | Used for | How you get access |\n|---|---|---|\n| Accounts tool | Invoices, bank reconciliation | Sam adds you as an admin |\n| Payroll provider | Monthly payroll | TODO: who adds you |\n| Shared drive | Contracts, notes, templates | Any director |\n| Studio chat | Day-to-day messages | You'll get an invite on day one |"
+    },
+    {
+      "id": "people",
+      "title": "People",
+      "body": "### Directors\nAlex and Jordan. Approve spending over £500 and anything to do with contracts.\n\n### Accountant\nExternal. Handles VAT and year-end. Contact: TODO: name and email\n\n### Sam Rivera\nOutgoing operations lead. Available until 31 December 2026."
+    },
+    {
+      "id": "money",
+      "title": "Money",
+      "body": "- Client invoices go out on the 1st of each month.\n- Payroll runs on the 25th, or the Friday before if the 25th is a weekend.\n- The bank account is reconciled on the last day of each month.\n\n> Spending over £500 needs a director's written approval.\n\n!> Never re-send a payroll file without first checking the bank didn't already process it."
+    },
+    {
+      "id": "suppliers",
+      "title": "Suppliers",
+      "body": "| Supplier | What for | Renews |\n|---|---|---|\n| Landlord | Office, internet, IT contact | Lease to 2028 |\n| Insurer | Studio insurance | 1 March each year |\n| Cleaner | Weekly clean | Rolling monthly |"
+    },
+    {
+      "id": "decisions",
+      "title": "Decision log",
+      "body": "| Date | Decision | Why |\n|---|---|---|\n| 2026-06-01 | Moved payroll to the 25th | Staff asked to be paid before month-end bills |\n| 2026-09-15 | Dropped the second cleaner | Hybrid working halved office use |\n| TODO: date | TODO: decision | TODO: reason |"
+    }
+  ]
+}

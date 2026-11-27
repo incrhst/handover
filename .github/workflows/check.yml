@@ -1,0 +1,12 @@
+# On every push and pull request: the format files, the skill and the app all build.
+name: Check
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/sync-shared.sh --check
+      - run: node skills/handover/scripts/handover.cjs check site/examples/sample.handover
+      - run: node -e "JSON.parse(require('fs').readFileSync('site/schema/v1.json','utf8'))"
+      - run: scripts/build-app.sh 0.0.0

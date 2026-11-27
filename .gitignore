@@ -1,0 +1,10 @@
+build/
+dist/
+.DS_Store
+*.p12
+*.p8
+# Real handover files can hold private details about people and clients.
+# Only the example belongs in this repo.
+*.handover
+!site/examples/sample.handover
+!skills/handover/references/sample.handover
