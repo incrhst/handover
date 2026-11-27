@@ -11,6 +11,7 @@ Take over a role, one step at a time. **Handover** is a free Mac app that turns 
 3. Save the answer as `role.handover` and open it in Handover.
 4. Follow the first-month path, tick off today's duties and search when you need an answer.
    Anything the AI couldn't fill in shows as a gap. Click **N gaps to fill**, or any gap on the page, and type what's missing. The app saves it to the file and refuses passwords, PINs, codes and card or bank numbers.
+   Work through **Needs attention** and the records: **Close…** marks an item fixed, done, handed to the principal or no longer needed, and **Reopen** undoes it.
 5. Share the file with the next person (**Share & export › Share handover file**), or export it with your progress to move it to another Mac or tool.
 6. For someone who won't use the app, such as the principal, use **Share & export › Export items as a document…**, or the **Export…** button on any panel: pick the parts to share (the overview, who's who, jobs, tasks, records, reference sections, the handover plan, sign-off and more, down to single items) and save them as PDF, Word or Excel.
 

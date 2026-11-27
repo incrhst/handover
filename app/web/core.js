@@ -406,6 +406,52 @@ function secretReason(text){
   if (/(?:^|\s)(?=[A-Za-z0-9+\/_=-]*[0-9])(?=[A-Za-z0-9+\/_=-]*[a-z])(?=[A-Za-z0-9+\/_=-]*[A-Z])[A-Za-z0-9+\/_=-]{24,}(?=\s|$)/.test(t)) return "This looks like a key or token.";
   return "";
 }
+/* ================= Closing records (spec section 11) ================= */
+/* The ways each list can be closed. Gaps and things in progress follow the spec; for the rest an item closes when it no longer applies. */
+var CLOSE_HOW = {gaps: ["fixed", "answered", "principal"], inProgress: ["done", "dropped"], risks: ["fixed", "dropped"],
+  rules: ["dropped"], decisions: ["dropped"], systems: ["dropped"], documents: ["dropped"], decide: ["dropped"]};
+var CLOSE_LABEL = {fixed: "Fixed", answered: "Answered", principal: "Handed to the principal", done: "Done", dropped: "No longer applies"};
+var LIST_NOUN = {gaps: "gap", inProgress: "thing in progress", risks: "risk", rules: "rule", decisions: "decision", systems: "system", documents: "document", decide: "who-decides card"};
+function recordList(h, list){ return list === "decide" ? (h.decide && h.decide.cards) || [] : h[list] || []; }
+function stamp(o){ return o.at || new Date().toISOString().replace(/\.\d+Z$/, "Z"); }
+function logChange(out, o, text){
+  if (out.handover === "1.0") return;
+  var hist = out.history || [], used = {}; hist.forEach(function(x){ used[x.id] = true; });
+  var base = (o.idPrefix || "change") + "-" + (o.date || "x"), id = base, k = 2; while (used[id]) id = base + "-" + k++;
+  var entry = {id: id, at: stamp(o), source: "app", text: text};
+  if (o.role) entry.role = o.role;
+  out.history = hist.concat([entry]);
+}
+function finish(out, o){ if (o.date) out.updated = o.date; return out.rendered ? withRendered(out) : out; }
+/* A copy of h with one record closed: o = {how, by (role), fix (line), date, at}. Throws with a message for the person. */
+function closeItem(h, list, id, o){
+  o = o || {};
+  if (!CLOSE_HOW[list]) throw new Error("Items on " + list + " can't be closed.");
+  if (CLOSE_HOW[list].indexOf(o.how) < 0) throw new Error("Choose how it was closed: " + CLOSE_HOW[list].map(function(x){ return CLOSE_LABEL[x].toLowerCase(); }).join(", ") + ".");
+  var fix = String(o.fix || "").replace(/\s*\r?\n\s*/g, " ").trim();
+  var why = secretReason(fix);
+  if (why) throw new Error(why + " Handover files MUST NOT hold passwords, PINs, codes, keys or card and bank numbers. Link to where the fix is written down, or say who has it.");
+  var out = clone(h), item = recordList(out, list).filter(function(x){ return x.id === id; })[0];
+  if (!item) throw new Error("That item isn't in the file any more.");
+  if (item.closed) throw new Error("That item is already closed.");
+  item.closed = {how: o.how, at: stamp(o)};
+  if (o.by) item.closed.by = o.by;
+  if (fix) item.closed.fix = fix;
+  o.idPrefix = "close";
+  logChange(out, o, "Closed " + LIST_NOUN[list] + " " + id + " in the app: " + CLOSE_LABEL[o.how].toLowerCase() + ".");
+  return finish(out, o);
+}
+function reopenItem(h, list, id, o){
+  o = o || {};
+  var out = clone(h), item = recordList(out, list).filter(function(x){ return x.id === id; })[0];
+  if (!item) throw new Error("That item isn't in the file any more.");
+  if (!item.closed) throw new Error("That item is already open.");
+  delete item.closed;
+  o.idPrefix = "reopen";
+  logChange(out, o, "Reopened " + LIST_NOUN[list] + " " + id + " in the app.");
+  return finish(out, o);
+}
+
 /* Fill several gaps at once ({key: text}), record it in the history (1.1) and the date, and write the 1.0 sections again.
    Returns {h, filled} or throws with a message for the person. */
 function fillGaps(h, answers, o){
@@ -419,17 +465,9 @@ function fillGaps(h, answers, o){
   picked.sort(function(a, b){ var pa = a.path.join("."), pb = b.path.join("."); return pa === pb ? b.n - a.n : 0; });
   var out = h;
   picked.forEach(function(g){ out = fillGap(out, g.path, g.n, answers[g.key]); });
-  if (o.date) out.updated = o.date;
-  if (out.handover !== "1.0"){
-    var hist = out.history || [], used = {}; hist.forEach(function(x){ used[x.id] = true; });
-    var id = "fill-" + (o.date || "x"), k = 2; while (used[id]) id = "fill-" + (o.date || "x") + "-" + k++;
-    var areas = []; picked.forEach(function(g){ var a = GAP_AREA[g.area] || g.area; if (areas.indexOf(a) < 0) areas.push(a); });
-    var entry = {id: id, at: o.at || new Date().toISOString().replace(/\.\d+Z$/, "Z"), source: "app", text: "Filled " + picked.length + (picked.length === 1 ? " gap" : " gaps") + " in the app: " + areas.join(", ") + "."};
-    if (o.role) entry.role = o.role;
-    out.history = hist.concat([entry]);
-  }
-  if (out.rendered) out = withRendered(out);
-  return {h: out, filled: picked.length};
+  var areas = []; picked.forEach(function(g){ var a = GAP_AREA[g.area] || g.area; if (areas.indexOf(a) < 0) areas.push(a); });
+  logChange(out, {idPrefix: "fill", date: o.date, at: o.at, role: o.role}, "Filled " + picked.length + (picked.length === 1 ? " gap" : " gaps") + " in the app: " + areas.join(", ") + ".");
+  return {h: finish(out, o), filled: picked.length};
 }
 /* TODO gaps counted by top-level area, plus the open items on the gaps list */
 function gapCounts(h){
@@ -1143,6 +1181,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

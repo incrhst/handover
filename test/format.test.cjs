@@ -334,3 +334,27 @@ test("filling gaps refuses secrets (spec section 2)", () => {
   });
   ["In the shared password manager, Finance folder", "Ask Ravi for the PIN reset form", "+1 876 555 0100", "https://example.com/docs/Payroll-2026", "Helen Ortiz, helen.ortiz@example.com"].forEach(v => assert.equal(C.secretReason(v), "", v));
 });
+
+test("closing and reopening records (spec section 11)", () => {
+  const h = ea(), g = h.gaps.find(x => !x.closed && x.blocks);
+  const closed = C.closeItem(h, "gaps", g.id, {how: "fixed", by: "incoming", fix: "Agency added Marcus as a booker", date: "2026-11-27", at: "2026-11-27T10:00:00Z"});
+  assert.deepEqual(closed.gaps.find(x => x.id === g.id).closed, {how: "fixed", at: "2026-11-27T10:00:00Z", by: "incoming", fix: "Agency added Marcus as a booker"});
+  assert.deepEqual(closed.history.slice(-1)[0], {id: "close-2026-11-27", at: "2026-11-27T10:00:00Z", source: "app", text: "Closed gap " + g.id + " in the app: fixed."});
+  assert.equal(closed.updated, "2026-11-27");
+  assert.deepEqual(C.validate(closed).errors, []); assert.deepEqual(check(schema.latest, closed), []);
+  assert.ok(!g.closed, "the original is not changed");
+  assert.equal((C.exportProfile(closed, "newcomer").gaps || []).some(x => x.id === g.id), false, "closed items leave the newcomer copy");
+
+  const again = C.reopenItem(closed, "gaps", g.id, {date: "2026-11-27", at: "2026-11-27T10:05:00Z"});
+  assert.equal(again.gaps.find(x => x.id === g.id).closed, undefined);
+  assert.equal(again.history.slice(-1)[0].id, "reopen-2026-11-27");
+  assert.deepEqual(C.validate(again).errors, []);
+
+  assert.throws(() => C.closeItem(h, "inProgress", h.inProgress[0].id, {how: "fixed"}), /done, no longer applies/, "each list closes only the ways the spec allows");
+  assert.throws(() => C.closeItem(h, "gaps", g.id, {how: "fixed", fix: "PIN is 4471"}), /MUST NOT/);
+  assert.throws(() => C.closeItem(closed, "gaps", g.id, {how: "fixed"}), /already closed/);
+  assert.throws(() => C.reopenItem(h, "gaps", g.id), /already open/);
+  assert.throws(() => C.closeItem(h, "gaps", "no-such-id", {how: "fixed"}), /isn't in the file/);
+  const card = h.decide.cards[0], dropped = C.closeItem(h, "decide", card.id, {how: "dropped"});
+  assert.equal(dropped.decide.cards[0].closed.how, "dropped"); assert.deepEqual(C.validate(dropped).errors, []);
+});
