@@ -95,8 +95,9 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
 dialog.dlg.wide{width:min(980px,calc(100vw - 32px))}
 .rep{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;min-height:0}
 .rep .chow label{flex-direction:column;gap:2px}
+.rep .chow label:has(input:checked){border-color:var(--accent)}
 .rep .chow small{color:var(--ink-3);font-size:12.5px;font-weight:400}
-.rep .combo{display:grid;gap:4px;margin:4px 0 8px}.rep .combo label{display:flex;gap:8px;align-items:center;justify-content:flex-start;font-weight:500;margin:0}.rep .combo input{width:auto;flex:none;margin:0}
+.rep .rep-lead{margin:0 0 6px;font-size:13px;color:var(--ink-3)}
 .rep iframe{width:100%;height:min(60vh,560px);border:1px solid var(--line);border-radius:10px;background:#fff}
 @media (max-width:720px){.rep{grid-template-columns:1fr}.rep iframe{height:50vh}}
 
@@ -276,6 +277,29 @@ body.searching .questions{display:none}
 .cfield .bad{border-color:#b3261e}
 .closebtn + .closebtn{margin-left:6px}
 .checklist li .editbtn{float:right;margin:0 0 4px 10px}
+/* Guides on a task or job (spec section 19) */
+.guides{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.guide{display:inline-flex;align-items:center;gap:6px;max-width:100%;border:1px solid var(--line);background:var(--surface-2);color:var(--accent);font:inherit;font-size:13px;font-weight:650;line-height:1.4;border-radius:999px;padding:3px 11px 3px 9px;cursor:pointer;text-align:left}
+.guide:hover,.guide:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+.guide svg{flex:none}
+.guide span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.done .guide{color:var(--ink-3)}
+.guide-for{margin:6px 0 0;font-size:13.5px;color:var(--ink-3)}
+.guide-kind{display:block;font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:0 0 4px}
+.guide-facts{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:6px 0 14px;font-size:14.5px}
+.guide-facts dt{font-weight:700;color:var(--ink-3)}
+.guide-facts dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.guide-open{display:inline-flex;text-decoration:none;margin:0 0 12px}
+.guide-also{border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+.guide-also h3{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+.guide-also .guides{margin:0}
+.guide[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent);cursor:default}
+.cfield .docs{display:grid;gap:4px;margin-top:6px}
+.cfield .docs label{display:flex;gap:8px;align-items:baseline;font-weight:500;font-size:14.5px}
+.cfield .docs input{width:auto;margin:0}
+.cfield .docs small{display:inline;margin:0 0 0 6px}
+.cfield .none{display:block;margin-top:6px;font-weight:400;font-size:14px;color:var(--ink-3)}
+@media print{.guides{display:none}}
 .alljobs{margin-top:14px}
 .alljobs summary{cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
 .alljobs .duty{margin-top:8px}
@@ -420,6 +444,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
           <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
+          <button type="button" data-cmd="calendar">Add jobs to calendar (.ics)…<small>Every regular job, repeating, for Apple Calendar, Google Calendar or Outlook</small></button>
           <button type="button" data-cmd="kit" id="kitMenuBtn">Transition kit (HTML)…<small>One file that opens in any browser, with no app or internet</small></button>
           <hr>
           <button type="button" data-cmd="print">Print…</button>
@@ -563,9 +588,9 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
     <header><h2 id="reportDlgTitle">Report for the principal</h2><p>A short, plain document you can send at any point. It says only what the handover file shows, and leaves out anything the principal may not see.</p></header>
     <div class="dlg-body rep">
       <div>
-        <div class="chow" id="reportKinds" role="radiogroup" aria-label="Which report"></div>
-        <div class="cfield" id="reportComboRow" hidden><span>Include</span><div class="combo" id="reportCombo"></div>
-          <label class="cfield">Title <input type="text" id="reportTitle" autocomplete="off"><small>Leave empty for a title that says where the handover is</small></label></div>
+        <p class="rep-lead">Tick one report, or several to put them in one document with a short overview first.</p>
+        <div class="chow" id="reportKinds" role="group" aria-label="Reports to include"></div>
+        <label class="cfield" id="reportTitleRow" hidden>Title <input type="text" id="reportTitle" autocomplete="off"><small>Leave empty for a title that says where the handover is</small></label>
         <label class="cfield" id="reportSinceRow">Finished since <input type="date" id="reportSince"></label>
         <div class="xopts"><div class="fmt" role="radiogroup" aria-label="Format">
           <label><input type="radio" name="reportFmt" value="pdf" checked> PDF</label>
@@ -601,6 +626,14 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <p id="editMsg" hidden></p>
     </div>
     <footer><button class="btn danger" type="button" id="editDelete" hidden>Delete</button><button class="btn" type="button" id="editCancel">Cancel</button><button class="btn primary" type="submit" id="editGo">Save changes</button></footer>
+  </form>
+</dialog>
+
+<dialog class="dlg wide" id="guideDlg" aria-labelledby="guideDlgTitle">
+  <form method="dialog">
+    <header><span class="guide-kind" id="guideKind"></span><h2 id="guideDlgTitle"></h2><p class="guide-for" id="guideFor"></p></header>
+    <div class="dlg-body" id="guideBody"></div>
+    <footer><button class="btn" type="button" id="guideRef" hidden>Show in the reference</button><button class="btn primary" type="submit">Close</button></footer>
   </form>
 </dialog>
 
@@ -961,8 +994,8 @@ function dutyHtml(o, showDate){
   var when = [o.daysLeft ? "Due " + nice(o.date) : showDate ? nice(o.date) : "", r.time || "", cadence(r), o.daysLeft && o.starts === TODAY ? "starts today" : ""].filter(Boolean).join(" · ");
   return '<div class="duty' + (on ? " done" : "") + '" data-key="' + esc(key) + '">' +
     '<button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(r.text)) + '">' + TICK + "</button>" +
-    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + ahead + esc(when) + (r.see && sectionIds[r.see] ? ' · <a href="' + esc(secHref(r.see)) + '">Details</a>' : "") + riskChip(r.id) + editBtn("recurring", r) + "</span>" +
-    (r.detail ? '<div class="detail">' + md(r.detail) + "</div>" : "") + "</div>";
+    '<span class="t">' + inline(r.text) + "</span>" + '<span class="when">' + ahead + esc(when) + riskChip(r.id) + editBtn("recurring", r) + "</span>" +
+    (r.detail ? '<div class="detail">' + md(r.detail) + "</div>" : "") + guidesHtml("recurring", r) + "</div>";
 }
 /* The day a tick was made, in the handover's zone */
 function dayOf(ts){ try { return new Intl.DateTimeFormat("en-CA", {timeZone: H.timezone || undefined, year: "numeric", month: "2-digit", day: "2-digit"}).format(new Date(ts)); } catch (e){ return String(ts).slice(0, 10); } }
@@ -986,9 +1019,9 @@ function renderToday(){
   var jobs = H.recurring || [], needed = H.asNeeded || [];
   var areaTag = function(x){ return x.area ? '<span class="area">' + esc(x.area) + "</span>" : ""; };
   var all = jobs.length || needed.length ? '<details class="alljobs no-print" id="alljobs"><summary>All jobs (' + (jobs.length + needed.length) + ")</summary>" + jobs.map(function(r){
-    return '<div class="duty plain"><span class="t">' + inline(r.text) + areaTag(r) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + editBtn("recurring", r) + "</span></div>";
+    return '<div class="duty plain"><span class="t">' + inline(r.text) + areaTag(r) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + calBtn(r) + editBtn("recurring", r) + "</span>" + guidesHtml("recurring", r) + "</div>";
   }).join("") + (needed.length ? '<h4 class="alljobs-sub">Done as needed</h4>' + needed.map(function(a){
-    return '<div class="duty plain"><span class="t">' + inline(a.text) + areaTag(a) + '</span><span class="when">' + esc(C.whenNeeded(a)) + (a.see && sectionIds[a.see] ? ' · <a href="' + esc(secHref(a.see)) + '">Details</a>' : "") + editBtn("asNeeded", a) + "</span>" + (a.detail ? '<div class="detail">' + md(a.detail) + "</div>" : "") + "</div>";
+    return '<div class="duty plain"><span class="t">' + inline(a.text) + areaTag(a) + '</span><span class="when">' + esc(C.whenNeeded(a)) + editBtn("asNeeded", a) + "</span>" + (a.detail ? '<div class="detail">' + md(a.detail) + "</div>" : "") + guidesHtml("asNeeded", a) + "</div>";
   }).join("") : "") + '<div class="addrow"><button type="button" class="closebtn" data-add="asNeeded">Add a job done as needed…</button></div></details>' : "";
   w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + all + "</section>";
 }
@@ -1007,7 +1040,7 @@ function renderPath(){
         (s.summary ? '<div class="stage-sub">' + md(s.summary) + "</div>" : "") +
         '<ul class="checklist">' + s.tasks.map(function(t){
           var on = !!S.tasks[t.id];
-          return '<li class="' + (on ? "done" : "") + '" data-task="' + esc(t.id) + '"><button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(t.text)) + '">' + TICK + "</button>" + editBtn("path", t) + '<span class="t">' + inline(t.text) + "</span>" + (t.detail ? '<div class="detail">' + md(t.detail) + "</div>" : "") + "</li>";
+          return '<li class="' + (on ? "done" : "") + '" data-task="' + esc(t.id) + '"><button class="tick" type="button" aria-pressed="' + on + '" aria-label="' + (on ? "Done: " : "Mark done: ") + esc(plain(t.text)) + '">' + TICK + "</button>" + editBtn("path", t) + '<span class="t">' + inline(t.text) + "</span>" + (t.detail ? '<div class="detail">' + md(t.detail) + "</div>" : "") + guidesHtml("path", t) + "</li>";
         }).join("") + "</ul>" +
         '<div class="stage-nav no-print">' + (i > 0 ? '<button class="btn" type="button" data-go="' + (i - 1) + '">← ' + esc(p[i - 1].title) + "</button>" : "<span></span>") +
         (i < p.length - 1 ? '<button class="btn primary" type="button" data-go="' + (i + 1) + '">Next: ' + esc(p[i + 1].title) + " →</button>" : '<button class="btn primary" type="button" data-cmd="ask">Ask a question →</button>') + "</div>" +
@@ -1110,6 +1143,60 @@ function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
 var RECORD_LISTS = ["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide"];
 function listOf(o){ for (var i = 0; i < RECORD_LISTS.length; i++){ var k = RECORD_LISTS[i], l = k === "decide" ? (H.decide && H.decide.cards) || [] : H[k] || []; if (l.indexOf(o) > -1) return k; } return ""; }
 function closeBtn(list, o){ if (KIT) return ""; return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
+/* A task's or job's guides (spec section 19): its reference section and its documents, each opening in the guide panel */
+var GUIDE_ICON = {
+  section: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 21.5V5.5"/><path d="M8 7h8M8 11h6"/></svg>',
+  recording: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z" fill="currentColor"/></svg>',
+  doc: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>'
+};
+function guideIcon(g){ return g.kind === "section" ? GUIDE_ICON.section : g.doc.type === "recording" ? GUIDE_ICON.recording : GUIDE_ICON.doc; }
+function guideKey(g){ return (g.kind === "section" ? "sec:" : "doc:") + g.id; }
+function guideButtons(list, item, current){
+  return C.guidesFor(H, item).map(function(g){
+    var on = current && guideKey(g) === current;
+    return '<button type="button" class="guide" data-guide="' + esc(guideKey(g)) + '" data-owner="' + esc(list + ":" + item.id) + '"' + (on ? ' aria-current="true"' : "") + ' title="' + esc(g.kind === "section" ? "Read it here" : g.doc.url ? "Open the guide" : "Where the guide is kept") + '">' + guideIcon(g) + "<span>" + esc(C.guideLabel(g)) + "</span></button>";
+  }).join("");
+}
+function guidesHtml(list, item){ var b = guideButtons(list, item); return b ? '<div class="guides no-print">' + b + "</div>" : ""; }
+function ownerItem(ref){
+  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), all = [];
+  if (list === "path") (H.path || []).forEach(function(s){ all = all.concat(s.tasks || []); }); else all = H[list] || [];
+  return all.filter(function(x){ return x.id === id; })[0];
+}
+var GUIDE_AT = null;
+function openGuide(key, ownerRef){
+  var item = ownerRef ? ownerItem(ownerRef) : null, list = ownerRef ? ownerRef.split(":")[0] : "";
+  var g = (item ? C.guidesFor(H, item) : []).filter(function(x){ return guideKey(x) === key; })[0];
+  if (!g){ toast("That guide isn't in the file any more"); return; }
+  GUIDE_AT = g;
+  var d = g.doc, body = "";
+  $("guideKind").textContent = g.kind === "section" ? "From the reference" : (C.docType[d.type] || "Document");
+  $("guideDlgTitle").textContent = g.title;
+  $("guideFor").innerHTML = item ? (list === "path" ? "For the task: " : "For the job: ") + inline(item.text) : "";
+  if (g.kind === "section") body = '<div class="md">' + md(g.body) + "</div>";
+  else {
+    var facts = [];
+    if (d.location) facts.push(["Where it is", inline(d.location)]);
+    if (d.status) facts.push(["Status", d.status === "draft" ? chip("Draft", "warn") : "Final"]);
+    if (d.owner) facts.push(["Kept up to date by", esc(who(d.owner))]);
+    var ck = checksHtml(d.checks); if (ck) facts.push(["Access", ck]);
+    body = (d.url ? '<a class="btn primary guide-open" href="' + esc(d.url) + '" target="_blank" rel="noopener noreferrer">' + (d.type === "recording" ? "Watch the recording" : "Open the guide") + " ↗</a>" : "") +
+      (facts.length ? '<dl class="guide-facts">' + facts.map(function(f){ return "<dt>" + esc(f[0]) + "</dt><dd>" + f[1] + "</dd>"; }).join("") + "</dl>" : "") +
+      (d.url ? '<p class="muted" style="font-size:13px;margin:0">It opens in your browser. The handover file holds only the link, never the document or the login to it.</p>' : '<p class="muted" style="font-size:13px;margin:0">There is no link: ask whoever keeps it.</p>');
+  }
+  var others = item ? guideButtons(list, item, key) : "";
+  if (item && C.guidesFor(H, item).length > 1) body += '<div class="guide-also"><h3>Guides for this ' + (list === "path" ? "task" : "job") + '</h3><div class="guides">' + others + "</div></div>";
+  $("guideBody").innerHTML = body;
+  $("guideRef").hidden = g.kind !== "section" || !!renderedIds[g.id];
+  $("guideRef").dataset.sec = g.kind === "section" ? g.id : "";
+  if (!$("guideDlg").open) $("guideDlg").showModal();
+  $("guideBody").scrollTop = 0;
+}
+$("guideRef").addEventListener("click", function(){
+  var id = this.dataset.sec; $("guideDlg").close(); if (document.body.classList.contains("searching")) clearSearch();
+  var target = $(secHref(id).slice(1)); if (target){ reveal(target); target.scrollIntoView({block: "start"}); if (target.tagName === "DETAILS") flash(target); }
+});
+function calBtn(r){ return '<button type="button" class="closebtn no-print" data-calendar="' + esc(r.id) + '" title="Save this job as a calendar file (.ics) that repeats on its schedule">Calendar</button>'; }
 function editBtn(list, o){ if (KIT) return ""; return '<button type="button" class="closebtn no-print' + (list === "path" ? " editbtn" : "") + '" data-edit="' + esc(list + ":" + o.id) + '" title="Change what isn\'t accurate">Edit…</button>'; }
 function canAdd(){ return !KIT && !!H.handover && H.handover !== "1.0"; }
 function addBtn(list){ return canAdd() ? '<div class="addrow no-print"><button type="button" class="closebtn" data-add="' + list + '">Add a ' + esc(C.listNoun[list]) + "…</button></div>" : ""; }
@@ -1285,6 +1372,7 @@ document.addEventListener("click", function(e){
   var cmd = t.closest("[data-cmd]"); if (cmd){ menu.open = false; command(cmd.dataset.cmd); return; }
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
+  var cal = t.closest("[data-calendar]"); if (cal){ e.preventDefault(); exportCalendar(cal.dataset.calendar); return; }
   if (KIT && t.closest("[data-export],#main .todo,[data-close],[data-reopen],[data-add],[data-edit]")) return;
   var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
   var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
@@ -1292,8 +1380,11 @@ document.addEventListener("click", function(e){
   var rb = t.closest("[data-reopen]"); if (rb){ e.preventDefault(); reopen(rb.dataset.reopen); return; }
   var ab = t.closest("[data-add]"); if (ab){ e.preventDefault(); openAdd(ab.dataset.add); return; }
   var eb = t.closest("[data-edit]"); if (eb){ e.preventDefault(); openEdit(eb.dataset.edit); return; }
+  var gb = t.closest("[data-guide]"); if (gb){ e.preventDefault(); if (gb.getAttribute("aria-current") !== "true") openGuide(gb.dataset.guide, gb.dataset.owner); return; }
   var a = t.closest('a[href^="#"]');
-  if (a && $("app").contains(a)){
+  /* A link to a section from inside a guide: close the panel and go there */
+  if (a && $("guideDlg").contains(a)) $("guideDlg").close();
+  if (a && ($("app").contains(a) || $("guideDlg").contains(a))){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
     e.preventDefault(); if (document.body.classList.contains("searching")) clearSearch();
     reveal(target); target.scrollIntoView({block: "start"}); if (target.tagName === "DETAILS") flash(target);
@@ -1487,19 +1578,20 @@ function reopen(ref){
 }
 
 /* Reports for the principal */
-var REPORT = {key: "working", combo: ["working", "jobs", "needs"]};
-var COMBINED = {key: "combined", title: "Combined", hint: "Several of these in one document, each as its own part, with a short overview first"};
+/* One list of tick boxes: one ticked gives that report alone, several give one combined document */
+var REPORT = {keys: ["working"]};
 function principalFirst(){ var p = (H.people || []).filter(function(x){ return (x.roles || []).indexOf("principal") > -1; })[0]; return p ? p.name.split(" ")[0] : ""; }
 function reportDoc(){
   var o = {date: TODAY, since: $("reportSince").value || undefined};
-  return REPORT.key === "combined" ? C.principalReports(H, REPORT.combo, Object.assign(o, {title: $("reportTitle").value})) : C.principalReport(H, REPORT.key, o);
+  if (REPORT.keys.length > 1) o.title = $("reportTitle").value;
+  return C.principalReports(H, REPORT.keys, o);
 }
 function reportRender(){
-  var combined = REPORT.key === "combined";
-  $("reportComboRow").hidden = !combined;
-  $("reportSinceRow").hidden = !(combined ? REPORT.combo.indexOf("working") > -1 : REPORT.key === "working");
-  $("reportGo").disabled = combined && !REPORT.combo.length;
-  if (combined && !REPORT.combo.length){ $("reportPreview").srcdoc = '<p style="font:14px -apple-system,sans-serif;color:#666;padding:20px">Tick at least one report to include.</p>'; return; }
+  var n = REPORT.keys.length;
+  $("reportTitleRow").hidden = n < 2;
+  $("reportSinceRow").hidden = REPORT.keys.indexOf("working") < 0;
+  $("reportGo").disabled = !n;
+  if (!n){ $("reportPreview").srcdoc = '<p style="font:14px -apple-system,sans-serif;color:#666;padding:20px">Tick at least one report to include.</p>'; return; }
   $("reportPreview").srcdoc = C.docHtml(reportDoc());
 }
 function openReport(){
@@ -1507,15 +1599,13 @@ function openReport(){
   var p = principalFirst();
   $("reportDlgTitle").textContent = p ? "Report for " + p : "Report for the principal";
   $("reportTitle").placeholder = C.reportTitle(H, TODAY);
-  $("reportCombo").innerHTML = C.reports.map(function(r){ return '<label><input type="checkbox" value="' + r.key + '"' + (REPORT.combo.indexOf(r.key) > -1 ? " checked" : "") + "> " + esc(r.title) + "</label>"; }).join("");
-  $("reportKinds").innerHTML = C.reports.concat([COMBINED]).map(function(r){ return '<label><span><input type="radio" name="reportKind" value="' + r.key + '"' + (r.key === REPORT.key ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
+  $("reportKinds").innerHTML = C.reports.map(function(r){ return '<label><span><input type="checkbox" value="' + r.key + '"' + (REPORT.keys.indexOf(r.key) > -1 ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
   var d = new Date(Date.parse(TODAY + "T00:00:00Z") - 7 * 864e5); $("reportSince").value = d.toISOString().slice(0, 10);
   reportRender();
   $("reportDlg").showModal();
 }
-$("reportKinds").addEventListener("change", function(e){ if (e.target.name === "reportKind"){ REPORT.key = e.target.value; reportRender(); } });
+$("reportKinds").addEventListener("change", function(){ REPORT.keys = [].slice.call($("reportKinds").querySelectorAll("input:checked")).map(function(x){ return x.value; }); reportRender(); });
 $("reportSince").addEventListener("change", reportRender);
-$("reportCombo").addEventListener("change", function(){ REPORT.combo = [].slice.call($("reportCombo").querySelectorAll("input:checked")).map(function(x){ return x.value; }); reportRender(); });
 $("reportTitle").addEventListener("input", function(){ clearTimeout(REPORT.t); REPORT.t = setTimeout(reportRender, 300); });
 $("reportCancel").addEventListener("click", function(){ $("reportDlg").close(); });
 $("reportForm").addEventListener("submit", function(e){
@@ -1548,6 +1638,25 @@ function fieldsHtml(defs, prefix, values){
     var id = prefix + d.k, v = values[d.k], hint = d.hint ? "<small>" + esc(d.hint) + "</small>" : "", label = esc(d.label) + (d.req ? "" : ' <small style="display:inline">(optional)</small>');
     var when = d.when ? ' data-when="' + esc(d.when.k) + '" data-is="' + esc(d.when.is.join(" ")) + '"' : "";
     if (d.t === "bool") return '<label class="cfield check"' + when + '><input type="checkbox" id="' + id + '" data-f="' + d.k + '"' + (v ? " checked" : "") + "> " + esc(d.label) + "</label>";
+    if (d.t === "section"){
+      var secs = visibleSections(), cur = v ? String(v) : "";
+      if (!secs.length && !cur) return "";
+      var opts = secs.map(function(x){ return [x.id, x.title]; });
+      if (cur && !opts.some(function(o){ return o[0] === cur; })) opts.unshift([cur, sectionTitle(cur)]);
+      return '<label class="cfield"' + when + ">" + label + hint + '<select id="' + id + '" data-f="' + d.k + '"><option value="">None</option>' + opts.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (o[0] === cur ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select></label>";
+    }
+    if (d.t === "docs"){
+      var picked = [].concat(v || []), docs = (H.documents || []).filter(function(x){ return !x.closed || picked.indexOf(x.id) > -1; });
+      /* The chosen ones first, in their order, then the rest as the records list them */
+      docs.sort(function(a, b){ var i = picked.indexOf(a.id), j = picked.indexOf(b.id); return (i < 0 ? 1e9 : i) - (j < 0 ? 1e9 : j); });
+      if (!docs.length){
+        if (!canAdd() || KIT) return "";
+        return '<div class="cfield"' + when + "><span>" + label + '</span><span class="none">No documents in the file yet. Add one with <b>Add… › A document</b> (a step-by-step guide, a recording or a template), then choose it here.</span></div>';
+      }
+      return '<div class="cfield"' + when + '><span id="' + id + '">' + label + "</span>" + hint + '<div class="docs" role="group" aria-labelledby="' + id + '">' + docs.map(function(x){
+        return '<label><input type="checkbox" data-f="' + d.k + '" data-v="' + esc(x.id) + '"' + (picked.indexOf(x.id) > -1 ? " checked" : "") + "> <span>" + esc(x.title) + (x.type ? ' <small class="muted">' + esc(C.docType[x.type] || x.type) + "</small>" : "") + (x.closed ? ' <small class="muted">(closed)</small>' : "") + "</span></label>";
+      }).join("") + "</div></div>";
+    }
     if (d.t === "days"){
       var on = [].concat(v || []);
       return '<div class="cfield"' + when + '><span id="' + id + '">' + label + "</span>" + hint + '<div class="days" role="group" aria-labelledby="' + id + '">' + ["mon","tue","wed","thu","fri","sat","sun"].map(function(x){ return '<label><input type="checkbox" data-f="' + d.k + '" data-v="' + x + '"' + (on.indexOf(x) > -1 ? " checked" : "") + "> " + x.charAt(0).toUpperCase() + x.slice(1) + "</label>"; }).join("") + "</div></div>";
@@ -1708,23 +1817,25 @@ var nt; $("notes").addEventListener("input", function(){ var v = this.value; $("
 $("copyNotes").addEventListener("click", function(){ var t = $("notes").value.trim(); if (!t){ toast("Nothing to copy yet"); return; } call("copy", {text: t}).then(function(){ toast("Notes copied"); }); });
 
 /* ================= Commands (buttons and the app's menus) ================= */
+/* The guides under a line of the morning sheet: "  - Step guide: Payroll run: https://…" */
+function sheetGuides(L, item){ C.guidesFor(H, item).forEach(function(g){ L.push("  - " + C.guideLabel(g) + (g.kind === "document" && g.doc.url ? ": " + g.doc.url : g.kind === "document" && g.doc.location ? " (" + plain(g.doc.location) + ")" : " (in the reference)")); }); }
 function sheet(date){
   var sc = schedule(date), L = [];
   L.push("# " + H.title, "", nice(date, "long"), "");
   var att = attention(date);
   if (att.length){ L.push("## Needs attention", ""); att.forEach(function(a){ L.push("- " + a.plain); }); L.push(""); }
-  if (sc.overdue.length){ L.push("## Overdue", ""); sc.overdue.forEach(function(o){ L.push("- [ ] " + plain(o.r.text) + " (was due " + nice(o.date) + ")"); }); L.push(""); }
+  if (sc.overdue.length){ L.push("## Overdue", ""); sc.overdue.forEach(function(o){ L.push("- [ ] " + plain(o.r.text) + " (was due " + nice(o.date) + ")"); sheetGuides(L, o.r); }); L.push(""); }
   var uw = underWay(sc, date);
-  if (uw.length){ L.push("## Start now", ""); uw.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + " (due " + nice(o.date) + ", " + (o.daysLeft === 1 ? "1 day" : o.daysLeft + " days") + " left)"); }); L.push(""); }
+  if (uw.length){ L.push("## Start now", ""); uw.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + " (due " + nice(o.date) + ", " + (o.daysLeft === 1 ? "1 day" : o.daysLeft + " days") + " left)"); sheetGuides(L, o.r); }); L.push(""); }
   L.push("## Today", "");
-  if (sc.due.length) sc.due.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + (o.r.time ? " · " + o.r.time : "")); }); else L.push("Nothing due today.");
+  if (sc.due.length) sc.due.forEach(function(o){ L.push("- [" + (isDone(o.r.id, o.date) ? "x" : " ") + "] " + plain(o.r.text) + (o.r.time ? " · " + o.r.time : "")); sheetGuides(L, o.r); }); else L.push("Nothing due today.");
   L.push("");
   if (sc.next.length){ L.push("## Next 7 days", ""); sc.next.forEach(function(o){ L.push("- " + nice(o.starts || o.date) + " · " + startsLabel(o) + plain(o.r.text) + (o.starts ? " (due " + nice(o.date) + ")" : o.r.time ? " · " + o.r.time : "")); }); L.push(""); }
   if (sc.later.length){ L.push("## Coming up", ""); sc.later.forEach(function(o){ L.push("- " + nice(o.starts || o.date) + " · " + startsLabel(o) + plain(o.r.text) + (o.starts ? " (due " + nice(o.date) + ")" : "")); }); L.push(""); }
   var p = H.path || [];
   if (p.length){
     var i = currentStage(), s = p[i], st = stats(s);
-    if (st.d < st.n){ L.push("## First weeks: " + s.title + " (" + st.d + " of " + st.n + " done)", ""); s.tasks.forEach(function(t){ L.push("- [" + (S.tasks[t.id] ? "x" : " ") + "] " + plain(t.text)); }); L.push(""); }
+    if (st.d < st.n){ L.push("## First weeks: " + s.title + " (" + st.d + " of " + st.n + " done)", ""); s.tasks.forEach(function(t){ L.push("- [" + (S.tasks[t.id] ? "x" : " ") + "] " + plain(t.text)); if (!S.tasks[t.id]) sheetGuides(L, t); }); L.push(""); }
   }
   if ((S.notes || "").trim()){ L.push("## My notes", "", S.notes.trim(), ""); }
   return L.join("\n");
@@ -1732,12 +1843,13 @@ function sheet(date){
 function slugDate(){ return TODAY; }
 function command(c){
   if (!H && ["open","sample"].indexOf(c) < 0) return;
-  if (KIT && ["exportToday","exportProgress","print","find","ask","resetProgress"].indexOf(c) < 0) return;
+  if (KIT && ["exportToday","exportProgress","calendar","print","find","ask","resetProgress"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
     case "close": return closeHandover();
     case "exportItems": return openExportDialog();
     case "kit": return openKit();
+    case "calendar": return exportCalendar();
     case "report": return openReport();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1830,6 +1942,15 @@ $("exportForm").addEventListener("submit", function(e){
     .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Exported " + o.title); });
 });
 
+/* The regular jobs, or one of them, as a calendar file (.ics) that repeats on each job's schedule (core.js makes it) */
+function exportCalendar(id){
+  $("shareMenu").open = false;
+  var out = C.calendarFile(H, {ids: id ? [id] : undefined, from: TODAY});
+  if (!out.count) return toast(id ? "That job has no dates left" : "There are no regular jobs with dates left");
+  var name = H.id + (id ? "-" + id : "-jobs") + ".ics";
+  return call("saveAs", {filename: name, content: out.text, mime: "text/calendar", title: id ? "Add the job to a calendar" : "Add jobs to a calendar"})
+    .then(function(r){ if ((r && r.path) || !native) toast("Saved " + (r && r.path ? r.path.split("/").pop() : name) + ". Open it to add " + (out.count === 1 ? "the job" : "the " + out.count + " jobs") + " to your calendar"); });
+}
 /* Transition kit: the whole handover as one HTML file that opens in any browser (core.js makes it) */
 function openKit(){
   $("shareMenu").open = false;
