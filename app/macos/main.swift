@@ -128,6 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
         store.backupIfNeeded()
         updater.host = self
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.updater.reportLastUpdate() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.updater.checkIfDue() }
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.tick() }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
@@ -550,44 +551,83 @@ final class Updater {
             NSWorkspace.shared.open(page); return
         }
 
+        // A sheet with a real progress bar and a line saying which step it's on. Cancel works until the swap starts.
         let progress = NSAlert()
-        progress.messageText = "Downloading Handover \(version)…"
-        progress.informativeText = "Handover will relaunch when it's ready."
-        let spinner = NSProgressIndicator(frame: NSRect(x: 0, y: 0, width: 240, height: 20))
-        spinner.isIndeterminate = true; spinner.style = .bar; spinner.startAnimation(nil)
-        progress.accessoryView = spinner
-        progress.addButton(withTitle: "Hide")
-        progress.beginSheetModal(for: host.window, completionHandler: nil)
+        progress.messageText = "Updating to Handover \(version)"
+        progress.informativeText = "Handover will quit and reopen by itself when the new version is ready."
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 44))
+        let status = NSTextField(labelWithString: "Connecting…")
+        status.frame = NSRect(x: 0, y: 24, width: 300, height: 18); status.font = .systemFont(ofSize: NSFont.smallSystemFontSize); status.textColor = .secondaryLabelColor
+        let bar = NSProgressIndicator(frame: NSRect(x: 0, y: 2, width: 300, height: 16))
+        bar.style = .bar; bar.isIndeterminate = false; bar.minValue = 0; bar.maxValue = 1; bar.doubleValue = 0
+        box.addSubview(status); box.addSubview(bar)
+        progress.accessoryView = box
+        let cancel = progress.addButton(withTitle: "Cancel")
         busy = true
+        var cancelled = false, finished = false, poll: Timer?
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 30   // no data for 30 seconds counts as a failure
+        config.timeoutIntervalForResource = 600
+        let session = URLSession(configuration: config)
+        var task: URLSessionDownloadTask?
 
-        func fail(_ msg: String) {
+        func step(_ text: String, _ value: Double? = nil) {
             DispatchQueue.main.async {
-                self.busy = false
-                host.window.endSheet(progress.window)
-                host.alert(msg + " The download page will open so you can install it yourself.")
-                NSWorkspace.shared.open(page)
+                status.stringValue = text
+                if let v = value { bar.isIndeterminate = false; bar.doubleValue = v } else { bar.isIndeterminate = true; bar.startAnimation(nil) }
             }
         }
-        URLSession.shared.downloadTask(with: dmg) { tmp, resp, err in
-            guard let tmp = tmp, (resp as? HTTPURLResponse)?.statusCode == 200 else { fail("The download failed."); return }
+        func closeSheet() { poll?.invalidate(); if progress.window.sheetParent != nil { host.window.endSheet(progress.window) } }
+        func fail(_ msg: String) {
+            DispatchQueue.main.async {
+                guard !finished else { return }
+                finished = true; self.busy = false; session.invalidateAndCancel()
+                closeSheet()
+                if cancelled { return }
+                let a = NSAlert()
+                a.alertStyle = .warning
+                a.messageText = "Handover \(version) wasn't installed"
+                a.informativeText = msg + " You still have Handover \(self.current), and nothing has changed."
+                a.addButton(withTitle: "Try Again"); a.addButton(withTitle: "Open Download Page"); a.addButton(withTitle: "Close")
+                a.beginSheetModal(for: host.window) { r in
+                    if r == .alertFirstButtonReturn { self.install(dmg: dmg, sha: sha, version: version, page: page) }
+                    else if r == .alertSecondButtonReturn { NSWorkspace.shared.open(page) }
+                }
+            }
+        }
+        progress.beginSheetModal(for: host.window) { r in
+            guard !finished else { return }
+            cancelled = true; task?.cancel(); fail("")
+        }
+
+        task = session.downloadTask(with: dmg) { tmp, resp, err in
+            if cancelled { return }
+            if let err = err as NSError? {
+                fail(err.code == NSURLErrorTimedOut ? "The download stalled." : err.code == NSURLErrorNotConnectedToInternet ? "This Mac isn't connected to the internet." : "The download failed (\(err.localizedDescription))."); return
+            }
+            guard let tmp = tmp, (resp as? HTTPURLResponse)?.statusCode == 200 else { fail("The download failed (the server answered \((resp as? HTTPURLResponse)?.statusCode ?? 0))."); return }
+            DispatchQueue.main.async { poll?.invalidate(); cancel.isEnabled = false }
             let fm = FileManager.default
             let work = fm.temporaryDirectory.appendingPathComponent("handover-update-\(UUID().uuidString)", isDirectory: true)
             do {
                 try fm.createDirectory(at: work, withIntermediateDirectories: true)
                 let file = work.appendingPathComponent("Handover.dmg")
                 try fm.moveItem(at: tmp, to: file)
+                step("Checking the download…")
                 if let sha = sha {
-                    guard let expected = try? String(contentsOf: sha, encoding: .utf8).split(separator: " ").first.map(String.init) else { fail("Couldn't check the download."); return }
+                    guard let expected = try? String(contentsOf: sha, encoding: .utf8).split(separator: " ").first.map(String.init) else { fail("Its checksum couldn't be downloaded."); return }
                     let actual = SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined()
-                    guard actual == expected.lowercased() else { fail("The download didn't match its checksum."); return }
+                    guard actual == expected.lowercased() else { fail("The download was damaged: it didn't match its checksum."); return }
                 }
+                step("Opening the new version…")
                 let mount = work.appendingPathComponent("mnt", isDirectory: true)
-                guard Updater.run("/usr/bin/hdiutil", ["attach", file.path, "-nobrowse", "-readonly", "-quiet", "-mountpoint", mount.path]) == 0 else { fail("Couldn't open the download."); return }
+                guard Updater.run("/usr/bin/hdiutil", ["attach", file.path, "-nobrowse", "-readonly", "-quiet", "-mountpoint", mount.path]) == 0 else { fail("The downloaded disk image couldn't be opened."); return }
                 let fresh = work.appendingPathComponent("Handover.app")
                 let copied = Updater.run("/usr/bin/ditto", [mount.appendingPathComponent("Handover.app").path, fresh.path])
                 _ = Updater.run("/usr/bin/hdiutil", ["detach", mount.path, "-quiet", "-force"])
                 guard copied == 0 else { fail("The download didn't contain Handover."); return }
-                guard self.validDeveloperID(fresh, team: team) else { fail("The new version's signature couldn't be verified, so it wasn't installed."); return }
+                step("Checking Apple's signature…")
+                guard self.validDeveloperID(fresh, team: team) else { fail("The new version's signature couldn't be verified."); return }
 
                 // Swap in the new app once this one has quit, then open it.
                 let script = """
@@ -602,9 +642,50 @@ final class Updater {
                 p.executableURL = URL(fileURLWithPath: "/bin/sh")
                 p.arguments = ["-c", script, "sh", appURL.path, fresh.path, work.path]
                 try p.run()
-                DispatchQueue.main.async { NSApp.terminate(nil) }
+                step("Restarting Handover…", 1)
+                DispatchQueue.main.async {
+                    finished = true
+                    // After relaunch, say whether it worked (see reportLastUpdate).
+                    self.defaults.set(version, forKey: "updatingTo"); self.defaults.set(self.current, forKey: "updatingFrom"); self.defaults.synchronize()
+                    closeSheet()   // an open sheet can stop the app from quitting
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        NSApp.terminate(nil)
+                        // If something still holds the app open, quit anyway: the new version is waiting.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { exit(0) }
+                    }
+                }
             } catch { fail("The update couldn't be prepared (\(error.localizedDescription)).") }
-        }.resume()
+        }
+        poll = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+            guard let t = task else { return }
+            let got = t.countOfBytesReceived, total = t.countOfBytesExpectedToReceive
+            let f = ByteCountFormatter(); f.countStyle = .file
+            if total > 0 { status.stringValue = "Downloading… \(f.string(fromByteCount: got)) of \(f.string(fromByteCount: total))"; bar.doubleValue = Double(got) / Double(total) * 0.85 }
+            else if got > 0 { status.stringValue = "Downloading… \(f.string(fromByteCount: got))" }
+        }
+        task?.resume()
+    }
+
+    /// After an update relaunch: say plainly whether the new version is running.
+    func reportLastUpdate() {
+        guard let to = defaults.string(forKey: "updatingTo"), let host = host else { return }
+        let from = defaults.string(forKey: "updatingFrom") ?? ""
+        defaults.removeObject(forKey: "updatingTo"); defaults.removeObject(forKey: "updatingFrom")
+        let a = NSAlert()
+        if current == to {
+            a.messageText = "Handover is up to date"
+            a.informativeText = "You now have Handover \(to)" + (from.isEmpty ? "." : ", updated from \(from).")
+            a.addButton(withTitle: "OK")
+        } else {
+            a.alertStyle = .warning
+            a.messageText = "The update to Handover \(to) didn't finish"
+            a.informativeText = "You still have Handover \(current). Try again, or download it and drag it into Applications yourself."
+            a.addButton(withTitle: "Check Again"); a.addButton(withTitle: "Open Download Page"); a.addButton(withTitle: "Close")
+        }
+        a.beginSheetModal(for: host.window) { r in
+            guard self.current != to else { return }
+            if r == .alertFirstButtonReturn { self.check(userInitiated: true) } else if r == .alertSecondButtonReturn { NSWorkspace.shared.open(self.releasePage) }
+        }
     }
 
     @discardableResult static func run(_ tool: String, _ args: [String]) -> Int32 {

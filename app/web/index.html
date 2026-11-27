@@ -357,6 +357,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <nav class="topnav" id="topnav" aria-label="Sections"></nav>
       <button class="btn" id="searchJump" type="button">Search</button>
       <button class="gapchip" id="gaps" type="button" title="Jump to the next part that still needs filling in" hidden></button>
+      <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
       <details class="menu" id="shareMenu">
         <summary class="btn primary">Share &amp; export</summary>
         <div class="menu-panel" role="menu">
@@ -641,7 +642,7 @@ function render(){
   TODAY = zoneParts(H.timezone).date;
   document.title = H.title;
   $("brand").textContent = H.title;
-  $("fmtVersion").textContent = H.handover;
+  $("fmtVersion").textContent = C.version + (H.handover !== C.version ? " (this file uses " + H.handover + ")" : "");
   renderHero(); renderToday(); renderPath(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
   $("notes").value = S.notes || "";
   var nav = [];
