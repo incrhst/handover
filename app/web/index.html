@@ -348,6 +348,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <hr>
           <button type="button" data-cmd="print">Print…</button>
           <button type="button" data-cmd="open">Open another handover…</button>
+          <button type="button" data-cmd="close">Close this handover<small>Back to the start, to open or choose another</small></button>
         </div>
       </details>
     </div>
@@ -449,6 +450,7 @@ var browser = {
   adopt: function(p){ var s = lsGet(); var old = s.items[p.id]; s.items[p.id] = {text: p.text, title: p.title, state: old ? old.state : null}; s.last = p.id; lsSet(s); return {state: old ? old.state : null}; },
   saveState: function(p){ var s = lsGet(); if (s.items[p.id]){ s.items[p.id].state = p.state; lsSet(s); } return {ok: true}; },
   switchTo: function(p){ var s = lsGet(); var it = s.items[p.id]; if (!it) return null; s.last = p.id; lsSet(s); return {source: it.text, state: it.state}; },
+  close: function(){ var s = lsGet(); delete s.last; lsSet(s); return {ok: true}; },
   saveAs: function(p){ download(p.filename, p.content, p.mime); return {ok: true}; },
   exportSheet: function(p){ if (!p.auto) download(p.filename, p.content, "text/markdown"); return {ok: !p.auto}; },
   copy: function(p){ if (navigator.clipboard) navigator.clipboard.writeText(p.text); return {ok: true}; },
@@ -1002,6 +1004,7 @@ function command(c){
   if (!H && ["open","sample"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
+    case "close": return closeHandover();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "exportRecord": return call("saveAs", {filename: H.id + "-record.handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Export the full record"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1016,6 +1019,20 @@ function command(c){
   }
 }
 window.handoverCommand = command;
+
+/* Closing: save what's pending, forget the open file and go back to the start screen */
+function closeHandover(){
+  if (!H) return;
+  var id = H.id, title = H.title;
+  clearTimeout(saveTimer); saveTimer = null;
+  return call("saveState", {id: id, state: S}).then(function(){ return call("close", {id: id}); }).then(function(){
+    H = null; S = null; SOURCE_NAME = "";
+    $("shareMenu").open = false; $("warnBanner").hidden = true; $("errors").hidden = true;
+    document.title = "Handover";
+    showWelcome(); window.scrollTo(0, 0);
+    toast("Closed " + title);
+  });
+}
 
 /* Opening files */
 function openFile(){

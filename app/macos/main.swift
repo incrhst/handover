@@ -215,6 +215,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             guard let src = store.source(id) else { reply(nil); return }
             store.last = id
             reply(["source": src, "state": store.state(id) ?? NSNull()])
+        case "close":
+            store.last = nil
+            reply(["ok": true])
         case "open":
             let p = NSOpenPanel(); p.allowedContentTypes = [handoverType, .json]; p.allowsMultipleSelection = false
             p.beginSheetModal(for: window) { r in
@@ -314,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         submenu("File", [
             item("Open Handover File…", #selector(openFileMenu), "o", target: self),
             item("Open the Example", #selector(openSample), target: self),
+            item("Close Handover", #selector(closeHandover), "w", [.command, .shift], target: self),
             .separator(),
             item("Export Today's Task Sheet…", #selector(exportToday), "e", target: self),
             item("Share Handover File…", #selector(shareFile), "s", [.command, .shift], target: self),
@@ -361,6 +365,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         p.beginSheetModal(for: window) { r in if r == .OK, let u = p.url { self.importFile(u) } }
     }
     @objc func openSample() { showWindow(); importFile(webDir.appendingPathComponent("ea-no-overlap.handover")) }
+    @objc func closeHandover() { command("close") }
     @objc func exportToday() { command("exportToday") }
     @objc func shareFile() { command("shareFile") }
     @objc func exportProgress() { command("exportProgress") }
