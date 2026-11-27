@@ -100,6 +100,7 @@ dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:26px 28px;box-shadow:var(--shadow)}
 .panel-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .panel-head h2{font-size:1.5rem;font-weight:800;margin:0}
+.xbtn{margin-left:auto}
 .lift{margin-top:-56px;position:relative}
 section.block{margin-top:22px}
 
@@ -394,7 +395,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
         <div class="qchips" id="qchips"></div>
         <div class="qa-grid" id="qaGrid"></div>
         <div class="shelf-wrap" id="refWrap">
-          <h2>Everything else</h2>
+          <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap"><h2>Everything else</h2><button class="btn no-print xbtn" type="button" data-export="sections,questions" title="Export the reference sections and questions as PDF, Word or Excel">Export…</button></div>
           <p class="muted" style="margin:0">The full reference, one section at a time.</p>
           <nav class="shelf" id="shelf" aria-label="Reference sections"></nav>
           <div id="refs"></div>
@@ -695,7 +696,7 @@ function renderToday(){
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
   var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.date)) + "</span><span>" + inline(o.r.text) + "</span></li>"; }).join("") + "</ul></div>" : "";
-  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2><button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + "</section>";
+  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + "</section>";
 }
 function stats(stage){ var d = 0; stage.tasks.forEach(function(t){ if (S.tasks[t.id]) d++; }); return {n: stage.tasks.length, d: d}; }
 function currentStage(){ var p = H.path || []; for (var i = 0; i < p.length; i++){ var s = stats(p[i]); if (s.d < s.n) return i; } return Math.max(0, p.length - 1); }
@@ -704,7 +705,7 @@ function renderPath(){
   var w = $("pathWrap"), p = H.path || [];
   if (!p.length){ w.innerHTML = ""; return; }
   var lift = (H.recurring || []).length ? "" : " lift";
-  w.innerHTML = '<section class="block' + lift + '" id="path"><div class="panel-head" style="margin:0 0 12px' + (lift ? ";display:none" : "") + '"><h2>Your first weeks</h2></div><ol id="stepper" aria-label="Stages"></ol>' +
+  w.innerHTML = '<section class="block' + lift + '" id="path"><div class="panel-head" style="margin:0 0 12px' + (lift ? ";display:none" : "") + '"><h2>Your first weeks</h2>' + xbtn("tasks") + '</div><ol id="stepper" aria-label="Stages"></ol>' +
     p.map(function(s, i){
       var st = stats(s);
       return '<section class="panel stage" id="stage-' + esc(s.id) + '" data-i="' + i + '"><div class="stage-grid"><div class="stage-main">' +
@@ -827,7 +828,7 @@ function cardsHtml(items){ return '<div class="cards">' + items.join("") + "</di
 function renderPeople(){
   var w = $("peopleWrap"), ppl = H.people || [], st = H.stakeholders || [];
   if (!ppl.length && !st.length){ w.innerHTML = ""; return; }
-  w.innerHTML = '<section class="panel block" id="people"><div class="panel-head"><h2>People</h2></div>' +
+  w.innerHTML = '<section class="panel block" id="people"><div class="panel-head"><h2>People</h2>' + xbtn("people,stakeholders") + '</div>' +
     (ppl.length ? cardsHtml(ppl.map(function(p){ return '<div class="card"><h4>' + esc(p.name) + '</h4><div class="sub">' + esc(p.roles.map(function(r){ return C.roleName[r]; }).join(" · ")) + "</div>" + (p.contact ? "<p>" + inline(p.contact) + "</p>" : "") + "</div>"; })) : "") +
     (st.length ? '<div class="subhead">People to know <span class="count">' + st.length + "</span></div>" + cardsHtml(st.map(function(s){
       return '<div class="card"><h4>' + esc(s.name) + '</h4><div class="sub">' + inline(s.relationship) + "</div>" + (s.involve ? "<p><strong>When:</strong> " + inline(s.involve) + "</p>" : "") + (s.contact ? "<p>" + inline(s.contact) + (s.contactVisibleTo ? " " + chip("Only " + s.contactVisibleTo.map(who).filter(uniq).join(", "), "lock") : "") + "</p>" : "") + metaLine(s) + "</div>";
@@ -840,7 +841,7 @@ function renderDecide(){
   var stake = {}; (H.stakeholders || []).forEach(function(s){ stake[s.id] = s.name; });
   var cols = [["alone", "Decide alone"], ["check", "Check first"], ["principal", "Always " + who("principal")]];
   w.innerHTML = '<section class="panel block" id="decide"><div class="panel-head"><h2>Who decides what</h2>' +
-    (d.confirmed ? chip("Confirmed by " + who("principal") + (d.confirmedAt ? " " + day(d.confirmedAt) : ""), "ok") : chip("Not confirmed by " + who("principal") + " yet", "warn")) + '</div><div class="board">' +
+    (d.confirmed ? chip("Confirmed by " + who("principal") + (d.confirmedAt ? " " + day(d.confirmedAt) : ""), "ok") : chip("Not confirmed by " + who("principal") + " yet", "warn")) + xbtn("decide") + '</div><div class="board">' +
     cols.map(function(c){
       var cs = d.cards.filter(function(x){ return x.column === c[0] && open_(x); });
       return '<div><div class="colh">' + esc(c[1]) + ' <span class="count">' + cs.length + "</span></div>" + (cs.length ? cs.map(function(x){
@@ -900,7 +901,7 @@ function renderRecords(){
       (d.location ? "<p><strong>Where:</strong> " + inline(d.location) + "</p>" : "") + metaLine(d, d.status ? [chip(d.status === "final" ? "Final" : "Draft", d.status === "final" ? "ok" : "warn")] : []) +
       (d.checks ? '<div class="meta-line">' + checksHtml(d.checks) + "</div>" : "") + "</div>";
   }))));
-  w.innerHTML = parts.length ? '<section class="block" id="records"><div class="panel-head" style="margin:0 0 12px"><h2>Records</h2><span class="muted" style="font-size:14px">What was collected while handing over</span></div>' + parts.join("") + "</section>" : "";
+  w.innerHTML = parts.length ? '<section class="block" id="records"><div class="panel-head" style="margin:0 0 12px"><h2>Records</h2><span class="muted" style="font-size:14px">What was collected while handing over</span>' + xbtn("inProgress,gaps,rules,decisions,risks,systems,documents") + '</div>' + parts.join("") + "</section>" : "";
 }
 
 function renderHandover(){
@@ -940,7 +941,7 @@ function renderHandover(){
     parts.push(block("plan-after", "After the handover", "", b2));
   }
   if ((H.history || []).length) parts.push(block("plan-history", "Change log", H.history.length + "", '<div class="rec-list">' + H.history.slice().reverse().map(function(x){ return '<div class="card"><div>' + inline(x.text) + '</div><div class="meta-line">' + esc(day(x.at)) + (x.role ? " · " + esc(who(x.role)) : "") + " " + (x.source === "ai" ? chip("AI", "ai") : "") + "</div></div>"; }).join("") + "</div>"));
-  w.innerHTML = '<section class="panel block" id="handover"><div class="panel-head"><h2>The handover</h2>' + (pl && pl.practice ? chip("Practice run", "warn") : "") + "</div>" + head + parts.join("") + "</section>";
+  w.innerHTML = '<section class="panel block" id="handover"><div class="panel-head"><h2>The handover</h2>' + (pl && pl.practice ? chip("Practice run", "warn") : "") + xbtn("overview,steps,asks,finalCheck,signoff") + "</div>" + head + parts.join("") + "</section>";
 }
 function tableHtml(head, rows){ return '<div class="table-wrap"><table class="stack"><thead><tr>' + head.map(function(h){ return "<th>" + esc(h) + "</th>"; }).join("") + "</tr></thead><tbody>" + rows.map(function(r){ return "<tr>" + r.map(function(c, i){ return '<td data-label="' + esc(head[i] || "") + '">' + c + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table></div>"; }
 
@@ -968,6 +969,7 @@ document.addEventListener("click", function(e){
   var cmd = t.closest("[data-cmd]"); if (cmd){ menu.open = false; command(cmd.dataset.cmd); return; }
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
+  var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
   var a = t.closest('a[href^="#"]');
   if (a && $("app").contains(a)){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
@@ -1091,7 +1093,9 @@ function xpRender(){
   $("exportGo").disabled = !total;
   if (!XP.titleEdited) $("exportTitle").value = xpAutoTitle();
 }
-function openExportDialog(){
+/* An Export… button on a panel: the chooser opens with that panel's kinds ticked */
+function xbtn(kinds){ return '<button class="btn no-print xbtn" type="button" data-export="' + kinds + '" title="Export these as PDF, Word or Excel">Export…</button>'; }
+function openExportDialog(only){
   $("shareMenu").open = false;
   var anyClosed = false, anyPrivate = false;
   ["gaps","inProgress","rules","decisions","risks","systems","documents","stakeholders"].forEach(function(k){ (H[k] || []).forEach(function(x){ if (x.closed) anyClosed = true; if (x.visibleTo || x.contactVisibleTo) anyPrivate = true; }); });
@@ -1100,6 +1104,7 @@ function openExportDialog(){
   $("exportClosed").checked = false; $("exportPrivate").checked = false;
   XP.only = {}; XP.open = {}; XP.titleEdited = false;
   var keys = xpList().map(function(k){ return k.key; });
+  if (only && only.some(function(k){ return keys.indexOf(k) > -1; })){ XP.kinds = {}; only.forEach(function(k){ XP.kinds[k] = true; }); }
   if (!keys.some(function(k){ return XP.kinds[k]; })) XP.kinds[keys[0]] = true;
   xpRender();
   $("exportDlg").showModal();

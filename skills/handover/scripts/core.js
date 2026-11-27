@@ -446,20 +446,28 @@ function withRendered(h){
 var FREQ = [["daily", "Every day", ["day", "weekday"]], ["weekly", "Every week", ["week"]], ["monthly", "Every month", ["month"]], ["quarterly", "Every quarter", ["quarter"]], ["yearly", "Every year", ["year"]]];
 var RISK_LIST = {weekly: "Recurring work", occasional: "Occasional", spof: "Only one person knows"}, TREAT = {record: "Record someone doing it", write: "Write it down", brief: "A line in the brief"};
 var COLUMN = {alone: "Decide alone", check: "Check first", principal: "Always the principal"};
+var ASK_TITLE = {breaks: "What breaks if the outgoing assistant is absent", profile: "Profile check", access: "Access approvals", limits: "Who decides what", confid: "Confidentiality rules", emergency: "Emergency plan", signoff: "Sign-off"};
+var FINAL_TITLE = {recurring: "Recurring work", "in-progress": "Things in progress", decisions: "Decisions and reasons", context: "Live context", access: "Access", exceptions: "Exceptions", decide: "Who decides what"};
 var EXPORT_KINDS = [
+  {key: "overview", title: "Overview", hint: "What this handover is, the dates and how to reach the outgoing person"},
+  {key: "people", title: "Who's who", hint: "The people in the handover and their roles"},
   {key: "jobs", title: "Jobs", hint: "Recurring duties, by how often they happen"},
   {key: "tasks", title: "First-weeks tasks", hint: "The path, stage by stage"},
-  {key: "steps", title: "Handover plan steps", hint: "Who does what, phase by phase"},
-  {key: "inProgress", title: "In progress", hint: "Unfinished work, with owners and due dates"},
-  {key: "gaps", title: "Gaps", hint: "Things still unknown or unclear"},
+  {key: "stakeholders", title: "People to know", hint: "Who they are and when to involve them"},
+  {key: "decide", title: "Who decides what", hint: "Limits and approvers"},
+  {key: "systems", title: "Systems and access", hint: "Where logins are kept and who grants access"},
+  {key: "documents", title: "Documents", hint: "Links and where files are kept"},
   {key: "rules", title: "When this happens", hint: "If this, then that"},
   {key: "decisions", title: "Decisions", hint: "Already made, and why"},
   {key: "risks", title: "Risks", hint: "What could go wrong"},
-  {key: "systems", title: "Systems and access", hint: "Where logins are kept and who grants access"},
-  {key: "documents", title: "Documents", hint: "Links and where files are kept"},
-  {key: "stakeholders", title: "People to know", hint: "Who they are and when to involve them"},
-  {key: "decide", title: "Who decides what", hint: "Limits and approvers"},
-  {key: "questions", title: "Questions and answers", hint: "Quick answers"}
+  {key: "inProgress", title: "In progress", hint: "Unfinished work, with owners and due dates"},
+  {key: "gaps", title: "Gaps", hint: "Things still unknown or unclear"},
+  {key: "sections", title: "Reference sections", hint: "The full reference pages, with their tables and lists"},
+  {key: "questions", title: "Questions and answers", hint: "Quick answers"},
+  {key: "steps", title: "Handover plan steps", hint: "Who does what, phase by phase"},
+  {key: "asks", title: "Questions for the principal", hint: "What was asked, and the answers"},
+  {key: "finalCheck", title: "Final check", hint: "The seven checks before sign-off"},
+  {key: "signoff", title: "Sign-off", hint: "Who signed, and notes added since"}
 ];
 var KIND_COLS = {
   jobs: ["How often", "Job", "When", "Time", "Risk", "Notes"], tasks: ["Stage", "Task", "Detail"], steps: ["Phase", "Step", "Who", "Status", "Why"],
@@ -467,7 +475,8 @@ var KIND_COLS = {
   decisions: ["Decision", "Why", "Decided", "Status"], risks: ["Risk", "Kind", "Severity", "How it's passed on", "On the list", "Evidence", "Status"],
   systems: ["System", "Used for", "Login kept in", "Access from", "Access check", "Status"], documents: ["Document", "Type", "Where", "Link", "Status"],
   stakeholders: ["Name", "Who they are", "When to involve them", "Contact"], decide: ["Who decides", "Decision", "Limit", "Approver", "Note"],
-  questions: ["Question", "Answer", "Topic"]
+  questions: ["Question", "Answer", "Topic"], overview: ["Part", "Item", "Details"], people: ["Name", "Role", "Contact"], sections: ["Section", "Text"],
+  asks: ["Question", "Status", "Minutes", "Sent", "Reply by", "Answered", "If no reply", "Correction"], finalCheck: ["Check", "Result", "Note", "Owner", "Due"], signoff: ["Who", "Role", "Signed"]
 };
 function exportItems(h, key, o){
   o = o || {};
@@ -517,6 +526,41 @@ function exportItems(h, key, o){
       }));
     });
     case "questions": return [G("", (h.questions || []).map(function(q, i){ return {id: q.id || "q" + (i + 1), title: q.q, meta: [q.tag || ""], note: q.a, row: [q.q, q.a, q.tag || ""]}; }))];
+    case "overview": var pl = h.plan, f = h.from || {}, ovl = overlap(pl), dates = [];
+      if (pl){
+        dates.push({id: "d-prep", title: "Preparation from", meta: [nice(pl.prepStart, "long")]});
+        dates.push({id: "d-last", title: who(h, "outgoing") + "'s last day", meta: [nice(pl.lastDay, "long")]});
+        dates.push({id: "d-first", title: pl.firstDay ? who(h, "incoming") + "'s first day" : "First day", meta: [pl.firstDay ? nice(pl.firstDay, "long") : "Not hired yet"]});
+        dates.push({id: "d-mode", title: ovl ? "Overlap" : "No overlap", meta: [ovl ? "Both assistants work together for a time" : who(h, "principal") + " holds the desk in between"]});
+      }
+      if (h.timezone) dates.push({id: "d-tz", title: "Timezone", meta: [h.timezone]});
+      dates.forEach(function(d){ d.row = ["Dates", d.title, d.meta.join(" · ")]; });
+      var contact = f.name || f.availableUntil || f.contact || f.hours ? [{id: "contact", title: f.name ? f.name + (f.role ? ", " + f.role : "") : "The outgoing person",
+        meta: [f.availableUntil ? "Can be contacted until " + nice(f.availableUntil, "long") : "", f.contact || "", f.hours || ""]}] : [];
+      contact.forEach(function(c){ c.row = ["Contact after the handover", c.title, c.meta.filter(Boolean).join(" · ")]; });
+      return [
+        G("", h.summary ? [{id: "summary", title: "About this handover", body: h.summary, block: true, row: ["About", "About this handover", blocksText(h.summary)]}] : []),
+        G("Dates", dates),
+        G("Contact after the handover", contact)
+      ];
+    case "people": return [G("", (h.people || []).map(function(x){ var r = x.roles.map(function(k){ return ROLE_NAME[k]; }).join(", "); return {id: x.id, title: x.name, meta: [r, x.contact || ""], row: [x.name, r, x.contact || ""]}; }))];
+    case "sections": var hidden = {}; (h.rendered || []).forEach(function(id){ hidden[id] = true; });
+      return [G("", (h.sections || []).filter(function(x){ return !hidden[x.id]; }).map(function(x){ return {id: x.id, title: x.title, body: x.body, block: true, row: [x.title, blocksText(x.body)]}; }))];
+    case "asks": return [G("", (h.asks || []).map(function(x){
+      var st = {draft: "Draft", sent: "Sent", confirmed: "Confirmed", corrected: "Corrected", defaulted: "Confirmed by default"}[x.status];
+      var dt = function(v){ return v ? nice(String(v).slice(0, 10)) : ""; };
+      return {id: x.id, title: ASK_TITLE[x.id], meta: [st, x.minutes ? "about " + x.minutes + " min" : "", x.sent ? "Sent " + dt(x.sent) : "", x.replyBy ? "Reply by " + nice(x.replyBy) : "", x.answered ? "Answered " + dt(x.answered) : ""],
+        note: [x.default ? "If no reply: " + x.default : "", x.correction ? "Correction: " + x.correction : ""].filter(Boolean).join(" "),
+        row: [ASK_TITLE[x.id], st, x.minutes ? String(x.minutes) : "", dt(x.sent), x.replyBy || "", dt(x.answered), x.default || "", x.correction || ""]};
+    }))];
+    case "finalCheck": return [G("", (h.finalCheck || []).map(function(x){
+      var res = x.result === "pass" ? "Pass" : "Fail";
+      return {id: x.id, title: FINAL_TITLE[x.id], meta: [res, x.owner ? "Owner: " + who(h, x.owner) : "", x.due ? "Due " + nice(x.due) : ""], note: x.note || "", row: [FINAL_TITLE[x.id], res, x.note || "", x.owner ? who(h, x.owner) : "", x.due || ""]};
+    }))];
+    case "signoff": var so = h.signoff; if (!so) return [];
+      var signed = ["outgoing", "incoming", "principal"].map(function(r){ return {id: "s-" + r, title: who(h, r), meta: [ROLE_NAME[r], so[r] ? "Signed " + nice(String(so[r]).slice(0, 10)) : "Not signed yet"], row: [who(h, r), ROLE_NAME[r], so[r] ? String(so[r]).slice(0, 10) : ""]}; });
+      if (so.frozen) signed.push({id: "s-frozen", title: "Record frozen", meta: [nice(so.frozen, "long")], row: ["Record frozen", "", so.frozen]});
+      return [G("", signed), G("Notes added since", (so.notes || []).map(function(n){ return {id: "n-" + n.id, title: n.text, meta: [nice(String(n.at).slice(0, 10)), n.role ? who(h, n.role) : ""], row: [n.text, n.role ? who(h, n.role) : "", String(n.at).slice(0, 10)]}; }))];
   }
   return [];
 }
@@ -535,7 +579,7 @@ function itemsDocument(h, o){
     var pick = o.only && o.only[key] ? o.only[key] : null;
     var groups = exportItems(h, key, o).map(function(g){
       return {title: g.title, items: g.items.filter(function(it){ return !pick || pick.indexOf(it.id) > -1; }).map(function(it){
-        return {id: it.id, title: it.title, meta: (it.meta || []).filter(Boolean), note: it.note || "", row: it.row || []};
+        return {id: it.id, title: it.title, meta: (it.meta || []).filter(Boolean), note: it.note || "", body: it.body || "", block: !!it.block, row: it.row || []};
       })};
     }).filter(function(g){ return g.items.length; });
     if (groups.length) parts.push({key: key, title: meta.title, columns: KIND_COLS[key], groups: groups});
@@ -549,7 +593,14 @@ function docMarkdown(doc){
     p.groups.forEach(function(g){
       if (g.title) L.push("### " + g.title, "");
       g.items.forEach(function(it){
-        var t = oneLine(it.title);
+        var t = oneLine(it.title), lv = g.title ? 4 : 3;
+        if (it.block){
+          L.push(hashes(lv) + " " + t, "");
+          if (it.body) L.push(mdBody(it.body, lv), "");
+          if (it.meta.length) L.push("*" + it.meta.map(oneLine).join(" · ") + "*", "");
+          if (it.note) L.push(oneLine(it.note), "");
+          return;
+        }
         L.push("- " + (/\*\*/.test(t) ? t : "**" + t + "**"));
         if (it.meta.length) L.push("  - " + it.meta.map(oneLine).join(" · "));
         if (it.note) L.push("  - " + oneLine(it.note));
@@ -558,6 +609,61 @@ function docMarkdown(doc){
     });
   });
   return L.join("\n");
+}
+/* Section bodies (spec section 9): headings, paragraphs, lists, notes (>), warnings (!>) and tables, as blocks */
+function tableCells(row){ var r = row.trim(); if (r.charAt(0) === "|") r = r.slice(1); if (r.charAt(r.length - 1) === "|") r = r.slice(0, -1); return r.split("|").map(function(c){ return c.trim(); }); }
+var BLOCK_START = /^(#{1,3}\s|\s*\||\s*[-*]\s+|\s*\d+[.)]\s+|>\s?|!>\s?)/;
+function parseBlocks(src){
+  var lines = String(src || "").replace(/\r\n?/g, "\n").split("\n"), out = [], i = 0, m, buf;
+  function take(re){ var got = []; while (i < lines.length && re.test(lines[i])) got.push(lines[i++].replace(re, "")); return got; }
+  while (i < lines.length){
+    var l = lines[i];
+    if (!l.trim()){ i++; continue; }
+    if ((m = l.match(/^(#{1,3})\s+(.*)$/))){ out.push({t: "h", level: m[1].length, text: m[2]}); i++; continue; }
+    if (/^\s*\|/.test(l)){
+      var rows = []; while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      var head = null; if (rows.length > 1 && /^\s*\|?\s*:?-{2,}/.test(rows[1])){ head = tableCells(rows[0]); rows = rows.slice(2); }
+      out.push({t: "table", head: head, rows: rows.map(tableCells)}); continue;
+    }
+    if (/^\s*[-*]\s+/.test(l)){ out.push({t: "ul", items: take(/^\s*[-*]\s+/)}); continue; }
+    if (/^\s*\d+[.)]\s+/.test(l)){ out.push({t: "ol", items: take(/^\s*\d+[.)]\s+/)}); continue; }
+    if (/^!>\s?/.test(l)){ out.push({t: "warn", text: take(/^!>\s?/).join(" ")}); continue; }
+    if (/^>\s?/.test(l)){ out.push({t: "note", text: take(/^>\s?/).join(" ")}); continue; }
+    buf = []; while (i < lines.length && lines[i].trim() && !BLOCK_START.test(lines[i])) buf.push(lines[i++]);
+    out.push({t: "p", text: buf.join(" ")});
+  }
+  return out;
+}
+function tableWidth(b){ return Math.max(b.head ? b.head.length : 0, b.rows.reduce(function(n, r){ return Math.max(n, r.length); }, 0)); }
+/* A section body as plain lines, for a spreadsheet cell */
+function blocksText(src){
+  return parseBlocks(src).map(function(b){
+    switch (b.t){
+      case "ul": return b.items.map(function(x){ return "• " + x; }).join("\n");
+      case "ol": return b.items.map(function(x, i){ return (i + 1) + ". " + x; }).join("\n");
+      case "note": return "Note: " + b.text;
+      case "warn": return "Warning: " + b.text;
+      case "table": return b.rows.map(function(r){ return r.map(function(c, j){ return c && b.head && b.head[j] ? b.head[j] + ": " + c : c; }).filter(Boolean).join(" · "); }).join("\n");
+      default: return b.text;
+    }
+  }).join("\n");
+}
+function hashes(n){ return new Array(Math.min(6, n) + 1).join("#"); }
+function mdBody(src, base){
+  return parseBlocks(src).map(function(b){
+    switch (b.t){
+      case "h": return hashes(base + b.level) + " " + oneLine(b.text);
+      case "ul": return b.items.map(function(x){ return "- " + oneLine(x); }).join("\n");
+      case "ol": return b.items.map(function(x, i){ return (i + 1) + ". " + oneLine(x); }).join("\n");
+      case "note": return "> " + oneLine(b.text);
+      case "warn": return "> **Warning:** " + oneLine(b.text);
+      case "table":
+        var n = tableWidth(b), head = b.head || b.rows[0], rows = b.head ? b.rows : b.rows.slice(1);
+        var line = function(r){ var c = []; for (var j = 0; j < n; j++) c.push(oneLine(r[j] || "").replace(/\|/g, "\\|")); return "| " + c.join(" | ") + " |"; };
+        return [line(head), "|" + new Array(n + 1).join(" --- |")].concat(rows.map(line)).join("\n");
+      default: return oneLine(b.text);
+    }
+  }).join("\n\n");
 }
 /* One line, with links into the handover itself reduced to their text: they lead nowhere outside it */
 function oneLine(s){ return String(s).replace(/\s*\r?\n+\s*/g, " ").replace(/\[([^\]]+)\]\(#[^)\s]*\)/g, "$1").trim(); }
@@ -568,6 +674,22 @@ function inlineHtml(s){
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/(^|[^*\w])\*([^*\s][^*]*?)\*(?!\w)/g, "$1<i>$2</i>").replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>').replace(/\[([^\]]+)\]\([^)\s]*\)/g, "$1");
 }
+function htmlBody(src, base){
+  return parseBlocks(src).map(function(b){
+    var lv = Math.min(6, base + b.level);
+    switch (b.t){
+      case "h": return "<h" + lv + ">" + inlineHtml(b.text) + "</h" + lv + ">";
+      case "ul": return "<ul>" + b.items.map(function(x){ return "<li>" + inlineHtml(x) + "</li>"; }).join("") + "</ul>";
+      case "ol": return "<ol>" + b.items.map(function(x){ return "<li>" + inlineHtml(x) + "</li>"; }).join("") + "</ol>";
+      case "note": return '<div class="note">' + inlineHtml(b.text) + "</div>";
+      case "warn": return '<div class="warn"><b>Warning:</b> ' + inlineHtml(b.text) + "</div>";
+      case "table":
+        var n = tableWidth(b), row = function(r, tag){ var c = []; for (var j = 0; j < n; j++) c.push("<" + tag + ">" + inlineHtml(r[j] || "") + "</" + tag + ">"); return "<tr>" + c.join("") + "</tr>"; };
+        return "<table>" + (b.head ? "<thead>" + row(b.head, "th") + "</thead>" : "") + "<tbody>" + b.rows.map(function(r){ return row(r, "td"); }).join("") + "</tbody></table>";
+      default: return "<p>" + inlineHtml(b.text) + "</p>";
+    }
+  }).join("");
+}
 function docHtml(doc){
   var b = [];
   b.push("<h1>" + inlineHtml(doc.title) + "</h1>", '<p class="sub">' + inlineHtml(doc.subtitle) + "</p>");
@@ -575,16 +697,26 @@ function docHtml(doc){
     b.push("<h2>" + inlineHtml(p.title) + "</h2>");
     p.groups.forEach(function(g){
       if (g.title) b.push("<h3>" + inlineHtml(g.title) + "</h3>");
-      b.push("<ul>" + g.items.map(function(it){
+      var lv = g.title ? 4 : 3, list = [];
+      var flush = function(){ if (list.length) b.push("<ul>" + list.join("") + "</ul>"); list = []; };
+      g.items.forEach(function(it){
         var t = inlineHtml(it.title);
-        return "<li>" + (/<b>/.test(t) ? t : "<b>" + t + "</b>") + (it.meta.length ? '<br><span class="meta">' + it.meta.map(inlineHtml).join(" · ") + "</span>" : "") + (it.note ? "<br>" + inlineHtml(it.note) : "") + "</li>";
-      }).join("") + "</ul>");
+        if (it.block){
+          flush();
+          b.push("<h" + lv + ">" + t + "</h" + lv + ">" + (it.body ? htmlBody(it.body, lv) : "") + (it.meta.length ? '<p class="meta">' + it.meta.map(inlineHtml).join(" · ") + "</p>" : "") + (it.note ? "<p>" + inlineHtml(it.note) + "</p>" : ""));
+          return;
+        }
+        list.push("<li>" + (/<b>/.test(t) ? t : "<b>" + t + "</b>") + (it.meta.length ? '<br><span class="meta">' + it.meta.map(inlineHtml).join(" · ") + "</span>" : "") + (it.note ? "<br>" + inlineHtml(it.note) : "") + "</li>");
+      });
+      flush();
     });
   });
   return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(doc.title) + "</title><style>" +
     "body{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f;max-width:720px;margin:24px auto;padding:0 16px}" +
     "h1{font-size:20pt;margin:0 0 4px}h2{font-size:15pt;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}h3{font-size:12pt;margin:14px 0 4px}" +
-    ".sub{color:#666;margin:0 0 12px}.meta{color:#555;font-size:10pt}ul{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}" +
+    ".sub{color:#666;margin:0 0 12px}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
+    "table{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:10pt}th,td{border:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top}th{background:#efede6}" +
+    ".note,.warn{border-left:3px solid #c9c4b5;background:#f6f5f1;padding:6px 10px;margin:6px 0 10px}.warn{border-color:#b3261e;background:#fbeeec}" +
     "</style></head><body>\n" + b.join("\n") + "\n</body></html>\n";
 }
 
@@ -622,7 +754,48 @@ function docPdf(doc, o){
   function text(x, str, font, size, grey){ ops.push((grey ? "0.37 0.39 0.36 rg " : "0.1 0.1 0.1 rg ") + "BT /" + font + " " + size + " Tf " + x.toFixed(2) + " " + y.toFixed(2) + " Td " + pdfStr(str) + " Tj ET"); }
   function para(str, opt){
     var bold = opt.font === "F2", lines = wrapText(plainText(str), bold, opt.size, CW - (opt.indent || 0)), lh = opt.size * 1.3;
-    lines.forEach(function(l, i){ need(lh); y -= lh; if (i === 0 && opt.bullet) text(M + (opt.indent || 0) - 11, "•", "F1", opt.size, false); text(M + (opt.indent || 0), l, opt.font, opt.size, opt.grey); });
+    lines.forEach(function(l, i){ need(lh); y -= lh; if (i === 0 && (opt.bullet || opt.marker)){ var mk = opt.marker || "•"; text(M + (opt.indent || 0) - 4 - textWidth(mk, false, opt.size), mk, "F1", opt.size, false); } text(M + (opt.indent || 0), l, opt.font, opt.size, opt.grey); });
+  }
+  /* A table with wrapped cells; the header row repeats after a page break */
+  function grid(b){
+    var n = tableWidth(b), size = 8.5, lh = size * 1.25, pad = 4, cols = [], c, j;
+    var all = (b.head ? [b.head] : []).concat(b.rows);
+    for (c = 0; c < n; c++){ var w = 30; all.forEach(function(r, ri){ w = Math.max(w, textWidth(plainText(r[c] || ""), !!b.head && ri === 0, size) + 2 * pad); }); cols.push(w); }
+    var total = cols.reduce(function(a, x){ return a + x; }, 0);
+    if (total > CW){
+      var fair = CW / n, small = 0, bigNat = 0;
+      cols.forEach(function(x){ if (x <= fair) small += x; else bigNat += x; });
+      cols = cols.map(function(x){ return x <= fair ? x : x * (CW - small) / bigNat; });
+    } else cols = cols.map(function(x){ return x * CW / total; });
+    function rule(){ ops.push("0.85 0.84 0.8 RG 0.5 w " + M + " " + y.toFixed(2) + " m " + (M + CW).toFixed(2) + " " + y.toFixed(2) + " l S"); }
+    function row(r, head){
+      var wrapped = [], lines = 1;
+      for (j = 0; j < n; j++){ wrapped.push(wrapText(plainText(r[j] || ""), head, size, cols[j] - 2 * pad)); lines = Math.max(lines, wrapped[j].length); }
+      var hgt = lines * lh + 2 * pad, before = pages.length;
+      need(hgt);
+      if (pages.length > before){ rule(); if (!head && b.head) row(b.head, true); }
+      var top = y, x = M;
+      if (head) ops.push("0.94 0.93 0.9 rg " + M + " " + (top - hgt).toFixed(2) + " " + CW.toFixed(2) + " " + hgt.toFixed(2) + " re f");
+      wrapped.forEach(function(ls, k){ ls.forEach(function(l, li){ y = top - pad - size * 0.85 - li * lh; text(x + pad, l, head ? "F2" : "F1", size, false); }); x += cols[k]; });
+      y = top - hgt; rule();
+    }
+    need(lh * 3); y -= 4; rule();
+    if (b.head) row(b.head, true);
+    b.rows.forEach(function(r){ row(r, false); });
+    y -= 8;
+  }
+  function blocks(src){
+    parseBlocks(src).forEach(function(b){
+      switch (b.t){
+        case "h": need(40); y -= 4; para(b.text, {font: "F2", size: b.level === 1 ? 11 : 10, grey: b.level > 1}); y -= 2; break;
+        case "ul": b.items.forEach(function(x){ para(x, {font: "F1", size: 10, indent: 14, bullet: true}); y -= 2; }); y -= 4; break;
+        case "ol": b.items.forEach(function(x, i){ para(x, {font: "F1", size: 10, indent: 16, marker: (i + 1) + "."}); y -= 2; }); y -= 4; break;
+        case "note": para(b.text, {font: "F3", size: 10, indent: 10, grey: true}); y -= 6; break;
+        case "warn": para("Warning: " + b.text, {font: "F2", size: 10, indent: 10}); y -= 6; break;
+        case "table": grid(b); break;
+        default: para(b.text, {font: "F1", size: 10}); y -= 5;
+      }
+    });
   }
   newPage();
   para(doc.title, {font: "F2", size: 20}); y -= 2;
@@ -633,6 +806,13 @@ function docPdf(doc, o){
     p.groups.forEach(function(g){
       if (g.title){ need(11 * 1.3 + 40); y -= 6; para(g.title, {font: "F2", size: 11, grey: true}); y -= 2; }
       g.items.forEach(function(it){
+        if (it.block){
+          need(12 * 1.3 + 40); y -= 6; para(it.title, {font: "F2", size: 12}); y -= 3;
+          if (it.body) blocks(it.body);
+          if (it.meta.length) para(it.meta.join(" · "), {font: "F1", size: 9, grey: true});
+          if (it.note) para(it.note, {font: "F1", size: 10});
+          y -= 4; return;
+        }
         need(10.5 * 1.3 + (it.meta.length ? 12 : 0));
         para(it.title, {font: "F2", size: 10.5, indent: 14, bullet: true});
         if (it.meta.length) para(it.meta.join(" · "), {font: "F1", size: 9, indent: 14, grey: true});
@@ -735,6 +915,34 @@ function docDocx(doc){
     return out;
   }
   function p(style, body, extra){ return "<w:p><w:pPr>" + (style ? '<w:pStyle w:val="' + style + '"/>' : "") + (extra || "") + "</w:pPr>" + body + "</w:p>"; }
+  var ordered = 0, TW = 9638;
+  function list(id){ return '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="' + id + '"/></w:numPr>'; }
+  function tbl(b){
+    var n = tableWidth(b), all = (b.head ? [b.head] : []).concat(b.rows), nat = [], j;
+    for (j = 0; j < n; j++){ var w = 6; all.forEach(function(r){ w = Math.max(w, Math.min(60, plainText(r[j] || "").length)); }); nat.push(w); }
+    var sum = nat.reduce(function(a, x){ return a + x; }, 0), widths = nat.map(function(x){ return Math.round(x * TW / sum); });
+    var edge = function(side){ return "<w:" + side + ' w:val="single" w:sz="4" w:space="0" w:color="DEDAD0"/>'; };
+    var row = function(r, head){
+      var c = []; for (j = 0; j < n; j++) c.push('<w:tc><w:tcPr><w:tcW w:w="' + widths[j] + '" w:type="dxa"/>' + (head ? '<w:shd w:val="clear" w:color="auto" w:fill="EFEDE6"/>' : "") + "</w:tcPr>" + p("TableText", runs(r[j] || "", head ? {bold: true} : {})) + "</w:tc>");
+      return "<w:tr>" + (head ? "<w:trPr><w:tblHeader/></w:trPr>" : "<w:trPr><w:cantSplit/></w:trPr>") + c.join("") + "</w:tr>";
+    };
+    return '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders>' + ["top", "left", "bottom", "right", "insideH", "insideV"].map(edge).join("") + "</w:tblBorders>" +
+      '<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' +
+      widths.map(function(w){ return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>" + (b.head ? row(b.head, true) : "") + b.rows.map(function(r){ return row(r, false); }).join("") + "</w:tbl>" + p("Spacer", "");
+  }
+  function blocks(src){
+    return parseBlocks(src).map(function(b){
+      switch (b.t){
+        case "h": return p("Heading4", runs(b.text));
+        case "ul": return b.items.map(function(x){ return p("ListParagraph", runs(x), list(1)); }).join("");
+        case "ol": ordered++; return b.items.map(function(x){ return p("ListParagraph", runs(x), list(ordered + 1)); }).join("");
+        case "note": return p("Callout", runs(b.text));
+        case "warn": return p("Callout", run("Warning: ", {bold: true}) + runs(b.text));
+        case "table": return tbl(b);
+        default: return p("", runs(b.text));
+      }
+    }).join("");
+  }
   var body = [];
   body.push(p("Title", run(plainText(doc.title))));
   body.push(p("Subtitle", run(plainText(doc.subtitle))));
@@ -743,6 +951,13 @@ function docDocx(doc){
     pt.groups.forEach(function(g){
       if (g.title) body.push(p("Heading2", run(g.title)));
       g.items.forEach(function(it){
+        if (it.block){
+          body.push(p("Heading3", runs(it.title)));
+          if (it.body) body.push(blocks(it.body));
+          if (it.meta.length) body.push(p("Meta", runs(it.meta.join(" · ")), '<w:ind w:left="0"/>'));
+          if (it.note) body.push(p("", runs(it.note)));
+          return;
+        }
         body.push(p("ListParagraph", /\*\*/.test(it.title) ? runs(it.title) : runs(it.title, {bold: true}), '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:spacing w:before="80" w:after="0"/>'));
         if (it.meta.length) body.push(p("Meta", runs(it.meta.join(" · "))));
         if (it.note) body.push(p("Note", runs(it.note)));
@@ -760,11 +975,18 @@ function docDocx(doc){
     style("Subtitle", "Subtitle", '<w:spacing w:after="240"/>', '<w:i/><w:color w:val="5F645C"/><w:sz w:val="20"/><w:szCs w:val="20"/>', "Normal") +
     style("Heading1", "heading 1", '<w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="2" w:color="DEDAD0"/></w:pBdr><w:spacing w:before="320" w:after="80"/><w:outlineLvl w:val="0"/>', '<w:b/><w:sz w:val="28"/><w:szCs w:val="28"/>', "Normal") +
     style("Heading2", "heading 2", '<w:keepNext/><w:spacing w:before="200" w:after="40"/><w:outlineLvl w:val="1"/>', '<w:b/><w:color w:val="5F645C"/><w:sz w:val="22"/>', "Normal") +
+    style("Heading3", "heading 3", '<w:keepNext/><w:spacing w:before="240" w:after="60"/><w:outlineLvl w:val="2"/>', '<w:b/><w:sz w:val="24"/><w:szCs w:val="24"/>', "Normal") +
+    style("Heading4", "heading 4", '<w:keepNext/><w:spacing w:before="160" w:after="40"/><w:outlineLvl w:val="3"/>', '<w:b/><w:color w:val="5F645C"/><w:sz w:val="21"/><w:szCs w:val="21"/>', "Normal") +
+    style("Callout", "Callout", '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="C9C4B5"/></w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="F6F5F1"/><w:spacing w:before="80" w:after="120"/><w:ind w:left="200" w:right="200"/>', "", "Normal") +
+    style("TableText", "Table text", '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>', '<w:sz w:val="18"/><w:szCs w:val="18"/>', "Normal") +
+    style("Spacer", "Spacer", '<w:spacing w:after="0" w:line="120" w:lineRule="exact"/>', '<w:sz w:val="8"/>', "Normal") +
     style("ListParagraph", "List Paragraph", '<w:ind w:left="360" w:hanging="240"/>', "", "Normal") +
     style("Meta", "Item details", '<w:keepLines/><w:spacing w:after="0"/><w:ind w:left="360"/>', '<w:color w:val="5F645C"/><w:sz w:val="18"/>', "Normal") +
     style("Note", "Item note", '<w:spacing w:after="40"/><w:ind w:left="360"/>', "", "Normal") +
     "</w:styles>";
-  var numberingXml = XML_HEAD + "<w:numbering " + W + '><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="240"/></w:pPr></w:lvl></w:abstractNum><w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+  var numberingXml = XML_HEAD + "<w:numbering " + W + '><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="240"/></w:pPr></w:lvl></w:abstractNum>' +
+    '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="360" w:hanging="300"/></w:pPr></w:lvl></w:abstractNum>' +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' + new Array(ordered + 1).join(".").split("").map(function(x, i){ return '<w:num w:numId="' + (i + 2) + '"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>'; }).join("") + "</w:numbering>";
   var rels = '<Relationship Id="rIdS" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rIdN" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>' +
     links.map(function(u, i){ return '<Relationship Id="rIdL' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' + xmlEsc(u) + '" TargetMode="External"/>'; }).join("");
   return zip([
@@ -779,14 +1001,15 @@ function docDocx(doc){
 }
 
 /* One sheet per kind of item, with a header row, filters and frozen headers */
+function cellText(v){ return String(v === undefined || v === null ? "" : v).split("\n").map(plainText).join("\n"); }
 function docXlsx(doc){
   function col(n){ var s = ""; n++; while (n){ var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
   function cellXml(ref, v, st){ return '<c r="' + ref + '" t="inlineStr"' + (st ? ' s="' + st + '"' : "") + '><is><t xml:space="preserve">' + xmlEsc(v) + "</t></is></c>"; }
   var used = {}, sheets = doc.parts.map(function(pt, i){
     var name = pt.title.replace(/[\[\]:*?\/\\]/g, " ").slice(0, 31), n = 2; while (used[name.toLowerCase()]) name = name.slice(0, 28) + " " + n++; used[name.toLowerCase()] = true;
     var head = pt.columns || ["Item"], rows = [];
-    pt.groups.forEach(function(g){ g.items.forEach(function(it){ rows.push(it.row && it.row.length ? it.row.map(plainText) : [plainText(it.title)]); }); });
-    var widths = head.map(function(hd, c){ var w = hd.length; rows.forEach(function(r){ w = Math.max(w, String(r[c] || "").length); }); return Math.min(Math.max(w + 2, 10), 60); });
+    pt.groups.forEach(function(g){ g.items.forEach(function(it){ rows.push(it.row && it.row.length ? it.row.map(cellText) : [plainText(it.title)]); }); });
+    var widths = head.map(function(hd, c){ var w = hd.length; rows.forEach(function(r){ String(r[c] || "").split("\n").forEach(function(l){ w = Math.max(w, l.length); }); }); return Math.min(Math.max(w + 2, 10), 60); });
     var last = col(head.length - 1) + (rows.length + 1);
     var xml = XML_HEAD + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
       '<sheetViews><sheetView workbookViewId="0"' + (i === 0 ? ' tabSelected="1"' : "") + '><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
@@ -820,6 +1043,6 @@ function docXlsx(doc){
 var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);
