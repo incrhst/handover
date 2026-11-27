@@ -16,6 +16,8 @@
 //                                              a document for the principal; jd (the default) is a job description
 //   node handover.cjs merge <file> <other> [out]
 //                                              merge the progress in <other> into <file>
+//   node handover.cjs kit <file> [out.html] [--profile newcomer|record] [--audience role,role]
+//                                              the whole handover as one HTML file that opens in any browser
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -158,6 +160,18 @@ switch (cmd) {
     if (args[1]) { fs.writeFileSync(args[1], out); console.error("Wrote " + args[1]); } else process.stdout.write(out);
     break;
   }
+  case "kit": {
+    const profile = flag("--profile", "newcomer"), aud = flag("--audience", "");
+    const h = read(args[0]); requireValid(h, args[0]);
+    let viewer;
+    try { viewer = fs.readFileSync(path.join(__dirname, "viewer.html"), "utf8"); } catch (e) { die("Can't read the viewer next to this script (viewer.html): " + e.message); }
+    let html;
+    try { html = C.transitionKit(h, {profile, audience: aud ? aud.split(",").map(s => s.trim()) : undefined, viewer, date: C.zoneParts(h.timezone).date}); } catch (e) { die(e.message); }
+    const v = C.validate(C.readKit(html).handover);
+    if (v.errors.length) { console.error("The handover in the kit would not be valid:"); v.errors.forEach(e => console.error("  - " + e)); process.exit(1); }
+    if (args[1]) { fs.writeFileSync(args[1], html); console.error("Wrote " + args[1]); } else process.stdout.write(html);
+    break;
+  }
   case "merge": {
     const a = read(args[0]), b = read(args[1]);
     requireValid(a, args[0]); requireValid(b, args[1]);
@@ -169,6 +183,6 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 18).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
+    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 20).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
     process.exit(cmd ? 2 : 0);
 }

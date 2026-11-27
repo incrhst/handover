@@ -6,6 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PAIRS=(
   "app/web/core.js:skills/handover/scripts/core.js"
+  "app/web/index.html:skills/handover/scripts/viewer.html"
   "spec/SPEC.md:skills/handover/references/SPEC.md"
   "site/schema/v1.json:skills/handover/references/schema.json"
   "site/examples/sample.handover:skills/handover/references/sample.handover"

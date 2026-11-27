@@ -3,7 +3,7 @@
    (skills/handover/scripts/core.js). Plain ES5, no dependencies.
    In a browser it sets window.HandoverCore; in Node it is module.exports.
    Spec: https://github.com/incrhst/handover/blob/main/spec/SPEC.md */
-(function(root){
+(function handoverCore(root){
 "use strict";
 /* ================= Validation (mirrors schema/v1.json) ================= */
 var ID = /^[a-z0-9][a-z0-9-]{0,63}$/, DATE = /^\d{4}-\d{2}-\d{2}$/, TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -1273,6 +1273,39 @@ function principalReports(h, keys, o){
     intro: chapters.map(function(c, i){ return "**" + (i + 1) + ". " + c.title + ".** " + (c.intro[0] || (c.parts.length ? "" : "Nothing to report.")); }),
     chapters: chapters, parts: [].concat.apply([], chapters.map(function(c){ return c.parts; }))};
 }
+/* ================= Transition kit: the whole handover as one HTML file ================= */
+/* The viewer page (app/web/index.html) with this file, the handover and a strict policy inlined.
+   It opens in any browser with nothing else: no app, no server, no internet. Read-only; ticks and
+   notes stay in that browser. It carries only what the chosen profile may see (spec section 14). */
+/* Built from parts so that this file, inlined in the kit, never contains the tag itself */
+var KIT_OPEN = "<script type=\"application/json\" id=\"" + ["handover", "kit"].join("-") + "\">";
+var CORE_TAG = "<script src=\"core.js\"></" + "script>";
+var KIT_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'";
+function scriptSafe(s){ return String(s).replace(/<\/(script)/gi, "<\\/$1").replace(/<!--/g, "<\\!--"); }
+function kitData(json){ return json.replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"); }
+function transitionKit(h, o){
+  o = o || {};
+  var profile = o.profile || "newcomer";
+  if (!PROFILES[profile]) throw new Error('profile must be "newcomer" or "record"');
+  if (typeof o.viewer !== "string" || o.viewer.indexOf(CORE_TAG) < 0) throw new Error("transitionKit needs the viewer page (app/web/index.html) as o.viewer");
+  var data = h.handover === "1.0" ? contentOnly(h) : exportProfile(h, profile, o.audience);
+  var kit = {kit: 1, made: o.date || new Date().toISOString().slice(0, 10), profile: data.profile || profile, handover: data};
+  var core = "(" + handoverCore.toString() + ")(typeof window !== \"undefined\" ? window : this);";
+  var page = o.viewer
+    .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/i, '<meta http-equiv="Content-Security-Policy" content="' + KIT_CSP + '">')
+    .replace(/<title>[^<]*<\/title>/i, function(){ return "<title>" + escHtml(data.title || "Handover") + " \u00b7 transition kit</title>"; })
+    .replace(/<a href="(?:https?:)?\/\/[^"]*"[^>]*>([^<]*)<\/a>/gi, "$1");
+  var at = page.indexOf(CORE_TAG);
+  return page.slice(0, at) + "<script>\n" + scriptSafe(core) + "\n</script>\n" +
+    KIT_OPEN + kitData(JSON.stringify(kit)) + "</script>" +
+    page.slice(at + CORE_TAG.length);
+}
+/* The handover inside a transition kit, or null */
+function readKit(html){
+  html = String(html); var at = html.lastIndexOf(KIT_OPEN); if (at < 0) return null;
+  var end = html.indexOf("</script>", at); return end < 0 ? null : JSON.parse(html.slice(at + KIT_OPEN.length, end));
+}
+
 /* The parts of a report document: its chapters, or the whole document as one */
 function docChapters(doc){ return doc.chapters || [{title: "", figures: doc.figures || [], intro: doc.intro || [], introLabel: doc.introLabel || "", parts: doc.parts}]; }
 function docMarkdown(doc){
@@ -2052,6 +2085,6 @@ function docXlsx(doc){
 var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);
