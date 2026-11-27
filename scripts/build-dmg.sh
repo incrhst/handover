@@ -31,5 +31,6 @@ if [ -n "$NOTARISE" ]; then
   spctl --assess --type open --context context:primary-signature -v dist/Handover.dmg
 fi
 hdiutil verify dist/Handover.dmg >/dev/null
-shasum -a 256 dist/Handover.dmg | tee dist/Handover.dmg.sha256
+# Name the file without dist/, so `shasum -c Handover.dmg.sha256` works next to a downloaded copy.
+(cd dist && shasum -a 256 Handover.dmg) | tee dist/Handover.dmg.sha256
 echo "Built dist/Handover.dmg"

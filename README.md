@@ -83,7 +83,7 @@ To try the page in a browser without the app, serve the repo and open `app/web/i
 
 ### Releasing
 
-Releases are Developer ID-signed and notarised, so they open with no warning. The release's `Handover.dmg` is what the website's download button points to, and the app's updater checks it against `Handover.dmg.sha256` (it skips that check if the file is missing), so always attach both.
+Releases are Developer ID-signed and notarised, so they open with no warning. The release's `Handover.dmg` is what the website's download button points to, and the app's updater checks it against `Handover.dmg.sha256` (it skips that check if the file is missing), so always attach both. To check a download by hand, put the two files in one folder and run `shasum -a 256 -c Handover.dmg.sha256`.
 
 **From a Mac** (how releases are made today). Save the notarisation credentials once:
 
