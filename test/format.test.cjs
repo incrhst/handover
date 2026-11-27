@@ -53,7 +53,7 @@ test("the EA example is the no-overlap reference case and uses every 1.1 and 1.2
   const seen = new Set();
   (function walk(v) { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === "object") for (const k of Object.keys(v)) { seen.add(k); walk(v[k]); } })(h);
   const defs = ["person", "stakeholder", "plan", "step", "ask", "gap", "inProgress", "rule", "decision", "risk", "system", "document", "decide", "card", "finalCheck", "signoff", "followUp", "catchUp", "historyEntry", "closed", "checks", "money", "jobRole", "asNeeded"];
-  for (const d of defs) for (const k of Object.keys(schema.latest.$defs[d].properties)) assert.ok(seen.has(k), `${d}.${k} is not used in the example`);
+  for (const d of defs) for (const k of Object.keys(schema.v12.$defs[d].properties)) assert.ok(seen.has(k), `${d}.${k} is not used in the example`);
   assert.ok(seen.has("hours") && seen.has("paid"), "from.hours and from.paid");
   // a recurring risk with an exact day
   const r = h.risks.find(x => x.recurring && x.list === "weekly");
@@ -122,7 +122,7 @@ test("visibility: nothing the audience may not see", () => {
 });
 
 test("versions: newer minors warn, a 1.0 file using 1.1 fields warns, 1.0 stays strict", () => {
-  let h = sample(); h.handover = "1.4"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
+  let h = sample(); h.handover = "1.5"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
   let v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.length === 2, v.warnings.join("\n"));
   h = ea(); h.handover = "1.0"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.some(w => /says "1\.0" but uses 1\.2 fields\. Set it to "1\.2"/.test(w)));
   h = ea(); h.handover = "1.1"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, ['handover: the file says "1.1" but uses 1.2 fields. Set it to "1.2"']);
@@ -179,10 +179,11 @@ test("the CLI check reports TODO gaps by area and open gap items", () => {
   assert.match(old, /valid handover 1\.0 .* 7 TODO gap\(s\)/);
 });
 
-test("the AI prompt's example file is a valid 1.3 file", () => {
+test("the AI prompt's example file is a valid 1.4 file", () => {
   const text = fs.readFileSync(path.join(root, "site/prompt.md"), "utf8");
   const h = JSON.parse(text.match(/```json\n([\s\S]*?)\n```/)[1]);
-  assert.equal(h.handover, "1.3");
+  assert.equal(h.handover, "1.4");
+  assert.ok(h.path[0].tasks.some(t => t.guides) && h.recurring.some(r => r.guides), "the prompt shows guides on a task and a job");
   assert.ok(h.role && h.asNeeded && h.recurring.every(r => r.area), "the prompt shows the 1.2 fields");
   assert.ok(h.recurring.some(r => r.lead), "the prompt shows a lead time");
   const v = C.validate(h);
@@ -1008,4 +1009,97 @@ test("reminders: a summary already shown can be brought up to date as jobs are t
   assert.deepEqual([s.subtitle, s.body], ["2 things to do today", "Due: Count the petty cash (16:00)\nUnder way: Renew the van's insurance (13 days left)"]);
   p.recurring["petty@2026-11-27"] = "x"; p.recurring["van-insurance@2026-12-10"] = "x";
   assert.equal(C.summaryFor(h, p, "2026-11-27"), null, "nothing left: no summary");
+});
+
+/* ================= 1.4: guides on tasks and jobs ================= */
+const v14 = json("site/schema/v1.4.json");
+const task = (h, id) => h.path.flatMap(s => s.tasks).find(t => t.id === id);
+/* The EA example with its step guide and recording tied to the tasks and jobs that use them */
+const guided = () => {
+  const h = ea(); h.handover = "1.4";
+  task(h, "first-expenses").guides = ["expenses-guide"];
+  Object.assign(task(h, "board-pack-dry-run"), {see: "how-dana-works", guides: ["board-pack-recording", "folder"]});
+  h.recurring.find(r => r.id === "expense-approvals").guides = ["expenses-guide"];
+  h.asNeeded.find(a => a.id === "visa-letters").guides = ["visa-letter-draft"];
+  return h;
+};
+
+test("1.4: guides and a section on a task are checked, and need format 1.4", () => {
+  assert.deepEqual(C.validate(guided()), {errors: [], warnings: []});
+  assert.deepEqual(check(schema.latest, guided()), []); assert.deepEqual(check(v14, guided()), []);
+  assert.ok(check(schema.v13, guided()).length, "the frozen 1.3 schema rejects guides");
+  let h = guided(); h.handover = "1.3";
+  assert.deepEqual(C.validate(h).warnings, ['handover: the file says "1.3" but uses 1.4 fields. Set it to "1.4"']);
+  // see alone on a task is a 1.4 field too
+  h = ea(); task(h, "brief").see = "how-dana-works"; assert.equal(C.usesMinor(h), 4);
+  h = guided(); task(h, "first-expenses").guides = ["nope"]; expectError(h, /path\[1\]\.tasks\[1\]\.guides\[0\]: no document has id "nope"/);
+  h = guided(); task(h, "first-expenses").guides = ["expenses-guide", "expenses-guide"]; expectError(h, /guides\[1\]: "expenses-guide" is listed twice/);
+  h = guided(); task(h, "first-expenses").guides = []; expectError(h, /guides: must be a list of document ids/);
+  h = guided(); h.recurring[0].guides = ["nope"]; expectError(h, /recurring\[0\]\.guides\[0\]: no document has id/);
+  h = guided(); h.asNeeded[0].guides = "expenses-guide"; expectError(h, /asNeeded\[0\]\.guides: must be a list/);
+  h = guided(); task(h, "brief").see = "nope"; expectError(h, /tasks\[0\]\.see: no section has id "nope"/);
+  h = sample(); h.handover = "1.4"; h.path[0].tasks[0].guides = ["x"]; expectError(h, /no document has id "x" \(the file has no documents\)/);
+});
+
+test("1.4: a task's section comes first, then its guides in order, and closed documents are left out", () => {
+  const h = guided(), t = task(h, "board-pack-dry-run");
+  assert.deepEqual(C.guidesFor(h, t).map(g => [g.kind, g.id]), [["section", "how-dana-works"], ["document", "board-pack-recording"], ["document", "folder"]]);
+  assert.deepEqual(C.guidesFor(h, t).map(C.guideLabel), ["How Dana works", "Recording: preparing the board pack", "Folder: Handover folder"]);
+  // the kind is named unless the title already says it
+  assert.equal(C.guideLabel({kind: "document", title: "Payroll run", doc: {type: "guide"}}), "Step guide: Payroll run");
+  assert.equal(C.guideLabel({kind: "document", title: "Board pack", doc: {}}), "Board pack");
+  h.documents.find(d => d.id === "folder").closed = {how: "dropped"};
+  assert.deepEqual(C.guidesFor(h, t).map(g => g.id), ["how-dana-works", "board-pack-recording"]);
+  assert.deepEqual(C.guidesFor(h, task(h, "brief")), []);
+});
+
+test("1.4: guides can be chosen in the app, which raises the file to 1.4", () => {
+  const h = ea();
+  assert.ok(C.editFields("path").some(d => d.k === "guides") && C.editFields("recurring").some(d => d.k === "see") && C.addFields.asNeeded.some(d => d.k === "guides"));
+  const v = C.editValues(h, "path", "first-expenses"); v.guides = ["expenses-guide"]; v.see = "how-dana-works";
+  const res = C.editItem(h, "path", "first-expenses", v, {date: "2026-11-27"});
+  assert.equal(res.h.handover, "1.4"); assert.deepEqual(res.changed, ["the reference section", "the guides"]);
+  assert.deepEqual(task(res.h, "first-expenses"), {id: "first-expenses", text: task(h, "first-expenses").text, see: "how-dana-works", guides: ["expenses-guide"]});
+  assert.deepEqual(C.validate(res.h), {errors: [], warnings: []});
+  assert.deepEqual(C.editValues(res.h, "path", "first-expenses").guides, ["expenses-guide"]);
+  // the same document listed twice is kept once; clearing them takes the field out
+  const twice = C.editItem(h, "recurring", "expense-approvals", Object.assign(C.editValues(h, "recurring", "expense-approvals"), {guides: ["expenses-guide", "expenses-guide"]}), {});
+  assert.deepEqual(twice.h.recurring.find(r => r.id === "expense-approvals").guides, ["expenses-guide"]);
+  const cleared = C.editItem(res.h, "path", "first-expenses", Object.assign({}, v, {guides: [], see: ""}), {});
+  assert.equal(task(cleared.h, "first-expenses").guides, undefined); assert.equal(task(cleared.h, "first-expenses").see, undefined);
+  // only things in the file
+  assert.throws(() => C.editItem(h, "path", "first-expenses", Object.assign({}, v, {guides: ["nope"]}), {}), /isn't in the file any more/);
+  assert.throws(() => C.editItem(h, "path", "first-expenses", Object.assign({}, v, {see: "nope"}), {}), /That section isn't in the file/);
+  // a job done as needed can be added with a guide
+  const added = C.addItem(h, "asNeeded", {text: "Order business cards", guides: ["chair-template-doc"]}, {date: "2026-11-27"});
+  assert.deepEqual(added.h.asNeeded.find(a => a.id === added.id).guides, ["chair-template-doc"]);
+  assert.equal(added.h.handover, "1.4");
+});
+
+test("1.4: a guide whose document is left out of an export or a merge is taken out too", () => {
+  const h = guided();
+  h.documents.find(d => d.id === "folder").closed = {how: "dropped"};
+  h.documents.find(d => d.id === "visa-letter-draft").visibleTo = ["outgoing", "principal"];
+  const n = C.exportProfile(h, "newcomer");
+  assert.equal(n.documents.some(d => d.id === "folder" || d.id === "visa-letter-draft"), false);
+  assert.deepEqual(task(n, "board-pack-dry-run").guides, ["board-pack-recording"]);
+  assert.equal(n.asNeeded.find(a => a.id === "visa-letters").guides, undefined, "an empty list is left out");
+  assert.deepEqual(C.validate(n).errors, []);
+  // the record keeps them all
+  assert.deepEqual(task(C.exportProfile(h, "record"), "board-pack-dry-run").guides, ["board-pack-recording", "folder"]);
+  // one copy takes a document out while the other makes it a guide
+  const base = ea(), mine = ea(), theirs = ea();
+  mine.documents = mine.documents.filter(d => d.id !== "expenses-guide");
+  task(theirs, "first-expenses").guides = ["expenses-guide", "folder"]; theirs.handover = "1.4";
+  const m = C.mergeHandover(base, mine, theirs).h;
+  assert.deepEqual(task(m, "first-expenses").guides, ["folder"]);
+  assert.deepEqual(C.validate(m).errors, []);
+});
+
+test("1.4: exports name a task's or job's guides", () => {
+  const doc = C.itemsDocument(guided(), {kinds: ["tasks", "jobs"]});
+  const items = doc.parts.flatMap(p => p.groups.flatMap(g => g.items));
+  assert.ok(items.find(i => i.id === "first-expenses").meta.includes("Guide: Step guide: Thursday expense claims (https://drive.example.com/exec/handover-2026/expenses-guide)"));
+  assert.ok(items.find(i => i.id === "board-pack-dry-run").meta[0].startsWith("Guides: How Dana works; Recording: "));
+  assert.ok(items.find(i => i.id === "visa-letters").meta.some(m => /^Guide: Visa invitation letter \(https:/.test(m)));
 });

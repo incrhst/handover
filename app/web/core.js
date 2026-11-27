@@ -32,6 +32,16 @@ function validate(h){
   if (h.settings !== undefined){ if (!isObj(h.settings)) errors.push("settings: must be an object"); else { keys(h.settings, "settings", ["dailyExportTime"]); if (h.settings.dailyExportTime !== undefined) pat(h.settings, "dailyExportTime", "settings", TIME, "a time like 07:00"); } }
   var sec = {}; list("sections").forEach(function(s, i){ var p = "sections[" + i + "]"; if (!isObj(s)){ errors.push(p + ": must be an object"); return; } keys(s, p, ["id","title","body"]); pat(s, "id", p, ID, "an id like systems", true); text(s, "title", p, true); text(s, "body", p, true); if (s.id){ if (sec[s.id]) errors.push(p + ".id: \"" + s.id + "\" is used twice"); sec[s.id] = true; } });
   function see(o, p){ if (o.see !== undefined){ if (typeof o.see !== "string" || !sec[o.see]) errors.push(p + '.see: no section has id "' + o.see + '"'); } }
+  /* 1.4: guides name documents (spec section 19) */
+  var docs = {}; (Array.isArray(h.documents) ? h.documents : []).forEach(function(d){ if (isObj(d) && typeof d.id === "string") docs[d.id] = true; });
+  function guides(o, p){
+    var g = o.guides; if (g === undefined) return;
+    if (!Array.isArray(g) || !g.length){ errors.push(p + ".guides: must be a list of document ids"); return; }
+    g.forEach(function(id, i){
+      if (typeof id !== "string" || !docs[id]) errors.push(p + ".guides[" + i + ']: no document has id "' + id + '"' + (h.documents === undefined ? " (the file has no documents)" : ""));
+      else if (g.indexOf(id) !== i) errors.push(p + ".guides[" + i + ']: "' + id + '" is listed twice');
+    });
+  }
   var stageIds = {}, taskIds = {};
   list("path").forEach(function(s, i){
     var p = "path[" + i + "]"; if (!isObj(s)){ errors.push(p + ": must be an object"); return; }
@@ -40,12 +50,12 @@ function validate(h){
     if (s.summary !== undefined) text(s, "summary", p);
     if (s.tip !== undefined){ if (!isObj(s.tip)) errors.push(p + ".tip: must be an object"); else { keys(s.tip, p + ".tip", ["title","text"]); text(s.tip, "text", p + ".tip", true); } }
     if (!Array.isArray(s.tasks) || !s.tasks.length) errors.push(p + ".tasks: needs at least one task");
-    else s.tasks.forEach(function(t, j){ var q = p + ".tasks[" + j + "]"; if (!isObj(t)){ errors.push(q + ": must be an object"); return; } keys(t, q, ["id","text","detail"]); pat(t, "id", q, ID, "an id like get-access", true); text(t, "text", q, true); if (t.id){ if (taskIds[t.id]) errors.push(q + '.id: "' + t.id + '" is used by another task'); taskIds[t.id] = true; } });
+    else s.tasks.forEach(function(t, j){ var q = p + ".tasks[" + j + "]"; if (!isObj(t)){ errors.push(q + ": must be an object"); return; } keys(t, q, ["id","text","detail","see","guides"]); pat(t, "id", q, ID, "an id like get-access", true); text(t, "text", q, true); if (t.detail !== undefined) text(t, "detail", q); see(t, q); guides(t, q); if (t.id){ if (taskIds[t.id]) errors.push(q + '.id: "' + t.id + '" is used by another task'); taskIds[t.id] = true; } });
   });
   var recIds = {};
   list("recurring").forEach(function(r, i){
     var p = "recurring[" + i + "]"; if (!isObj(r)){ errors.push(p + ": must be an object"); return; }
-    keys(r, p, ["id","text","area","every","on","day","monthOfQuarter","date","time","start","end","lead","detail","see"]);
+    keys(r, p, ["id","text","area","every","on","day","monthOfQuarter","date","time","start","end","lead","detail","see","guides"]);
     pat(r, "id", p, ID, "an id like payroll", true); text(r, "text", p, true);
     if (r.area !== undefined) text(r, "area", p);
     if (r.id){ if (recIds[r.id]) errors.push(p + '.id: "' + r.id + '" is used twice'); recIds[r.id] = true; }
@@ -64,7 +74,7 @@ function validate(h){
       else if (r.every === "day" || r.every === "weekday") warnings.push(p + ".lead: a lead time has no effect on a job done every day or weekday. Leave it out");
       else { var gap = period(r); if (r.lead >= gap) warnings.push(p + ".lead: " + r.lead + " days ahead reaches back past the previous occurrence (they come about every " + gap + " days), so two will be under way at once. Is the lead time right?"); }
     }
-    see(r, p);
+    see(r, p); guides(r, p);
   });
   list("questions").forEach(function(q, i){ var p = "questions[" + i + "]"; if (!isObj(q)){ errors.push(p + ": must be an object"); return; } keys(q, p, ["id","q","a","tag","see"]); text(q, "q", p, true); text(q, "a", p, true); if (q.id !== undefined) pat(q, "id", p, ID, "an id"); if (q.tag !== undefined) text(q, "tag", p); see(q, p); });
   if (h.progress !== undefined){
@@ -73,14 +83,14 @@ function validate(h){
       ["tasks","recurring"].forEach(function(k){ if (g[k] !== undefined && !isObj(g[k])) errors.push("progress." + k + ": must be an object"); });
       if (g.notes !== undefined && typeof g.notes !== "string") errors.push("progress.notes: must be text"); }
   }
-  validate11(h, {errors: errors, warnings: warnings, err: err, keys: keys, isObj: isObj, sec: sec, rec: recIds});
+  validate11(h, {errors: errors, warnings: warnings, err: err, keys: keys, isObj: isObj, sec: sec, rec: recIds, guides: guides});
   var needs = usesMinor(h);
   if (ver[1] < needs) warnings.push('handover: the file says "' + h.handover + '" but uses 1.' + needs + ' fields. Set it to "1.' + needs + '"');
   return {errors: errors, warnings: warnings};
 }
 
 /* ================= Validation of the 1.1 objects (spec sections 9 to 16) ================= */
-var MINOR = 3;
+var MINOR = 4;
 var ROLES = ["outgoing","incoming","principal","owner","facilitator"];
 var ASKS = ["breaks","profile","access","limits","confid","emergency","signoff"];
 var FINAL = ["recurring","in-progress","decisions","context","access","exceptions","decide"];
@@ -88,9 +98,16 @@ var V11 = ["audience","profile","people","stakeholders","plan","asks","gaps","in
 /* 1.2: the role itself (for a job description), jobs done as needed, and an area on regular jobs */
 var V12 = ["role","asNeeded"];
 /* 1.3: a lead time on regular jobs (spec section 18) */
+/* 1.4: guides on tasks and jobs, and a section on first-weeks tasks (spec section 19) */
+function uses14(h){
+  var jobs = [].concat(Array.isArray(h.recurring) ? h.recurring : [], Array.isArray(h.asNeeded) ? h.asNeeded : []);
+  if (jobs.some(function(r){ return r && r.guides !== undefined; })) return true;
+  return (Array.isArray(h.path) ? h.path : []).some(function(s){ return s && Array.isArray(s.tasks) && s.tasks.some(function(t){ return t && (t.guides !== undefined || t.see !== undefined); }); });
+}
 /* The lowest minor version that has every field h uses (spec section 8) */
 function usesMinor(h){
   if (!h || typeof h !== "object") return 0;
+  if (uses14(h)) return 4;
   if (Array.isArray(h.recurring) && h.recurring.some(function(r){ return r && r.lead !== undefined; })) return 3;
   if (V12.some(function(k){ return h[k] !== undefined; }) || (Array.isArray(h.recurring) && h.recurring.some(function(r){ return r && r.area !== undefined; }))) return 2;
   if (V11.some(function(k){ return h[k] !== undefined; }) || (h.from && typeof h.from === "object" && (h.from.hours !== undefined || h.from.paid !== undefined))) return 1;
@@ -123,7 +140,7 @@ var SPEC11 = {
   followUps: {o: {id: E(["f1","f2"]), answers: "answers", gapsFound: "int", gapsFixed: "int", at: "datetime"}, r: ["id"]},
   catchUps: {o: {id: "id", at: "datetime"}, r: ["id","at"]},
   history: {o: {id: "id", at: "datetime", role: "role", source: E(["app","ai"]), text: "md"}, r: ["id","at","source","text"]},
-  asNeeded: {o: {id: "id", text: "line", area: "line", when: "line", detail: "md", see: "id"}, r: ["id","text"]}
+  asNeeded: {o: {id: "id", text: "line", area: "line", when: "line", detail: "md", see: "id", guides: "skip"}, r: ["id","text"]}
 };
 var ROLE = {o: {organisation: "line", purpose: "md", location: "line", hours: "line", travel: "line", manages: "line", skills: "md", measures: "md"}, r: []};
 var PLAN = {o: {prepStart: "date", firstDay: "date", lastDay: "date", track: E(["light","full"]), practice: "bool", template: "line", steps: "skip"}, r: ["prepStart","lastDay"]};
@@ -211,7 +228,7 @@ function validate11(h, c){
   list(h.history, "history", SPEC11.history);
   /* 1.2 */
   if (h.role !== undefined) fields(h.role, "role", ROLE);
-  list(h.asNeeded, "asNeeded", SPEC11.asNeeded, function(o, q){ if (typeof o.see === "string" && !c.sec[o.see]) errors.push(q + '.see: no section has id "' + o.see + '"'); });
+  list(h.asNeeded, "asNeeded", SPEC11.asNeeded, function(o, q){ if (typeof o.see === "string" && !c.sec[o.see]) errors.push(q + '.see: no section has id "' + o.see + '"'); c.guides(o, q); });
   if (h.rendered !== undefined){
     if (!Array.isArray(h.rendered)) errors.push("rendered: must be a list of section ids");
     else h.rendered.forEach(function(id, i){ if (!c.sec[id]) errors.push("rendered[" + i + ']: no section has id "' + id + '"'); else if (h.rendered.indexOf(id) !== i) errors.push("rendered[" + i + ']: "' + id + '" is listed twice'); });
@@ -514,6 +531,7 @@ function mergeHandover(base, mine, theirs){
   var h = merge3(b, m, t, [], out);
   if (Array.isArray(h.history)) h.history.sort(function(x, y){ return String(x.at) < String(y.at) ? -1 : String(x.at) > String(y.at) ? 1 : 0; });
   if (rendered) h = withRendered(h);
+  dropLostGuides(h);  /* one side may have taken out a document the other made a guide (spec section 19) */
   return {h: h, conflicts: out.conflicts, renamed: out.renamed};
 }
 
@@ -716,6 +734,11 @@ function fieldApplies(d, values){ return !d.when || d.when.is.indexOf(String(val
 /* One field's value from a form: returns the value to store, or undefined to leave it out. Throws with .field set. */
 function fieldValue(d, v, values){
   if (d.t === "bool") return v === true || v === "true" || v === "on" ? true : undefined;
+  if (d.t === "docs"){
+    var ids = [].concat(v || []).map(function(x){ return String(x).trim(); }).filter(function(x, i, a){ return x && a.indexOf(x) === i; });
+    if (ids.some(function(x){ return !ID.test(x); })) throw addError("Choose the documents for “" + d.label + "” from the list.", d.k);
+    return ids.length ? ids : undefined;
+  }
   if (d.t === "days"){
     var on = [].concat(v || []).map(function(x){ return String(x).trim(); }).filter(Boolean);
     if (on.some(function(x){ return DAYS.indexOf(x) < 0; })) throw addError("Choose the days for “" + d.label + "”.", d.k);
@@ -730,6 +753,7 @@ function fieldValue(d, v, values){
     return d.num ? +v : v;
   }
   if (d.t === "role"){ if (ROLES.indexOf(v) < 0) throw addError("Choose who for “" + d.label + "”.", d.k); return v; }
+  if (d.t === "section"){ if (!ID.test(v)) throw addError("Choose a section for “" + d.label + "” from the list.", d.k); return v; }
   if (d.t === "date"){ if (!DATE.test(v)) throw addError("“" + d.label + "” needs a date like 2026-12-31.", d.k); return v; }
   if (d.t === "time"){ if (!TIME.test(v)) throw addError("“" + d.label + "” needs a time like 09:30.", d.k); return v; }
   if (d.t === "monthday"){
@@ -756,6 +780,14 @@ function readFields(defs, values){
   });
   return item;
 }
+/* A task's or job's section and guides must name things in the file (spec sections 2 and 19) */
+function checkRefs(h, item){
+  if (item.see !== undefined && !(h.sections || []).some(function(s){ return s.id === item.see; })) throw addError("That section isn't in the file any more. Choose another.", "see");
+  if (item.guides !== undefined){
+    var docs = {}; (h.documents || []).forEach(function(d){ docs[d.id] = true; });
+    if (item.guides.some(function(id){ return !docs[id]; })) throw addError("One of those documents isn't in the file any more. Choose again.", "guides");
+  }
+}
 /* A copy of h with one new record: values = {field: value}, o = {role (who added it), date, at}. Returns {h, id}; throws with .field set. */
 function addItem(h, list, values, o){
   o = o || {}; values = values || {};
@@ -764,6 +796,7 @@ function addItem(h, list, values, o){
   if (list !== "asNeeded" && (!h.handover || h.handover === "1.0")) throw new Error("This file uses format 1.0, which has no records. Ask the AI to write it again as format 1.1.");
   var item = readFields(defs, values);
   if (list === "documents" && !item.url && !item.location) throw addError("Give a link, or say where the document is kept.", "url");
+  checkRefs(h, item);
   var out = clone(h), items = list === "asNeeded" ? out.asNeeded || [] : recordList(out, list), used = {};
   items.forEach(function(x){ used[x.id] = true; });
   var base = slugFor(item.text || item.name || item.title, LIST_NOUN[list]), id = base, k = 2;
@@ -781,8 +814,10 @@ function addItem(h, list, values, o){
 /* ================= Editing (records, first-weeks tasks and regular jobs) ================= */
 var AREA_HINT = "The part of the role it belongs to, e.g. \"Finance\". To put it under a larger area, use a slash with spaces: \"Villa / Bookings\"";
 var EVERY_OPTS = [["day", "Every day"], ["weekday", "Monday to Friday"], ["week", "Every week"], ["month", "Every month"], ["quarter", "Every quarter"], ["year", "Every year"]];
+var SEE_FIELD = {k: "see", t: "section", label: "Reference section", hint: "A section of the reference that explains it, shown with the task", n: "the reference section"};
+var GUIDES_FIELD = {k: "guides", t: "docs", label: "Guides and walkthroughs", hint: "Documents to open with it: a step-by-step guide, a recording, a template. Add a document under Records first", n: "the guides"};
 var EDIT_FIELDS = {
-  path: [{k: "text", t: "line", req: true, label: "The task", n: "the task"}, {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
+  path: [{k: "text", t: "line", req: true, label: "The task", n: "the task"}, {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}, SEE_FIELD, GUIDES_FIELD],
   recurring: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
     {k: "area", t: "line", label: "Area of work", hint: AREA_HINT, n: "the area"},
     {k: "every", t: EVERY_OPTS, req: true, label: "How often", n: "how often"},
@@ -794,11 +829,11 @@ var EDIT_FIELDS = {
     {k: "start", t: "date", label: "From", hint: "Leave empty if it already applies", n: "the start"},
     {k: "end", t: "date", label: "Until", hint: "Leave empty if it carries on", n: "the end"},
     {k: "lead", t: "count", max: MAX_LEAD, label: "Lead time in days", hint: "How many days before the date the work has to start, e.g. 90 for a registration that takes three months. It goes on the list that day and stays until it is done. Leave empty if it is done on the day", when: {k: "every", is: ["week", "month", "quarter", "year"]}, n: "the lead time"},
-    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
+    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}, SEE_FIELD, GUIDES_FIELD],
   asNeeded: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
     {k: "area", t: "line", label: "Area of work", hint: AREA_HINT, n: "the area"},
     {k: "when", t: "line", label: "When it comes up", hint: "e.g. \"When a new member of staff joins\". \"As needed\" if left empty", n: "when it comes up"},
-    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}]
+    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}, SEE_FIELD, GUIDES_FIELD]
 };
 LIST_NOUN.path = "first-weeks task"; LIST_NOUN.recurring = "regular job"; LIST_NOUN.asNeeded = "job done as needed";
 ADD_FIELDS.asNeeded = EDIT_FIELDS.asNeeded;
@@ -907,6 +942,7 @@ function editItem(h, list, id, values, o){
   if (!EDIT_FIELDS[list] && (!h.handover || h.handover === "1.0")) throw new Error("This file uses format 1.0, which has no records.");
   var next = readFields(defs, values);
   if (list === "documents" && !next.url && !next.location) throw addError("Give a link, or say where the document is kept.", "url");
+  checkRefs(h, next);
   var out = clone(h), item = editList(out, list).filter(function(x){ return x.id === id; })[0];
   if (!item) throw new Error("That item isn't in the file any more.");
   var changed = [];
@@ -985,10 +1021,47 @@ function exportProfile(h, profile, audience){
     if (o.from) delete o.from.paid;
     eachItem(o, function(item){ ["added","addedBy","aiDrafted","visibleTo","contactVisibleTo","closed"].forEach(function(k){ delete item[k]; }); });
   }
+  dropLostGuides(o);
   if (audience) o.audience = audience.slice(); else delete o.audience;
   o.profile = profile;
   ["stakeholders"].concat(RECORDS).forEach(function(k){ if (Array.isArray(o[k]) && !o[k].length) delete o[k]; });
   return withRendered(o);
+}
+
+/* Guides that name a document no longer in the file are left out (spec section 19) */
+function dropLostGuides(o){
+  var docs = {}; (o.documents || []).forEach(function(d){ docs[d.id] = true; });
+  guideHolders(o).forEach(function(x){
+    if (!Array.isArray(x.guides)) return;
+    x.guides = x.guides.filter(function(id){ return docs[id]; });
+    if (!x.guides.length) delete x.guides;
+  });
+  return o;
+}
+/* Every task and job that can carry guides */
+function guideHolders(h){
+  var out = [];
+  (h.path || []).forEach(function(s){ (s.tasks || []).forEach(function(t){ out.push(t); }); });
+  return out.concat(h.recurring || [], h.asNeeded || []);
+}
+/* What to show with a task or job (spec section 19): its section, then its guides, in the file's order.
+   Each is {kind: "section", id, title, body} or {kind: "document", id, title, doc}. Closed documents are left out. */
+function guidesFor(h, item){
+  var out = [];
+  if (!item) return out;
+  if (typeof item.see === "string"){ var s = (h.sections || []).filter(function(x){ return x.id === item.see; })[0]; if (s) out.push({kind: "section", id: s.id, title: s.title, body: s.body}); }
+  (Array.isArray(item.guides) ? item.guides : []).forEach(function(id){
+    var d = (h.documents || []).filter(function(x){ return x.id === id; })[0];
+    if (d && !d.closed) out.push({kind: "document", id: d.id, title: d.title, doc: d});
+  });
+  return out;
+}
+/* A guide's name in a list: "Step guide: Payroll run" */
+function guideLabel(g){
+  if (g.kind === "section") return g.title;
+  var kind = g.doc.type && g.doc.type !== "other" ? DOC_TYPE[g.doc.type] : "";
+  /* No "Recording: Recording: …" when the title already says what it is */
+  return kind && String(g.title).toLowerCase().indexOf(kind.toLowerCase()) !== 0 ? kind + ": " + g.title : g.title;
 }
 
 /* ================= Sections for 1.0 readers (spec section 16) ================= */
@@ -1100,6 +1173,11 @@ var KIND_COLS = {
   questions: ["Question", "Answer", "Topic"], overview: ["Part", "Item", "Details"], people: ["Name", "Role", "Contact"], sections: ["Section", "Text"],
   asks: ["Question", "Status", "Minutes", "Sent", "Reply by", "Answered", "If no reply", "Correction"], finalCheck: ["Check", "Result", "Note", "Owner", "Due"], signoff: ["Who", "Role", "Signed"]
 };
+/* "Guide: Step guide: Payroll run" for an exported task or job; a document's link comes with it */
+function guideMeta(h, item){
+  var g = guidesFor(h, item); if (!g.length) return "";
+  return (g.length === 1 ? "Guide: " : "Guides: ") + g.map(function(x){ return guideLabel(x) + (x.kind === "document" && x.doc.url ? " (" + x.doc.url + ")" : ""); }).join("; ");
+}
 function exportItems(h, key, o){
   o = o || {};
   var keep = function(x){ return (o.closed || !x.closed) && (o["private"] || !Array.isArray(x.visibleTo)); };
@@ -1114,12 +1192,12 @@ function exportItems(h, key, o){
       return G(f[1], (h.recurring || []).filter(function(r){ return f[2].indexOf(r.every) > -1; }).map(function(r){
         var rk = riskFor[r.id], when = cadence(r), risk = rk && rk.severity ? cap(rk.severity) + " risk: " + rk.text : "";
         var span = r.start || r.end ? (r.start ? "From " + nice(r.start) : "") + (r.start && r.end ? " " : "") + (r.end ? "until " + nice(r.end) : "") : "";
-        return {id: r.id, title: r.text, meta: [when + (r.time ? " · " + r.time : ""), r.area || "", risk, span], note: r.detail, row: [f[1], r.text, r.area || "", when + (span ? " (" + span + ")" : ""), r.time || "", risk, r.detail || ""]};
+        return {id: r.id, title: r.text, meta: [when + (r.time ? " · " + r.time : ""), r.area || "", risk, span, guideMeta(h, r)], note: r.detail, row: [f[1], r.text, r.area || "", when + (span ? " (" + span + ")" : ""), r.time || "", risk, r.detail || ""]};
       }));
     }).concat([G("As needed", (h.asNeeded || []).map(function(a){
-      return {id: a.id, title: a.text, meta: [whenNeeded(a), a.area || ""], note: a.detail, row: ["As needed", a.text, a.area || "", whenNeeded(a), "", "", a.detail || ""]};
+      return {id: a.id, title: a.text, meta: [whenNeeded(a), a.area || "", guideMeta(h, a)], note: a.detail, row: ["As needed", a.text, a.area || "", whenNeeded(a), "", "", a.detail || ""]};
     }))]);
-    case "tasks": return (h.path || []).map(function(st){ return G(st.title, st.tasks.map(function(t){ return {id: t.id, title: t.text, note: t.detail, row: [st.title, t.text, t.detail || ""]}; })); });
+    case "tasks": return (h.path || []).map(function(st){ return G(st.title, st.tasks.map(function(t){ return {id: t.id, title: t.text, meta: [guideMeta(h, t)], note: t.detail, row: [st.title, t.text, t.detail || ""]}; })); });
     case "steps": var steps = (h.plan && h.plan.steps) || [], ov = overlap(h.plan); return PHASES.map(function(ph){
       var label = phaseLabel(ph, ov);
       return G(label, steps.filter(function(x){ return x.phase === ph; }).map(function(x){
@@ -2255,7 +2333,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.3", validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.4", guidesFor: guidesFor, guideLabel: guideLabel, docType: DOC_TYPE, validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};

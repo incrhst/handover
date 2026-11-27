@@ -1,13 +1,20 @@
-# The handover format, version 1.3
+# The handover format, version 1.4
 
 A handover file describes how to take over a role. It's built for people: the Handover app turns it into a guided first month, a daily dashboard and a reference you can search. It's also built for tools: the format is plain JSON with a published schema, so anything can read it, write it or add to it.
 
 - **File extension:** `.handover`
 - **Encoding:** UTF-8 JSON
-- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json), [`v1.2.json`](../site/schema/v1.2.json), [`v1.3.json`](../site/schema/v1.3.json))
+- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json), [`v1.2.json`](../site/schema/v1.2.json), [`v1.3.json`](../site/schema/v1.3.json), [`v1.4.json`](../site/schema/v1.4.json))
 - **Examples:** [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.2, an executive assistant handover with no overlap: the reference case, and the one for sections 9 to 17) and [`sample.handover`](../site/examples/sample.handover) (1.0, a simpler operations lead handover)
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
+
+## What's new in 1.4
+
+Version 1.4 lets a task or a job point at the guide for doing it, so a newcomer who is about to run payroll for the first time has the step-by-step guide or the recording of it right there, not somewhere in the reference. Everything is optional, and every 1.0 to 1.3 file stays valid with the same meaning.
+
+- **Guides** (section 19): `guides` on first-weeks tasks, `recurring` duties and jobs done as needed: the ids of `documents` to open with it, such as a step-by-step guide (an SOP) or a recording (a walkthrough).
+- **A section on a task** (section 19): `see` on first-weeks tasks, as regular jobs and jobs done as needed already have, for a guide written into the file's own reference.
 
 ## What's new in 1.3
 
@@ -52,7 +59,7 @@ A tool that finds a secret in a file it is writing MUST leave it out and SHOULD 
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
-| `handover` | yes | string | Format version: the lowest that has every field the file uses: `"1.3"`, `"1.2"`, `"1.1"` or `"1.0"`. |
+| `handover` | yes | string | Format version: the lowest that has every field the file uses: `"1.4"`, `"1.3"`, `"1.2"`, `"1.1"` or `"1.0"`. |
 | `id` | yes | id | Stable identifier. Keep it the same across versions of the same handover so a reader's progress carries over. |
 | `title` | yes | string | What the handover is for, e.g. "Operations lead handover". |
 | `$schema` | no | string | The schema URL above. Helps editors and validators. |
@@ -87,7 +94,8 @@ A tool that finds a secret in a file it is writing MUST leave it out and SHOULD 
 
 | Field | Must name |
 |---|---|
-| `see` (recurring, questions) | a section id |
+| `see` (tasks, recurring, asNeeded, questions) | a section id |
+| `guides[]` (tasks, recurring, asNeeded) | a document id in `documents` |
 | `risks[].recurring` | a `recurring` id |
 | `plan.steps[].ask` | an ask id in `asks` |
 | `decide.cards[].approver.stakeholder` | a stakeholder id |
@@ -99,9 +107,9 @@ Roles are a fixed list, not references: a step can belong to `incoming` before a
 
 **Stage** (`path[]`): `id`, `title`, `tasks` (at least one) are required. Optional `summary` and `tip` (`text` required, optional `title`).
 
-**Task** (`path[].tasks[]`): `id`, `text` required. Optional `detail`.
+**Task** (`path[].tasks[]`): `id`, `text` required. Optional `detail`, and since 1.4 `see` and `guides` (section 19).
 
-**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below, since 1.2 `area` (section 17) and since 1.3 `lead` (section 18).
+**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below, since 1.2 `area` (section 17), since 1.3 `lead` (section 18) and since 1.4 `guides` (section 19).
 
 **Question** (`questions[]`): `q` (the question, plain text) and `a` (the answer, markdown) required. Optional `id`, `tag` (a short category label) and `see`.
 
@@ -179,12 +187,12 @@ Any object MAY carry extra fields whose names start with `x-`, for example `"x-o
 
 **Readers.** A tool that reads 1.x MUST open any later 1.x file. It MUST NOT reject the file because of fields it doesn't know. It SHOULD ignore them, tell the person that some parts may not show, and keep them if it rewrites the file.
 
-**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` when it uses 1.1 fields but none added in 1.2, `"1.2"` when it uses 1.2 fields but no `lead`, and `"1.3"` otherwise. A file that declares a version lower than the fields it uses is still readable; validators SHOULD warn about it. A tool that adds a newer field to a file SHOULD raise the declared version to match.
+**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` when it uses 1.1 fields but none added in 1.2, `"1.2"` when it uses 1.2 fields but no `lead`, `"1.3"` when it uses `lead` but no `guides` and no `see` on a task, and `"1.4"` otherwise. A file that declares a version lower than the fields it uses is still readable; validators SHOULD warn about it. A tool that adds a newer field to a file SHOULD raise the declared version to match.
 
 **Schemas.** The schema rejects unknown fields (`additionalProperties: false`, apart from `x-` fields) so that writers catch typos. That strictness is a check for writers, not readers. To stop a strict schema from rejecting newer files:
 
 - `schema/v1.json` is always the schema for the newest 1.x. Because a minor version only adds optional fields, every older 1.x file is valid against it.
-- `schema/v1.0.json`, `schema/v1.1.json`, `schema/v1.2.json`, `schema/v1.3.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
+- `schema/v1.0.json`, `schema/v1.1.json`, `schema/v1.2.json`, `schema/v1.3.json`, `schema/v1.4.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
 - A validator that has only an older schema and meets a file with a higher minor version SHOULD treat unknown fields as warnings, not errors. The reference implementation (`core.js`) does this.
 
 ## 9. People (1.1)
@@ -417,8 +425,33 @@ Some jobs take longer than a day. A vehicle's registration and fitness can take 
 
 A reader that doesn't know `lead` shows the duty on its date only, too late for the work it needs. A writer that expects such readers MAY also say the lead time in `detail` ("Start 90 days before the date").
 
+## 19. Guides on tasks and jobs (1.4)
+
+The way to do a job is often already written down or recorded: a step-by-step guide to the payroll run, a screen recording of the month-end close, the template for the board pack. A newcomer needs it at the moment they do the job, next to the job.
+
+**Guides** (`guides`, a list of document ids, on a task, a `recurring` duty or a job done as needed): the documents to open with it. Each id MUST name an item in `documents` (section 11), and an id MUST NOT be listed twice. The usual ones are a `guide` (a step-by-step guide or SOP), a `recording` (a walkthrough) and a `template`, but any document can be a guide. Order them as the newcomer should open them.
+
+**A section** (`see`, a section id, on a task): a section of the file's reference that explains the task, as `see` already does on a `recurring` duty and a job done as needed. Use it for a guide written into the file itself; use `guides` for one kept somewhere else.
+
+```json
+{
+  "id": "first-payroll",
+  "text": "Run your first payroll with Ravi watching",
+  "see": "payroll",
+  "guides": ["payroll-guide", "payroll-recording"]
+}
+```
+
+- **Show them with the task.** Tools SHOULD show a task's or job's section and guides with it, by title and kind ("Step guide: Payroll run", "Recording: Month-end close"), and SHOULD let the person open one without losing their place: a section's text in a panel, a document's link or location. A document's link is opened in the person's own browser or app; a handover file never contains the document (section 11).
+- **One document, many tasks.** The same document MAY be the guide for several tasks and jobs. It is recorded once, in `documents`, with its access checks.
+- **Closed documents.** Tools SHOULD NOT offer a closed document as a guide. A tool writing a file that leaves a document out (section 14) MUST also take its id out of every `guides` list, and leave out a `guides` list that becomes empty.
+- **No secrets.** A guide is a document, so section 1 applies to its `url` and `location`: a link to where the guide is kept, never the login to it.
+
+A reader that doesn't know `guides` still lists the documents under the records, and a 1.0 reader shows the documents in the sections written for it (section 16), only not next to the task.
+
 ## Changelog
 
+- **1.4** (2026-11-27). Added `guides` on tasks, `recurring` duties and jobs done as needed, and `see` on tasks (section 19), so a task or job can open its step-by-step guide, recording or reference section. Added the reference rule for `guides`, the rule to drop guides whose document is left out of a file, and `v1.4.json`. Changed the writers' rule to name 1.4. Nothing in 1.0 to 1.3 changed meaning.
 - **1.3** (2026-11-27). Added `lead` on `recurring` duties (section 18): how many days before its date a job has to start, so it goes on the list in time. Added `v1.3.json`. Changed the writers' rule to name 1.3. Nothing in 1.0, 1.1 or 1.2 changed meaning.
 
 - **1.2** (2026-11-27). Added `role`, `asNeeded` and `area` on `recurring` duties (section 17), so a file can describe the role for a job description. Added `v1.2.json`. Changed the writers' rule to name 1.2, and asked tools that add a newer field to raise the declared version. Nothing in 1.0 or 1.1 changed meaning.
