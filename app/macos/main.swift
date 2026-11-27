@@ -4,9 +4,15 @@
 //
 // Data folder (default ~/Documents/Handover, or $HANDOVER_DATA):
 //   handovers/<id>.handover   the content of each handover, as loaded
-//   progress/<id>.json        ticks, notes and first-seen date
+//   progress/<id>.<reader>.json  each person's ticks, notes and first-seen date
 //   daily/<id>-<date>.md      the task sheet, written each morning
 //   backups/<date>/           a copy of handovers/ and progress/, last 30 days
+//   backups/conflicts/        extra copies a cloud folder kept, once merged in
+//
+// The folder can be shared (iCloud Drive, Google Drive, Dropbox) between the people
+// working on a handover. Content saves only replace what the page last read; if the
+// file changed meanwhile, the page merges the two (core.js mergeHandover). Progress
+// is per person, so nobody's ticks are overwritten.
 
 import AppKit
 import CryptoKit
@@ -34,28 +40,107 @@ final class Store {
         get { defaults.string(forKey: "lastHandover") }
         set { defaults.set(newValue, forKey: "lastHandover") }
     }
+    /// Whose progress this Mac keeps: the account's short name, so two people sharing a folder keep their own ticks.
+    var reader: String {
+        if let r = defaults.string(forKey: "reader"), validID(r) { return r }
+        let raw = NSUserName().lowercased().replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        let r = validID(raw) ? raw : "me"
+        defaults.set(r, forKey: "reader")
+        return r
+    }
+    func sourceURL(_ id: String) -> URL { dir("handovers").appendingPathComponent("\(id).handover") }
+    func stateURL(_ id: String) -> URL { dir("progress").appendingPathComponent("\(id).\(reader).json") }
+    /// Reads and writes go through NSFileCoordinator, so iCloud Drive never hands over a half-synced file.
+    func read(_ url: URL) -> Data? {
+        var out: Data?, err: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &err) { u in out = try? Data(contentsOf: u) }
+        return out
+    }
     func source(_ id: String) -> String? {
-        guard validID(id) else { return nil }
-        return try? String(contentsOf: dir("handovers").appendingPathComponent("\(id).handover"), encoding: .utf8)
+        guard validID(id), let d = read(sourceURL(id)) else { return nil }
+        return String(decoding: d, as: UTF8.self)
     }
     func state(_ id: String) -> Any? {
-        guard validID(id), let d = try? Data(contentsOf: dir("progress").appendingPathComponent("\(id).json")) else { return nil }
+        guard validID(id) else { return nil }
+        let fm = FileManager.default, mine = stateURL(id), legacy = dir("progress").appendingPathComponent("\(id).json")
+        // Progress saved before it was kept per person becomes this person's.
+        if !fm.fileExists(atPath: mine.path) && fm.fileExists(atPath: legacy.path) { try? fm.moveItem(at: legacy, to: mine) }
+        guard let d = read(mine) else { return nil }
         return try? JSONSerialization.jsonObject(with: d)
     }
-    func writeSource(_ id: String, _ text: String) throws {
+    /// Write a handover. Given base (the text the page last read), it writes only if the file still holds
+    /// base; otherwise it writes nothing and returns what the file holds now, for the page to merge.
+    func writeSource(_ id: String, _ text: String, base: String? = nil) throws -> String? {
         guard validID(id) else { throw CocoaError(.fileWriteInvalidFileName) }
-        try Data(text.utf8).write(to: dir("handovers").appendingPathComponent("\(id).handover"), options: .atomic)
+        var current: String?, failure: Error?, err: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: sourceURL(id), options: .forMerging, error: &err) { u in
+            if let base = base, let d = try? Data(contentsOf: u) {
+                let now = String(decoding: d, as: UTF8.self)
+                if now != base { current = now; return }
+            }
+            do { try Data(text.utf8).write(to: u, options: .atomic) } catch { failure = error }
+        }
+        if let e = err ?? failure { throw e }
+        return current
     }
     func writeState(_ id: String, _ state: Any) throws {
         guard validID(id) else { throw CocoaError(.fileWriteInvalidFileName) }
         let d = try JSONSerialization.data(withJSONObject: state, options: [.prettyPrinted, .sortedKeys])
-        try d.write(to: dir("progress").appendingPathComponent("\(id).json"), options: .atomic)
+        try d.write(to: stateURL(id), options: .atomic)
     }
+    /// How many people keep progress on this handover here: more than one means the folder is shared.
+    func readers(_ id: String) -> Int {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dir("progress").path)) ?? []).filter { n in
+            n.hasPrefix(id + ".") && n.hasSuffix(".json") && !n.dropFirst(id.count + 1).dropLast(5).contains(".")
+        }.count
+    }
+
+    // MARK: Copies a cloud folder kept side by side (it couldn't tell which of two saves should win)
+
+    func versionToken(_ v: NSFileVersion) -> String { "icloud:\(v.modificationDate?.timeIntervalSince1970 ?? 0):\(v.localizedNameOfSavingComputer ?? "")" }
+    /// iCloud's conflict versions, and files like "role (David's conflicted copy).handover" or "role 2.handover"
+    /// whose content is the same handover. Each comes with a token for resolveConflicts.
+    func conflictCopies(_ id: String, withText: Bool = true) -> [(token: String, text: String)] {
+        guard validID(id) else { return [] }
+        var out: [(token: String, text: String)] = []
+        for v in NSFileVersion.unresolvedConflictVersionsOfItem(at: sourceURL(id)) ?? [] {
+            let text = withText ? (try? Data(contentsOf: v.url)).map { String(decoding: $0, as: UTF8.self) } : ""
+            if let t = text { out.append((versionToken(v), t)) }
+        }
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir("handovers"), includingPropertiesForKeys: nil)) ?? []
+        for f in files where f.pathExtension == "handover" {
+            let stem = f.deletingPathExtension().lastPathComponent
+            guard stem != id, stem.hasPrefix(id), !validID(stem), let d = read(f),
+                  let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], o["id"] as? String == id else { continue }
+            out.append(("file:" + f.lastPathComponent, withText ? String(decoding: d, as: UTF8.self) : ""))
+        }
+        return out
+    }
+    /// After the page merged them in: mark iCloud's versions resolved, and move extra files to backups/conflicts.
+    func resolveConflicts(_ id: String, _ tokens: [String]) {
+        guard validID(id) else { return }
+        let url = sourceURL(id), want = Set(tokens)
+        var err: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forMerging, error: &err) { u in
+            let open = NSFileVersion.unresolvedConflictVersionsOfItem(at: u) ?? []
+            for v in open where want.contains(versionToken(v)) { v.isResolved = true }
+            if !open.isEmpty && open.allSatisfy({ $0.isResolved }) { try? NSFileVersion.removeOtherVersionsOfItem(at: u) }
+        }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HHmmss"; f.locale = Locale(identifier: "en_US_POSIX")
+        let into = dir("backups").appendingPathComponent("conflicts", isDirectory: true)
+        try? FileManager.default.createDirectory(at: into, withIntermediateDirectories: true)
+        for t in tokens where t.hasPrefix("file:") {
+            let name = String(t.dropFirst(5))
+            guard !name.contains("/"), name.hasSuffix(".handover") else { continue }
+            try? FileManager.default.moveItem(at: dir("handovers").appendingPathComponent(name), to: into.appendingPathComponent(f.string(from: Date()) + "-" + name))
+        }
+    }
+
     func library() -> [[String: String]] {
         let files = (try? FileManager.default.contentsOfDirectory(at: dir("handovers"), includingPropertiesForKeys: nil)) ?? []
         return files.filter { $0.pathExtension == "handover" }.compactMap { u in
             let id = u.deletingPathExtension().lastPathComponent
-            guard let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
+            guard validID(id), let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
             return ["id": id, "title": (o["title"] as? String) ?? id]
         }.sorted { $0["title"]! < $1["title"]! }
     }
@@ -97,6 +182,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var ready = false
     var pendingOpens: [URL] = []
     var timer: Timer?
+    var syncTimer: Timer?
+    var seen: [String: Date] = [:]
+    var offered: Set<String> = []
+    var polls = 0
     var titleObs: NSKeyValueObservation?
 
     var webDir: URL { Bundle.main.resourceURL!.appendingPathComponent("web", isDirectory: true) }
@@ -132,6 +221,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.updater.checkIfDue() }
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.tick() }
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.tick() }
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.pollShared() }
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.pollShared(scan: true) }
+    }
+
+    /// Every few seconds: did the open handover change on disk (saved on another Mac, in a shared folder)?
+    /// The page fetches the new copy and ignores it if it's what it last saved. Every 30 seconds, also
+    /// look for extra copies a cloud folder kept side by side.
+    func pollShared(scan: Bool = false) {
+        guard ready, let id = store.last, validID(id) else { return }
+        let url = store.sourceURL(id)
+        if let m = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, m != seen[id] {
+            seen[id] = m
+            callJS("handoverChanged", [id])
+        }
+        polls += 1
+        guard scan || polls % 10 == 0 else { return }
+        let fresh = Set(store.conflictCopies(id, withText: false).map { $0.token }).subtracting(offered)
+        if !fresh.isEmpty { offered.formUnion(fresh); callJS("handoverConflicts", [id]) }
     }
 
     func tick() {
@@ -205,9 +312,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             if let id = store.last, let src = store.source(id) { r["source"] = src; r["state"] = store.state(id) ?? NSNull() }
             reply(r)
         case "adopt":
-            let id = str("id")
-            do { try store.writeSource(id, str("text")); store.last = id; reply(["state": store.state(id) ?? NSNull()]) }
+            // With base, a save that would overwrite someone else's change comes back as {current} instead.
+            let id = str("id"), base = payload["force"] as? Bool == true ? nil : payload["base"] as? String
+            do {
+                if let current = try store.writeSource(id, str("text"), base: base) { reply(["current": current]); return }
+                store.last = id; reply(["state": store.state(id) ?? NSNull()])
+            }
             catch { alert("Couldn't save the handover: \(error.localizedDescription)"); reply(nil) }
+        case "current":
+            reply(["text": (store.source(str("id")) as Any?) ?? NSNull()])
+        case "conflictCopies":
+            reply(["copies": store.conflictCopies(str("id")).map { ["token": $0.token, "text": $0.text] }])
+        case "conflictsDone":
+            store.resolveConflicts(str("id"), payload["tokens"] as? [String] ?? []); reply(["ok": true])
         case "saveState":
             if let st = payload["state"] { do { try store.writeState(str("id"), st) } catch { NSLog("Handover: couldn't save progress: \(error)") } }
             reply(["ok": true])
@@ -237,7 +354,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
                 catch { self.alert("Couldn't save: \(error.localizedDescription)"); reply(nil) }
             }
         case "exportSheet":
-            let name = (str("filename") as NSString).lastPathComponent
+            var name = (str("filename") as NSString).lastPathComponent
+            // In a shared folder each person's morning sheet gets their own name.
+            if payload["auto"] as? Bool == true, store.readers(str("id")) > 1 { name = (name as NSString).deletingPathExtension + "-" + store.reader + ".md" }
             let dest = store.dir("daily").appendingPathComponent(name)
             if payload["auto"] as? Bool == true {
                 do { try Data(str("content").utf8).write(to: dest, options: .atomic); NSLog("Handover: wrote \(dest.path)"); reply(["path": dest.path]) }

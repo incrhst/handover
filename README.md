@@ -16,16 +16,26 @@ Take over a role, one step at a time. **Handover** is a free Mac app that turns 
 5. Share the file with the next person (**Share & export › Share handover file**), or export it with your progress to move it to another Mac or tool.
 6. For someone who won't use the app, such as the principal, use **Share & export › Export items as a document…**, or the **Export…** button on any panel: pick the parts to share (the overview, who's who, jobs, tasks, records, reference sections, the handover plan, sign-off and more, down to single items) and save them as PDF, Word or Excel.
 
-The app keeps its files in `~/Documents/Handover` (you can choose another folder, such as one in iCloud Drive or Google Drive):
+The app keeps its files in `~/Documents/Handover` (you can choose another folder, such as one in iCloud Drive, Google Drive or Dropbox):
 
 | Folder | What's in it |
 |---|---|
 | `handovers/` | Each handover you've opened |
-| `progress/` | Your ticks, notes and start date, per handover |
+| `progress/` | Ticks, notes and start date, per handover and per person (`<handover>.<your Mac account name>.json`) |
 | `daily/` | The task sheet, written each morning at 07:00 while the app is running |
-| `backups/` | A dated copy of the two folders above, every day, last 30 days |
+| `backups/` | A dated copy of the two folders above, every day, last 30 days. `backups/conflicts/` keeps any extra copy a cloud folder made, once it has been merged in |
 
 Turn on **Settings › Open at login** so the morning sheet is always written.
+
+### Working on a handover together
+
+Put the data folder in iCloud Drive, Google Drive or Dropbox, share it with the other person (for example the incoming assistant), and have them choose the same folder in **Settings › Change folder…**. No server and no account is involved: the cloud service copies the files, and the app does the rest.
+
+- **Changes show up on the other Mac** a few seconds after the cloud service copies the file across.
+- **Changes made at the same time are combined.** A save never overwrites the other person's work: if the file changed since the app last read it, the app merges the two, item by item. If you both changed the same field of the same item, your version is kept and the app tells you which field.
+- **Extra copies are folded in.** When a cloud service keeps two versions side by side (iCloud's conflict versions, or a file such as `role (Priya's conflicted copy).handover`), the app merges the extra one in and moves it to `backups/conflicts/`. Here the app can't tell which side changed a field, so where the copies differ the one on your Mac wins.
+- **Everyone keeps their own ticks and notes.** Progress is saved per person, and once two people share a handover, each person's morning sheet gets their name too.
+- **Everyone with the folder sees everything in it**, including items marked for some roles only. Share the folder only with people who may see the whole record. For the principal, use the reports and exports.
 
 The app checks GitHub for a new release once a day (or **Handover › Check for Updates…**). Installing one downloads the DMG, checks its SHA-256 and confirms the new app is signed by the same Apple developer team before swapping it in and relaunching. The only network request the app makes is this check, and you can turn it off in Settings.
 

@@ -293,6 +293,103 @@ function mergeProgress(state, p){
 function contentOnly(h){ var c = {}; Object.keys(h).forEach(function(k){ if (k !== "progress") c[k] = h[k]; }); return c; }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 
+/* ================= Merging two copies of the content (a shared folder) ================= */
+/* mergeHandover(base, mine, theirs) combines two copies of one handover that were changed apart.
+   base is the copy both started from, or null if it isn't known (then nothing counts as removed).
+   Items in lists match by id. A change made on one side only is kept. Where both sides changed the
+   same field differently, mine is kept and the field is listed in conflicts. Two items added on both
+   sides under the same id, with different added (or at) times, are different items: mine gets a new
+   id, listed in renamed. Sections written for 1.0 readers are written again from the merged data.
+   Returns {h, conflicts: ["gaps › gap-x › text", …], renamed: [{where, from, to}]}. */
+function mObj(v){ return !!v && typeof v === "object" && !Array.isArray(v); }
+function canon(v){
+  if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+  if (mObj(v)) return "{" + Object.keys(v).sort().map(function(k){ return JSON.stringify(k) + ":" + canon(v[k]); }).join(",") + "}";
+  return JSON.stringify(v === undefined ? null : v);
+}
+function same(a, b){ return canon(a) === canon(b); }
+function isIdList(lists){
+  var all = [].concat.apply([], lists.filter(Array.isArray));
+  return all.length > 0 && all.every(function(x){ return mObj(x) && typeof x.id === "string"; });
+}
+function byId(list){ var o = {}; list.forEach(function(x){ o[x.id] = x; }); return o; }
+function bornAt(x){ return String(x.added || x.at || ""); }
+function merge3(b, m, t, where, out){
+  if (same(m, t)) return clone(m);
+  if (b !== undefined){ if (same(b, m)) return clone(t); if (same(b, t)) return clone(m); }
+  if (mObj(m) && mObj(t)) return mergeObject(mObj(b) ? b : undefined, m, t, where, out);
+  if (Array.isArray(m) && Array.isArray(t) && isIdList([b, m, t])) return mergeIdList(Array.isArray(b) ? b : undefined, m, t, where, out);
+  out.conflicts.push(where.join(" › ") || "the whole file");
+  return clone(m);
+}
+function mergeObject(b, m, t, where, out){
+  var r = {}, keys = Object.keys(m);
+  Object.keys(t).forEach(function(k){ if (keys.indexOf(k) < 0) keys.push(k); });
+  keys.forEach(function(k){
+    var bv = b ? b[k] : undefined, mv = m[k], tv = t[k];
+    if (mv === undefined){ if (bv !== undefined && same(bv, tv)) return; r[k] = clone(tv); }       // removed here, or added there
+    else if (tv === undefined){ if (bv !== undefined && same(bv, mv)) return; r[k] = clone(mv); }  // removed there, or added here
+    else r[k] = merge3(bv, mv, tv, where.concat([k]), out);
+  });
+  return r;
+}
+function mergeIdList(b, m, t, where, out){
+  var bm = byId(b || []), mm = byId(m), tm = byId(t), taken = {}, collide = {}, res = [];
+  [b || [], m, t].forEach(function(l){ l.forEach(function(x){ taken[x.id] = true; }); });
+  /* Their order first, merging the items both have */
+  t.forEach(function(x){
+    var mine = mm[x.id];
+    if (mine){
+      if (!bm[x.id] && bornAt(mine) !== bornAt(x) && !same(mine, x)){ collide[x.id] = true; res.push(clone(x)); }
+      else res.push(merge3(bm[x.id], mine, x, where.concat([x.id]), out));
+    } else if (!(bm[x.id] && same(bm[x.id], x))) res.push(clone(x));   // kept unless I removed it and they didn't change it
+  });
+  /* Then mine that they don't have, each placed after the item before it in my copy */
+  var placed = {}; res.forEach(function(x){ placed[x.id] = x.id; });
+  m.forEach(function(x, i){
+    if (tm[x.id] && !collide[x.id]) return;
+    if (!tm[x.id] && bm[x.id] && same(bm[x.id], x)) return;            // they removed it and I didn't change it
+    var item = clone(x);
+    if (collide[x.id]){
+      var k = 2; while (taken[x.id + "-" + k]) k++;
+      item.id = x.id + "-" + k; taken[item.id] = true;
+      out.renamed.push({where: where.join(" › "), from: x.id, to: item.id});
+    }
+    var at = 0;
+    for (var j = i - 1; j >= 0; j--){
+      var prev = collide[m[j].id] ? placed["mine:" + m[j].id] : placed[m[j].id] && m[j].id;
+      if (prev){ at = res.map(function(y){ return y.id; }).indexOf(prev) + 1; break; }
+    }
+    res.splice(at, 0, item);
+    placed[collide[x.id] ? "mine:" + x.id : x.id] = item.id;
+  });
+  return res;
+}
+function mergeHandover(base, mine, theirs){
+  if (!mObj(mine) || !mObj(theirs)) throw new Error("Both copies must be handovers.");
+  if (mine.id !== theirs.id) throw new Error('These are different handovers: "' + mine.id + '" and "' + theirs.id + '".');
+  var rendered = [mine, theirs].some(function(h){ return Array.isArray(h.rendered) && h.rendered.length; });
+  function prep(h){
+    if (!mObj(h)) return undefined;
+    var c = clone(contentOnly(h)), old = {};
+    if (Array.isArray(c.rendered)){
+      c.rendered.forEach(function(id){ old[id] = true; });
+      if (Array.isArray(c.sections)){ c.sections = c.sections.filter(function(s){ return !old[s.id]; }); if (!c.sections.length) delete c.sections; }
+      delete c.rendered;
+    }
+    return c;
+  }
+  var b = prep(base), m = prep(mine), t = prep(theirs);
+  /* The later "updated" date and the higher format version win, rather than counting as conflicts */
+  if (m.updated && t.updated) m.updated = t.updated = m.updated > t.updated ? m.updated : t.updated;
+  if (m.handover && t.handover){ var vm = m.handover.split(".").map(Number), vt = t.handover.split(".").map(Number); m.handover = t.handover = (vm[0] - vt[0] || vm[1] - vt[1]) > 0 ? m.handover : t.handover; }
+  var out = {conflicts: [], renamed: []};
+  var h = merge3(b, m, t, [], out);
+  if (Array.isArray(h.history)) h.history.sort(function(x, y){ return String(x.at) < String(y.at) ? -1 : String(x.at) > String(y.at) ? 1 : 0; });
+  if (rendered) h = withRendered(h);
+  return {h: h, conflicts: out.conflicts, renamed: out.renamed};
+}
+
 /* ================= Gaps: TODO markers in every text field (spec section 4) ================= */
 /* Every text field, as {area, where, text}. Sections written for 1.0 readers are skipped, so gaps in the data count once. */
 function textFields(h){
@@ -1697,7 +1794,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, contentOnly: contentOnly,
+var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};

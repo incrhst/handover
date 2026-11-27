@@ -475,7 +475,8 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
             <button class="btn" type="button" data-cmd="reveal">Show in Finder</button>
             <button class="btn" type="button" data-cmd="chooseFolder">Change folder…</button>
           </div>
-          <p class="native-only" style="margin:.2rem 0 .8rem">Choose a folder in iCloud Drive or Google Drive to back it up automatically. A dated copy is also kept every night.</p>
+          <p class="native-only" style="margin:.2rem 0 .8rem">Choose a folder in iCloud Drive, Google Drive or Dropbox to back it up automatically. A dated copy is also kept every night.</p>
+          <p class="native-only" style="margin:.2rem 0 .8rem">To work on a handover together, share that folder with the other person and have them choose it here too. Changes made on either Mac show up on the other within seconds of the cloud service copying them across, and changes made at the same time are combined. Each person keeps their own ticks and notes.</p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="loginItem"> Open at login, so the daily sheet is always written</label></div>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="autoUpdate"> Check for updates automatically</label> <button class="btn" type="button" data-cmd="checkUpdates">Check now</button> <span class="muted" id="appVersion"></span></div>
           <div class="row browser-only">Running in a browser: progress is saved in this browser only. Install the Mac app for files on disk, backups and the daily sheet.</div>
@@ -714,6 +715,7 @@ function importText(text, name){
   if (v.errors.length){ showErrors("This handover file has " + v.errors.length + " problem" + (v.errors.length === 1 ? "" : "s"), v.errors, name); return Promise.resolve(false); }
   var content = contentOnly(obj), body = JSON.stringify(content, null, 2);
   return call("adopt", {id: obj.id, title: obj.title, text: body, name: name || ""}).then(function(res){
+    BASE = body;
     var today = zoneParts(obj.timezone).date;
     var st = res && res.state ? normalise(res.state, today) : emptyState(today);
     var hadProgress = !!obj.progress;
@@ -1150,22 +1152,111 @@ $("fillForm").addEventListener("submit", function(e){
   });
 });
 
-/* Save a changed handover into the library and show it, keeping the scroll position */
-function saveContent(next){
+/* Show changed content, keeping the scroll position and the open panels */
+function showContent(next){
+  var y = window.scrollY, open = [].slice.call(document.querySelectorAll("#main details[open][id]")).map(function(d){ return d.id; });
+  H = next;
+  sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
+  renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
+  render();
+  open.forEach(function(id){ var d = $(id); if (d) d.open = true; });
+  window.scrollTo(0, y);
+}
+
+/* ================= Working together through a shared folder =================
+   BASE is the content as this page last read it from disk, or wrote it. A save sends it along; if the
+   file on disk is no longer BASE, someone else changed it, so the app hands back the current copy and
+   the two are merged (core.js mergeHandover) before trying again. */
+var BASE = null, SAVING = 0, RECHECK = false;
+function pretty(h){ return JSON.stringify(h, null, 2); }
+function readCopy(text, id){
+  var o; try { o = contentOnly(parse(text)); } catch(e){ return null; }
+  return o && o.id === id && !validate(o).errors.length ? o : null;
+}
+function mergeNote(r){
+  var n = r.conflicts.length;
+  if (!n) return "";
+  return " " + (n === 1 ? "1 thing was" : n + " things were") + " changed in both places; your version was kept (" + r.conflicts.slice(0, 2).join("; ") + (n > 2 ? "; …" : "") + ").";
+}
+function laterToast(msg){ setTimeout(function(){ toast(msg); }, 2700); }
+
+/* Save a changed handover into the library and show it */
+function saveContent(next, tries){
   var v = validate(next);
   if (v.errors.length){ toast("Not saved: the file would not be valid (" + v.errors[0] + ")"); return Promise.resolve(false); }
-  return call("adopt", {id: next.id, title: next.title, text: JSON.stringify(next, null, 2), name: SOURCE_NAME}).then(function(r){
+  var text = pretty(next), base = BASE;
+  tries = tries || 0;
+  SAVING++;
+  return call("adopt", {id: next.id, title: next.title, text: text, name: SOURCE_NAME, base: base, force: tries > 3}).then(function(r){
+    SAVING--;
     if (!r){ toast("Couldn't save the handover"); return false; }
-    var y = window.scrollY, open = [].slice.call(document.querySelectorAll("#main details[open][id]")).map(function(d){ return d.id; });
-    H = next;
-    sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
-    renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
-    render();
-    open.forEach(function(id){ var d = $(id); if (d) d.open = true; });
-    window.scrollTo(0, y);
+    if (r.current != null){
+      /* Changed somewhere else since this page read it: merge, then save the result */
+      var theirs = readCopy(r.current, next.id);
+      if (!theirs) return saveContent(next, 4);   // the copy on disk is broken; ours replaces it (yesterday's is in backups)
+      var m;
+      try { m = C.mergeHandover(base ? parse(base) : null, next, theirs); } catch(e){ m = null; }
+      BASE = r.current;
+      if (!m || validate(m.h).errors.length){
+        showContent(theirs);
+        toast("Couldn't combine your change with changes made elsewhere, so it wasn't saved. This is the latest copy: please make the change again.");
+        call("log", {msg: "merge failed for " + next.id + (m ? ": " + validate(m.h).errors[0] : "")});
+        return false;
+      }
+      return saveContent(m.h, tries + 1).then(function(ok){
+        if (ok) laterToast("Combined with changes made elsewhere." + mergeNote(m));
+        return ok;
+      });
+    }
+    BASE = text;
+    showContent(next);
     return true;
+  }).then(function(ok){ if (!SAVING && RECHECK){ RECHECK = false; checkForChanges(); } return ok; },
+    function(e){ SAVING = Math.max(0, SAVING - 1); throw e; });
+}
+
+/* The app saw the open handover change on disk: take the new copy, merging if this page has unsaved changes */
+function checkForChanges(){
+  if (!H || !native) return;
+  if (SAVING){ RECHECK = true; return; }
+  var id = H.id;
+  call("current", {id: id}).then(function(r){
+    if (!H || H.id !== id || !r || r.text == null || r.text === BASE) return;
+    if (SAVING){ RECHECK = true; return; }
+    var theirs = readCopy(r.text, id);
+    if (!theirs) return;                        // half copied, or broken: wait for the next change
+    var base = BASE, before = base ? readCopy(base, id) : null;
+    BASE = r.text;
+    if (before && pretty(H) === pretty(before)){ showContent(theirs); toast("Updated with changes made elsewhere"); return; }
+    var m = C.mergeHandover(base ? parse(base) : null, H, theirs);
+    saveContent(m.h).then(function(ok){ if (ok) toast("Combined with changes made elsewhere." + mergeNote(m)); });
   });
 }
+window.handoverChanged = function(id){ if (H && H.id === id) checkForChanges(); };
+
+/* The cloud service kept two versions of the file side by side: fold the extra ones in, then let the app tidy them away */
+var FOLDING = false;
+window.handoverConflicts = function(id){
+  if (!H || H.id !== id || FOLDING) return;
+  FOLDING = true;
+  call("conflictCopies", {id: id}).then(function(r){
+    var copies = (r && r.copies) || [], cur = H, used = [], conflicts = 0;
+    copies.forEach(function(c){
+      var theirs = readCopy(c.text, id);
+      if (!theirs) return;
+      var m = C.mergeHandover(null, cur, theirs);   // no common copy is known, so nothing counts as removed
+      cur = m.h; conflicts += m.conflicts.length; used.push(c.token);
+    });
+    if (!used.length) return null;
+    var done = function(){ return call("conflictsDone", {id: id, tokens: used}); };
+    if (pretty(cur) === pretty(H)){ done(); return null; }
+    return saveContent(cur).then(function(ok){
+      if (!ok) return;
+      done();
+      toast("Combined a second copy of this handover that your cloud folder kept." + (conflicts ? " Where the two differed, the copy on this Mac was kept." : ""));
+    });
+  }).then(function(){ FOLDING = false; }, function(){ FOLDING = false; });
+};
 
 /* Close or reopen a record (spec section 11) */
 var CLOSING = null;
@@ -1505,7 +1596,7 @@ function closeHandover(){
   var id = H.id, title = H.title;
   clearTimeout(saveTimer); saveTimer = null;
   return call("saveState", {id: id, state: S}).then(function(){ return call("close", {id: id}); }).then(function(){
-    H = null; S = null; SOURCE_NAME = "";
+    H = null; S = null; SOURCE_NAME = ""; BASE = null;
     $("shareMenu").open = false; $("warnBanner").hidden = true; $("errors").hidden = true;
     document.title = "Handover";
     showWelcome(); window.scrollTo(0, 0);
@@ -1566,6 +1657,7 @@ function boot(res){
     var obj; try { obj = parse(res.source); } catch(e){ showWelcome(); return; }
     var v = validate(obj); if (v.errors.length){ showErrors("The saved handover has problems", v.errors, ""); return; }
     var today = zoneParts(obj.timezone).date;
+    BASE = res.source;
     load(contentOnly(obj), res.state ? normalise(res.state, today) : emptyState(today), "", v.warnings);
     window.handoverTick();
   } else showWelcome();
