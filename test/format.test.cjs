@@ -300,3 +300,37 @@ test("reference sections keep their headings, lists, notes and tables in every f
   const ordered = unzipStored(C.docDocx(C.itemsDocument({...h, sections: [{id: "x", title: "X", body: "1. a\n2. b\n\ntext\n\n1. c"}]}, {kinds: ["sections"]})));
   assert.equal((ordered["word/numbering.xml"].match(/<w:startOverride/g) || []).length, 2, "each numbered list starts at 1");
 });
+
+test("filling gaps: each gap is addressed exactly, the file stays valid and history records it", () => {
+  const h = sample(), list = C.gapList(h);
+  assert.equal(list.length, C.findGaps(h).length);
+  const log = list.filter(g => g.label === "Reference › Decision log");
+  assert.deepEqual(log.map(g => g.what), ["date", "decision", "reason"]);
+  const q = list.find(g => g.path[0] === "questions");
+  const r = C.fillGaps(h, {[log[1].key]: "Moved payroll | to the 25th", [q.key]: "Finance"}, {date: "2026-11-27"});
+  assert.equal(r.filled, 2);
+  const body = r.h.sections.find(s => s.title === "Decision log").body;
+  assert.ok(body.includes("| TODO: date | Moved payroll / to the 25th | TODO: reason |"), "a table cell keeps its pipes");
+  assert.ok(r.h.questions[0].a.endsWith("in the folder Finance"));
+  assert.equal(r.h.updated, "2026-11-27");
+  assert.equal(r.h.history, undefined, "1.0 files get no history");
+  assert.deepEqual(C.validate(r.h).errors, []);
+  assert.equal(C.gapList(r.h).length, list.length - 2);
+  assert.equal(h.questions[0].a.includes("Finance"), false, "the original is not changed");
+
+  const ea11 = ea(), g = C.gapList(ea11)[0];
+  const r2 = C.fillGaps(ea11, {[g.key]: "Kim, Ravi's assistant"}, {date: "2026-11-27", at: "2026-11-27T10:00:00Z"});
+  const last = r2.h.history[r2.h.history.length - 1];
+  assert.deepEqual(last, {id: "fill-2026-11-27", at: "2026-11-27T10:00:00Z", source: "app", text: "Filled 1 gap in the app: First weeks."});
+  assert.deepEqual(C.validate(r2.h).errors, []); assert.deepEqual(check(schema.latest, r2.h), []);
+  assert.throws(() => C.fillGaps(ea11, {}), /Nothing to fill/);
+});
+
+test("filling gaps refuses secrets (spec section 2)", () => {
+  const h = sample(), g = C.gapList(h)[0];
+  ["password: Hunter2!", "PIN is 4471", "4111 1111 1111 1111", "sk-live_abcdefghijklmnopqrstuv", "ghp_abcdefghijklmnopqrstuvwxyz0123", "GB82 WEST 1234 5698 7654 32", "aB3dE5fG7hJ9kL1mN3pQ5rS7"].forEach(v => {
+    assert.ok(C.secretReason(v), v);
+    assert.throws(() => C.fillGaps(h, {[g.key]: v}), e => e.key === g.key && /MUST NOT/.test(e.message), v);
+  });
+  ["In the shared password manager, Finance folder", "Ask Ravi for the PIN reset form", "+1 876 555 0100", "https://example.com/docs/Payroll-2026", "Helen Ortiz, helen.ortiz@example.com"].forEach(v => assert.equal(C.secretReason(v), "", v));
+});
