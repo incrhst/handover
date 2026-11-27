@@ -1233,8 +1233,29 @@ function jobDescription(h, date, meta){
     kicker: ro.organisation || "Job description", role: ro.organisation ? line : (hasP ? "Reports to " + P : ""), preparedFor: "", preparedBy: "", date: nice(date, "long"),
     figures: [], introLabel: "Purpose of the role", intro: ro.purpose ? parseBlocks(ro.purpose).filter(function(b){ return b.text; }).map(function(b){ return b.text; }) : [], parts: parts};
 }
+/* A combined report's title, placed in the handover's own time: counting down to the outgoing assistant's last day,
+   then the incoming assistant's weeks (week 1 is their first seven days). With no last day, the ISO week of the year. */
+function reportTitle(h, date){
+  var pl = h.plan || {}, days = function(a, b){ return Math.round((utc(b) - utc(a)) / 864e5); };
+  var first = function(role, dflt){ var has = (h.people || []).some(function(p){ return (p.roles || []).indexOf(role) > -1; }); return has ? who(h, role).split(" ")[0] : dflt; };
+  var Out = first("outgoing", "the outgoing assistant"), In = first("incoming", "the incoming assistant"), poss = function(n){ return n + "'s"; };
+  var t;
+  if (pl.lastDay && DATE.test(pl.lastDay) && DATE.test(date)){
+    var left = days(date, pl.lastDay);
+    if (left > 6) t = plural(Math.ceil(left / 7), "week") + " to " + poss(Out) + " last day";
+    else if (left > 0) t = poss(Out) + " last week";
+    else if (left === 0) t = poss(Out) + " last day";
+    else if (pl.firstDay && DATE.test(pl.firstDay) && date >= pl.firstDay) t = poss(In) + " week " + (Math.floor(days(pl.firstDay, date) / 7) + 1);
+    else t = "week " + (Math.floor((-left - 1) / 7) + 1) + " since " + Out + " left";
+  } else if (DATE.test(date)){
+    var d = new Date(utc(date)), dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow + 3);
+    var jan4 = new Date(Date.UTC(d.getUTCFullYear(), 0, 4)), wk = 1 + Math.round(((d - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    t = "week " + wk + ", " + d.getUTCFullYear();
+  }
+  return "Handover update" + (t ? ": " + t : "");
+}
 /* Several reports in one document: a cover, a short "In this report" box, then each report as a part with its own
-   figures, summary and sections. One key gives the single report unchanged. o = {date, since, title}. */
+   figures, summary and sections. One key gives the single report unchanged. o = {date, since, title}; the title defaults to reportTitle. */
 function principalReports(h, keys, o){
   o = o || {};
   keys = [].concat(keys || []);
@@ -1243,7 +1264,7 @@ function principalReports(h, keys, o){
   if (!pick.length) throw new Error("Choose at least one report.");
   if (pick.length === 1) return principalReport(h, pick[0], o);
   var date = o.date || new Date().toISOString().slice(0, 10), docs = pick.map(function(k){ return principalReport(h, k, o); });
-  var lead = docs.filter(function(d){ return d.preparedFor; })[0] || docs[0], title = String(o.title || "").replace(/\s+/g, " ").trim() || "Handover update";
+  var lead = docs.filter(function(d){ return d.preparedFor; })[0] || docs[0], title = String(o.title || "").replace(/\s+/g, " ").trim() || reportTitle(h, date);
   var chapters = docs.map(function(d){ return {key: d.report, title: d.name, figures: d.figures || [], intro: d.intro || [], introLabel: d.introLabel || "", parts: d.parts}; });
   return {style: "report", report: "combined", reports: pick, name: title, title: title,
     subtitle: h.title + " · for " + lead.preparedFor + " · " + nice(date, "long") + " · " + listWords(docs.map(function(d){ return d.name; })),
@@ -2031,6 +2052,6 @@ function docXlsx(doc){
 var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

@@ -552,7 +552,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <div>
         <div class="chow" id="reportKinds" role="radiogroup" aria-label="Which report"></div>
         <div class="cfield" id="reportComboRow" hidden><span>Include</span><div class="combo" id="reportCombo"></div>
-          <label class="cfield">Title <input type="text" id="reportTitle" placeholder="Handover update" autocomplete="off"></label></div>
+          <label class="cfield">Title <input type="text" id="reportTitle" autocomplete="off"><small>Leave empty for a title that says where the handover is</small></label></div>
         <label class="cfield" id="reportSinceRow">Finished since <input type="date" id="reportSince"></label>
         <div class="xopts"><div class="fmt" role="radiogroup" aria-label="Format">
           <label><input type="radio" name="reportFmt" value="pdf" checked> PDF</label>
@@ -1343,6 +1343,7 @@ function openReport(){
   if (!has11()) return;
   var p = principalFirst();
   $("reportDlgTitle").textContent = p ? "Report for " + p : "Report for the principal";
+  $("reportTitle").placeholder = C.reportTitle(H, TODAY);
   $("reportCombo").innerHTML = C.reports.map(function(r){ return '<label><input type="checkbox" value="' + r.key + '"' + (REPORT.combo.indexOf(r.key) > -1 ? " checked" : "") + "> " + esc(r.title) + "</label>"; }).join("");
   $("reportKinds").innerHTML = C.reports.concat([COMBINED]).map(function(r){ return '<label><span><input type="radio" name="reportKind" value="' + r.key + '"' + (r.key === REPORT.key ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
   var d = new Date(Date.parse(TODAY + "T00:00:00Z") - 7 * 864e5); $("reportSince").value = d.toISOString().slice(0, 10);

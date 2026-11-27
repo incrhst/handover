@@ -644,7 +644,17 @@ test("combined reports: several reports as parts of one document", () => {
   const d = C.principalReports(h, ["needs", "working", "jobs"], Object.assign({title: "  Friday   update "}, o));
   assert.deepEqual(d.reports, ["working", "jobs", "needs"]);
   assert.equal(d.title, "Friday update");
-  assert.equal(C.principalReports(h, ["working", "jobs"], o).title, "Handover update");
+  // With no title, it says where the handover is: counting down to the last day, then the incoming assistant's weeks
+  assert.equal(C.principalReports(h, ["working", "jobs"], o).title, "Handover update: Marcus's week 8");
+  const T = d => C.reportTitle(h, d);
+  assert.deepEqual(["2026-09-10", "2026-09-19", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-11", "2026-10-12"].map(T),
+    ["Handover update: 3 weeks to Priya's last day", "Handover update: Priya's last week", "Handover update: Priya's last day",
+     "Handover update: week 1 since Priya left", "Handover update: Marcus's week 1", "Handover update: Marcus's week 1", "Handover update: Marcus's week 2"]);
+  const ov = JSON.parse(JSON.stringify(h)); ov.plan.firstDay = "2026-09-14";
+  assert.equal(C.reportTitle(ov, "2026-09-16"), "Handover update: 2 weeks to Priya's last day", "overlapping: the countdown comes first");
+  assert.equal(C.reportTitle(ov, "2026-10-01"), "Handover update: Marcus's week 3");
+  const np = JSON.parse(JSON.stringify(h)); delete np.plan;
+  assert.deepEqual(["2026-11-27", "2021-01-03", "2026-12-31"].map(d => C.reportTitle(np, d)), ["Handover update: week 48, 2026", "Handover update: week 53, 2020", "Handover update: week 53, 2026"], "no plan: the ISO week");
   assert.equal(d.preparedFor, "Dana Whitfield");
   assert.deepEqual(d.chapters.map(c => c.title), C.reports.filter(r => r.key !== "jd").map(r => r.title));
   // Each part is the single report, figures, summary and sections unchanged
