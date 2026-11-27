@@ -98,10 +98,10 @@ xcrun notarytool store-credentials handover --apple-id you@example.com --team-id
 Then tag `main`, build, and publish both files with release notes:
 
 ```bash
-git tag -a v0.9.0 -m "Handover 0.9.0" && git push origin v0.9.0
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-app.sh 0.9.0
+git tag -a v0.15.0 -m "Handover 0.15.0" && git push origin v0.15.0
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-app.sh 0.15.0
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-dmg.sh
-gh release create v0.9.0 dist/Handover.dmg dist/Handover.dmg.sha256 --verify-tag --title "Handover 0.9.0" --notes-file notes.md
+gh release create v0.15.0 dist/Handover.dmg dist/Handover.dmg.sha256 --verify-tag --title "Handover 0.15.0" --notes-file notes.md
 ```
 
 If `security find-identity -v -p codesigning` lists more than one certificate with the same name, `codesign` refuses the name as ambiguous: set `SIGN_IDENTITY` to the certificate's SHA-1 hash from that list instead. Notarising the app and the DMG takes a few minutes.
