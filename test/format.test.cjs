@@ -12,14 +12,14 @@ const root = path.join(__dirname, "..");
 const json = f => JSON.parse(fs.readFileSync(path.join(root, f), "utf8"));
 const sample = () => json("site/examples/sample.handover");
 const ea = () => json("site/examples/ea-no-overlap.handover");
-const schema = { latest: json("site/schema/v1.json"), v10: json("site/schema/v1.0.json"), v11: json("site/schema/v1.1.json") };
+const schema = { latest: json("site/schema/v1.json"), v10: json("site/schema/v1.0.json"), v11: json("site/schema/v1.1.json"), v12: json("site/schema/v1.2.json") };
 const errorsOf = h => C.validate(h).errors;
 const expectError = (h, re) => { const e = errorsOf(h); assert.ok(e.some(x => re.test(x)), "expected an error matching " + re + ", got:\n" + e.join("\n")); };
 
 test("the 1.0 sample still passes, with no warnings", () => {
   assert.deepEqual(C.validate(sample()), { errors: [], warnings: [] });
 });
-test("the 1.0 sample is valid against the newest schema and both frozen copies", () => {
+test("the 1.0 sample is valid against the newest schema and every frozen copy", () => {
   for (const [name, s] of Object.entries(schema)) assert.deepEqual(check(s, sample()), [], name);
 });
 test("the 1.0 sample's gap count is unchanged", () => {
@@ -29,14 +29,22 @@ test("the 1.0 sample's gap count is unchanged", () => {
 test("the no-overlap EA example passes, with no warnings", () => {
   assert.deepEqual(C.validate(ea()), { errors: [], warnings: [] });
 });
-test("the EA example is valid against the newest schema and the frozen 1.1 schema", () => {
+test("the EA example is valid against the newest schema and the frozen 1.2 schema", () => {
   assert.deepEqual(check(schema.latest, ea()), []);
-  assert.deepEqual(check(schema.v11, ea()), []);
+  assert.deepEqual(check(schema.v12, ea()), []);
+  // without its 1.2 fields it is a valid 1.1 file
+  const h = ea(); delete h.role; delete h.asNeeded; h.recurring.forEach(r => delete r.area); h.handover = "1.1";
+  h.sections = h.sections.filter(s => !["handover-role", "handover-as-needed"].includes(s.id)); h.rendered = h.rendered.filter(id => !["handover-role", "handover-as-needed"].includes(id));
+  assert.deepEqual(check(schema.v11, h), []);
+  assert.deepEqual(C.validate(h), { errors: [], warnings: [] });
+});
+test("the frozen 1.1 schema rejects the 1.2 example, as it should", () => {
+  assert.ok(check(schema.v11, ea()).length > 0);
 });
 test("the frozen 1.0 schema rejects the 1.1 example, as it should", () => {
   assert.ok(check(schema.v10, ea()).length > 0);
 });
-test("the EA example is the no-overlap reference case and uses every 1.1 field", () => {
+test("the EA example is the no-overlap reference case and uses every 1.1 and 1.2 field", () => {
   const h = ea();
   assert.equal(C.overlap(h.plan), false);
   const topLevel = ["audience", "profile", "people", "stakeholders", "plan", "asks", "gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide", "finalCheck", "signoff", "followUps", "catchUps", "history", "rendered"];
@@ -44,7 +52,7 @@ test("the EA example is the no-overlap reference case and uses every 1.1 field",
   // every property defined for a 1.1 object appears somewhere in the example
   const seen = new Set();
   (function walk(v) { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === "object") for (const k of Object.keys(v)) { seen.add(k); walk(v[k]); } })(h);
-  const defs = ["person", "stakeholder", "plan", "step", "ask", "gap", "inProgress", "rule", "decision", "risk", "system", "document", "decide", "card", "finalCheck", "signoff", "followUp", "catchUp", "historyEntry", "closed", "checks", "money"];
+  const defs = ["person", "stakeholder", "plan", "step", "ask", "gap", "inProgress", "rule", "decision", "risk", "system", "document", "decide", "card", "finalCheck", "signoff", "followUp", "catchUp", "historyEntry", "closed", "checks", "money", "jobRole", "asNeeded"];
   for (const d of defs) for (const k of Object.keys(schema.latest.$defs[d].properties)) assert.ok(seen.has(k), `${d}.${k} is not used in the example`);
   assert.ok(seen.has("hours") && seen.has("paid"), "from.hours and from.paid");
   // a recurring risk with an exact day
@@ -63,11 +71,12 @@ test("every 1.1 schema object allows x- fields and rejects unknown ones", () => 
 
 test("gap counts cover the new fields and skip the sections written for 1.0 readers", () => {
   const c = C.gapCounts(ea());
-  assert.deepEqual(c.byArea, { path: 1, systems: 1 });
+  assert.deepEqual(c.byArea, { path: 1, systems: 1, asNeeded: 1 });
   assert.equal(c.openItems, 1);
   assert.equal(c.blocking, 1);
   const h = ea(); h.stakeholders[0].involve = "TODO: when to involve Ravi"; h.asks[0].default = "Stands {TODO: confirm}";
-  assert.deepEqual(C.gapCounts(h).byArea, { path: 1, systems: 1, stakeholders: 1, asks: 1 });
+  h.role.travel = "TODO: how often Dana's trips need the assistant"; h.recurring[0].area = "TODO: which area";
+  assert.deepEqual(C.gapCounts(h).byArea, { path: 1, systems: 1, asNeeded: 1, stakeholders: 1, asks: 1, role: 1, recurring: 1 });
 });
 
 test("ids must be unique within each new list", () => {
@@ -113,9 +122,11 @@ test("visibility: nothing the audience may not see", () => {
 });
 
 test("versions: newer minors warn, a 1.0 file using 1.1 fields warns, 1.0 stays strict", () => {
-  let h = sample(); h.handover = "1.2"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
+  let h = sample(); h.handover = "1.3"; h.somethingNew = true; h.recurring[0].alsoNew = 1;
   let v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.length === 2, v.warnings.join("\n"));
-  h = ea(); h.handover = "1.0"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.some(w => /says "1\.0" but uses 1\.1 fields/.test(w)));
+  h = ea(); h.handover = "1.0"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.ok(v.warnings.some(w => /says "1\.0" but uses 1\.2 fields\. Set it to "1\.2"/.test(w)));
+  h = ea(); h.handover = "1.1"; v = C.validate(h); assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, ['handover: the file says "1.1" but uses 1.2 fields. Set it to "1.2"']);
+  h = ea(); delete h.role; delete h.asNeeded; h.recurring.forEach(r => delete r.area); h.handover = "1.0"; assert.ok(C.validate(h).warnings.some(w => /says "1\.0" but uses 1\.1 fields/.test(w)));
   h = sample(); h.somethingNew = true; expectError(h, /^somethingNew: not a known field/);
   h = ea(); h.plan.unknown = 1; expectError(h, /^plan\.unknown: not a known field/);
   h = ea(); h.plan["x-desk-mode"] = "no-overlap"; assert.deepEqual(errorsOf(h), []);
@@ -163,15 +174,16 @@ test("worked-out values: overlap, phases, gates and minutes", () => {
 test("the CLI check reports TODO gaps by area and open gap items", () => {
   const cli = path.join(root, "skills/handover/scripts/handover.cjs");
   const out = execFileSync(process.execPath, [cli, "check", path.join(root, "site/examples/ea-no-overlap.handover")], { encoding: "utf8" });
-  assert.match(out, /valid handover 1\.1 .* 2 TODO gap\(s\) still to fill \(path 1, systems 1\); 1 open item\(s\) on the gaps list, 1 blocking work/);
+  assert.match(out, /valid handover 1\.2 .* 3 TODO gap\(s\) still to fill \(path 1, systems 1, asNeeded 1\); 1 open item\(s\) on the gaps list, 1 blocking work/);
   const old = execFileSync(process.execPath, [cli, "check", path.join(root, "site/examples/sample.handover")], { encoding: "utf8" });
   assert.match(old, /valid handover 1\.0 .* 7 TODO gap\(s\)/);
 });
 
-test("the AI prompt's example file is a valid 1.1 file", () => {
+test("the AI prompt's example file is a valid 1.2 file", () => {
   const text = fs.readFileSync(path.join(root, "site/prompt.md"), "utf8");
   const h = JSON.parse(text.match(/```json\n([\s\S]*?)\n```/)[1]);
-  assert.equal(h.handover, "1.1");
+  assert.equal(h.handover, "1.2");
+  assert.ok(h.role && h.asNeeded && h.recurring.every(r => r.area), "the prompt shows the 1.2 fields");
   const v = C.validate(h);
   assert.deepEqual(v.errors, []); assert.deepEqual(v.warnings, []);
   assert.deepEqual(check(schema.latest, h), []);
@@ -181,10 +193,10 @@ test("items export: kinds, single items, privacy and closed items", () => {
   const h = ea();
   const kinds = C.exportKinds(h);
   assert.deepEqual(kinds.map(k => k.key), ["overview", "people", "jobs", "tasks", "stakeholders", "decide", "systems", "documents", "rules", "decisions", "risks", "inProgress", "gaps", "sections", "questions", "steps", "asks", "finalCheck", "signoff"]);
-  assert.equal(kinds.find(k => k.key === "jobs").count, h.recurring.length);
+  assert.equal(kinds.find(k => k.key === "jobs").count, h.recurring.length + h.asNeeded.length);
   const md = C.docMarkdown(C.itemsDocument(h, {kinds: ["jobs", "tasks"], title: "Jobs and tasks", date: "2026-11-27"}));
   assert.match(md, /^# Jobs and tasks\n/);
-  assert.match(md, /### Every week\n\n- \*\*Submit Dana's expense claims for approval\*\*\n  - Every Thursday · 11:00 · High risk/);
+  assert.match(md, /### Every week\n\n- \*\*Submit Dana's expense claims for approval\*\*\n  - Every Thursday · 11:00 · Expenses · High risk/);
   assert.doesNotMatch(md, /\]\(#/, "links into the handover are reduced to their text");
   assert.doesNotMatch(md, /\*\*\*\*/, "titles that are already bold are not wrapped again");
   const only = C.itemsDocument(h, {kinds: ["jobs"], only: {jobs: ["expense-approvals"]}});
@@ -258,9 +270,10 @@ test("Excel export has a sheet per kind, a header row and one row per item", () 
   const wb = files["xl/workbook.xml"];
   assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what"]);
   const jobs = files["xl/worksheets/sheet1.xml"];
-  assert.equal((jobs.match(/<row /g) || []).length, h.recurring.length + 1);
-  assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<"));
-  assert.match(jobs, /<autoFilter ref="A1:F7"\/>/);
+  const n = h.recurring.length + h.asNeeded.length;
+  assert.equal((jobs.match(/<row /g) || []).length, n + 1);
+  assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<") && jobs.includes(">As needed<") && jobs.includes(">Expenses<"));
+  assert.match(jobs, new RegExp('<autoFilter ref="A1:G' + (n + 1) + '"/>'));
 });
 
 test("components export: overview, people, reference sections, asks, final check and sign-off", () => {
@@ -339,7 +352,7 @@ test("closing and reopening records (spec section 11)", () => {
   const h = ea(), g = h.gaps.find(x => !x.closed && x.blocks);
   const closed = C.closeItem(h, "gaps", g.id, {how: "fixed", by: "incoming", fix: "Agency added Marcus as a booker", date: "2026-11-27", at: "2026-11-27T10:00:00Z"});
   assert.deepEqual(closed.gaps.find(x => x.id === g.id).closed, {how: "fixed", at: "2026-11-27T10:00:00Z", by: "incoming", fix: "Agency added Marcus as a booker"});
-  assert.deepEqual(closed.history.slice(-1)[0], {id: "close-2026-11-27", at: "2026-11-27T10:00:00Z", source: "app", text: "Closed gap " + g.id + " in the app: fixed."});
+  assert.deepEqual(closed.history.slice(-1)[0], {id: "close-2026-11-27", at: "2026-11-27T10:00:00Z", source: "app", role: "incoming", text: "Closed gap " + g.id + " in the app: fixed."});
   assert.equal(closed.updated, "2026-11-27");
   assert.deepEqual(C.validate(closed).errors, []); assert.deepEqual(check(schema.latest, closed), []);
   assert.ok(!g.closed, "the original is not changed");
@@ -512,4 +525,162 @@ test("reports for the principal: summaries say only what the file shows", () => 
   assert.match(C.docPdf(j), /^%PDF-1\.4/);
   assert.ok(C.docDocx(j).length > 1000);
   assert.throws(() => C.principalReport(h, "gossip", o), /No report/);
+});
+
+/* ================= 1.2: the role, areas of work and jobs done as needed ================= */
+const strip12 = h => { delete h.role; delete h.asNeeded; h.recurring.forEach(r => delete r.area); h.handover = "1.1";
+  h.sections = h.sections.filter(s => !["handover-role", "handover-as-needed"].includes(s.id)); h.rendered = h.rendered.filter(id => !["handover-role", "handover-as-needed"].includes(id)); return h; };
+
+test("1.2: the role, areas and jobs done as needed are checked", () => {
+  let h = ea(); h.role.pay = "USD 3,000 a month"; expectError(h, /^role\.pay: not a known field/);
+  h = ea(); h.role.skills = " "; expectError(h, /^role\.skills: must be non-empty text/);
+  h = ea(); h.recurring[0].area = ""; expectError(h, /^recurring\[0\]\.area: must be non-empty text/);
+  h = ea(); h.asNeeded.push({id: h.asNeeded[0].id, text: "Again"}); expectError(h, /asNeeded\[3\]\.id: "meeting-requests" is used twice in asNeeded/);
+  h = ea(); delete h.asNeeded[0].text; expectError(h, /^asNeeded\[0\]\.text: required/);
+  h = ea(); h.asNeeded[0].see = "no-such-section"; expectError(h, /^asNeeded\[0\]\.see: no section has id "no-such-section"/);
+  h = ea(); h.asNeeded[0].every = "week"; expectError(h, /^asNeeded\[0\]\.every: not a known field/);
+  // jobs done as needed never reach the daily list
+  h = ea(); const sc = C.schedule(h, {}, "2026-11-27"), ids = new Set(h.asNeeded.map(a => a.id));
+  for (const k of ["overdue", "due", "next", "later"]) assert.ok(sc[k].every(o => !ids.has(o.r.id)), k);
+  // a newcomer copy keeps them, as content
+  const n = C.exportProfile(ea(), "newcomer");
+  assert.deepEqual(n.asNeeded, ea().asNeeded); assert.deepEqual(n.role, ea().role);
+  assert.deepEqual(C.validate(n).errors, []); assert.deepEqual(check(schema.latest, n), []);
+});
+
+test("1.2: older readers get the role and the jobs done as needed as sections", () => {
+  const s = C.renderSections(ea()), role = s.find(x => x.id === "handover-role"), as = s.find(x => x.id === "handover-as-needed");
+  assert.match(role.body, /^Runs Dana Whitfield's desk/);
+  assert.match(role.body, /\| Location \| Head office, in person \|/);
+  assert.match(role.body, /### What good looks like/);
+  assert.match(as.body, /\| Draft visa invitation letters for overseas guests \| When an overseas guest is invited \| Travel \|/);
+  assert.ok(!C.renderSections(strip12(ea())).some(x => /^handover-(role|as-needed)$/.test(x.id)));
+});
+
+test("editing an area or a job done as needed raises the version to match", () => {
+  const o = {role: "incoming", date: "2026-11-27", at: "2026-11-27T10:00:00Z"};
+  const h = strip12(ea()), v = C.editValues(h, "recurring", "inbox");
+  const res = C.editItem(h, "recurring", "inbox", Object.assign({}, v, {area: "Diary and correspondence"}), o);
+  assert.deepEqual(res.changed, ["the area"]);
+  assert.equal(res.h.handover, "1.2");
+  assert.deepEqual(C.validate(res.h), {errors: [], warnings: []}); assert.deepEqual(check(schema.latest, res.h), []);
+  assert.equal(res.h.history.slice(-1)[0].text, "Edited regular job inbox in the app: the area.");
+  // a 1.0 file too
+  const s = sample(), r0 = s.recurring[0], s2 = C.editItem(s, "recurring", r0.id, Object.assign({}, C.editValues(s, "recurring", r0.id), {area: "Finance"}), o).h;
+  assert.equal(s2.handover, "1.2"); assert.deepEqual(C.validate(s2).warnings, []);
+  // a job done as needed
+  const e = ea(), a = C.editValues(e, "asNeeded", "book-travel");
+  assert.deepEqual(Object.keys(a), ["text", "area", "when", "detail"]);
+  const r = C.editItem(e, "asNeeded", "book-travel", Object.assign({}, a, {when: "When a trip is planned"}), o);
+  assert.deepEqual(r.changed, ["when it comes up"]);
+  assert.equal(r.h.asNeeded.find(x => x.id === "book-travel").when, "When a trip is planned");
+  assert.equal(r.h.history.slice(-1)[0].text, "Edited job done as needed book-travel in the app: when it comes up.");
+  assert.throws(() => C.editItem(e, "asNeeded", "book-travel", Object.assign({}, a, {detail: "The portal PIN is 4471"}), o), err => err.field === "detail");
+  const cleared = C.editItem(e, "asNeeded", "book-travel", Object.assign({}, a, {when: ""}), o).h.asNeeded.find(x => x.id === "book-travel");
+  assert.ok(!("when" in cleared)); assert.equal(C.whenNeeded(cleared), "As needed");
+});
+
+test("adding and deleting jobs done as needed", () => {
+  const o = {role: "incoming", date: "2026-11-27", at: "2026-11-27T10:00:00Z"};
+  const e = ea(), n = e.asNeeded.length;
+  const add = C.addItem(e, "asNeeded", {text: "Book meeting rooms", area: "Diary and correspondence", when: "When Dana hosts a meeting"}, o);
+  assert.equal(add.id, "book-meeting-rooms");
+  assert.deepEqual(add.h.asNeeded[n], {id: "book-meeting-rooms", text: "Book meeting rooms", area: "Diary and correspondence", when: "When Dana hosts a meeting"});
+  assert.equal(add.h.history.slice(-1)[0].text, "Added job done as needed book-meeting-rooms in the app.");
+  assert.deepEqual(C.validate(add.h), {errors: [], warnings: []}); assert.deepEqual(check(schema.latest, add.h), []);
+  assert.deepEqual(C.withRendered(add.h), add.h, "the sections for older readers follow");
+  assert.equal(C.addItem(add.h, "asNeeded", {text: "Book meeting rooms"}, o).id, "book-meeting-rooms-2");
+  assert.throws(() => C.addItem(e, "asNeeded", {area: "Office"}, o), err => err.field === "text");
+  assert.throws(() => C.addItem(e, "asNeeded", {text: "Pay the florist", detail: "Card 4111 1111 1111 1111"}, o), err => err.field === "detail");
+  // a 1.0 file can take one, and becomes 1.2
+  const s = C.addItem(sample(), "asNeeded", {text: "Order stationery"}, o).h;
+  assert.equal(s.handover, "1.2"); assert.deepEqual(C.validate(s), {errors: [], warnings: []}); assert.deepEqual(check(schema.v12, s), []);
+  // deleting
+  const d = C.deleteItem(add.h, "asNeeded", "book-meeting-rooms", o);
+  assert.equal(d.asNeeded.length, n);
+  assert.equal(d.history.slice(-1)[0].text, "Deleted job done as needed book-meeting-rooms in the app: Book meeting rooms.");
+  assert.deepEqual(C.validate(d), {errors: [], warnings: []}); assert.deepEqual(C.withRendered(d), d);
+  assert.throws(() => C.deleteItem(d, "asNeeded", "book-meeting-rooms", o), /isn't in the file/);
+  assert.throws(() => C.deleteItem(e, "risks", e.risks[0].id, o), /Close it instead/);
+  assert.throws(() => C.deleteItem(e, "recurring", "inbox", o), /can't be deleted/);
+  // the last one leaves no empty list behind
+  let one = C.addItem(sample(), "asNeeded", {text: "Order stationery"}, o).h;
+  one = C.deleteItem(one, "asNeeded", "order-stationery", o);
+  assert.ok(!("asNeeded" in one)); assert.deepEqual(C.validate(one).errors, []);
+});
+
+test("editing the role", () => {
+  const o = {role: "outgoing", date: "2026-11-27", at: "2026-11-27T10:00:00Z"};
+  const e = ea(), v = C.roleValues(e);
+  assert.deepEqual(Object.keys(v), ["organisation", "purpose", "location", "hours", "travel", "manages", "skills", "measures"]);
+  assert.deepEqual(C.roleFields.map(d => d.k), Object.keys(v));
+  const r = C.editRole(e, Object.assign({}, v, {travel: "Rarely", manages: ""}), o);
+  assert.deepEqual(r.changed, ["the travel", "who it manages"]);
+  assert.equal(r.h.role.travel, "Rarely"); assert.ok(!("manages" in r.h.role));
+  assert.equal(r.h.history.slice(-1)[0].text, "Edited the role in the app: the travel and who it manages.");
+  assert.deepEqual(C.validate(r.h), {errors: [], warnings: []}); assert.deepEqual(check(schema.latest, r.h), []);
+  assert.deepEqual(C.withRendered(r.h), r.h, "the role section for older readers follows");
+  assert.throws(() => C.editRole(e, v, o), /Nothing has changed/);
+  assert.throws(() => C.editRole(e, Object.assign({}, v, {hours: "Weekdays; salary GBP 40,000"}), o), err => err.field === "hours" && /pay/.test(err.message));
+  assert.throws(() => C.editRole(e, Object.assign({}, v, {skills: "- Knows the vault password is hunter2"}), o), err => err.field === "skills");
+  // spending limits are not pay
+  assert.equal(C.editRole(e, Object.assign({}, v, {measures: "- Expenses under USD 500 approved the same day"}), o).h.role.measures, "- Expenses under USD 500 approved the same day");
+  // x- fields stay; an empty form removes the role
+  const x = ea(); x.role["x-grade"] = "B";
+  assert.equal(C.editRole(x, Object.assign({}, C.roleValues(x), {travel: "Rarely"}), o).h.role["x-grade"], "B");
+  const gone = C.editRole(e, {}, o).h;
+  assert.ok(!("role" in gone)); assert.deepEqual(C.validate(gone).errors, []);
+  // a 1.0 file can be given a role, and becomes 1.2
+  const s = C.editRole(sample(), {purpose: "Keeps the office running.", hours: "Weekdays 9:00 to 5:30"}, o).h;
+  assert.equal(s.handover, "1.2"); assert.deepEqual(s.role, {purpose: "Keeps the office running.", hours: "Weekdays 9:00 to 5:30"});
+  assert.deepEqual(C.validate(s), {errors: [], warnings: []}); assert.deepEqual(check(schema.v12, s), []);
+});
+
+test("job description: only what the file shows, grouped by area, nothing restricted", () => {
+  const o = {date: "2026-11-27"}, h = ea();
+  assert.ok(C.reports.some(r => r.key === "jd" && r.title === "Job description"));
+  const d = C.principalReport(h, "jd", o);
+  assert.equal(d.title, h.title); assert.equal(d.name, "Job description"); assert.equal(d.kicker, "Example Holdings");
+  assert.equal(d.role, "Job description · Reports to Dana Whitfield");
+  assert.equal(d.introLabel, "Purpose of the role"); assert.match(d.intro[0], /^Runs Dana Whitfield's desk/);
+  assert.deepEqual(d.figures, []);
+  assert.deepEqual(d.parts.map(p => p.title), ["About the role", "Diary and correspondence", "Expenses", "Board", "Travel", "Authority and limits",
+    "When something comes up", "Working relationships", "Systems used", "Skills and experience the work calls for", "What good looks like"]);
+  const part = t => d.parts.find(p => p.title === t), items = t => part(t).groups.flatMap(g => g.items);
+  assert.deepEqual(items("About the role").map(i => [i.title, i.cells[0]]), [["Reports to", "Dana Whitfield"], ["Location", "Head office, in person"],
+    ["Hours", "Weekdays 8:00 to 5:00, with some evening events"], ["Travel", "Rarely: Dana travels, and the desk runs from the office"], ["Manages", "No direct reports. Books the company driver for Dana"]]);
+  // regular jobs first, then the ones done as needed; a larger area holds its parts
+  assert.deepEqual(items("Diary and correspondence").map(i => i.id), ["inbox", "diary-review", "meeting-requests"]);
+  assert.deepEqual(items("Diary and correspondence").map(i => i.cells[0]), ["Weekdays, 08:00", "Every Friday, 15:00", "When a request comes in"]);
+  assert.deepEqual(part("Board").groups.map(g => g.title), ["Board meetings", "AGM"]);
+  // details join the duty; a gap stays in the handover
+  assert.equal(items("Expenses")[0].title, "Submit Dana's expense claims for approval. Finance pays claims submitted by Thursday noon in the same week. Miss it and Dana's card statement goes unpaid for a week.");
+  assert.equal(items("Travel").find(i => i.id === "visa-letters").title, "Draft visa invitation letters for overseas guests");
+  // the who-decides board in the third person
+  assert.deepEqual(part("Authority and limits").groups.map(g => g.title), ["Decides alone", "Checks with Dana first", "Always goes to Dana"]);
+  // nothing marked for some people only, no contacts, nothing closed
+  const all = JSON.stringify(d);
+  assert.ok(!items("Working relationships").some(i => i.id === "partner"), "Sam's card is for some roles only");
+  assert.ok(!/Ext\. 2210|protected contacts file/.test(all), "no contact details");
+  const v = ea(); v.rules.push({id: "private-rule", text: "Private to the assistants", visibleTo: ["outgoing", "owner"]}); v.systems[0].closed = {how: "dropped", at: "2026-11-20T09:00:00Z"};
+  const dv = C.principalReport(v, "jd", o);
+  assert.ok(!JSON.stringify(dv).includes("Private to the assistants")); assert.ok(!dv.parts.find(p => p.title === "Systems used").groups[0].items.some(i => i.id === v.systems[0].id));
+  // without areas: by how often; without a role or a principal: no purpose, no reporting line
+  const f = strip12(ea()); f.asNeeded = [{id: "letters", text: "Draft employment letters"}]; f.handover = "1.2";
+  f.people = f.people.filter(p => !p.roles.includes("principal"));
+  const df = C.principalReport(f, "jd", o);
+  assert.deepEqual(df.parts.slice(0, 2).map(p => p.title), ["Regular duties", "Done as needed"]);
+  assert.deepEqual(df.parts[0].groups.map(g => g.title), ["Every day", "Every week", "Every month", "Every quarter", "Every year"]);
+  assert.deepEqual(df.parts[1].groups[0].items[0].cells, ["As needed"]);
+  assert.ok(!df.parts.some(p => p.title === "About the role")); assert.deepEqual(df.intro, []); assert.equal(df.kicker, "Job description");
+  assert.ok(df.parts.find(p => p.title === "Authority and limits").groups.some(g => g.title === "Checks with the principal first"));
+  // every format
+  const md = C.docMarkdown(d);
+  assert.match(md, /^# Executive assistant to the CEO\n\n\*Example Holdings · Job description · Reports to Dana Whitfield · Friday, 27 November 2026\*\n\n## Purpose of the role\n\nRuns Dana/);
+  assert.ok(md.includes("- Triage Dana's inbox and flag anything for today *(Weekdays, 08:00)*"));
+  assert.ok(!md.includes("### Skills and experience the work calls for"), "no heading twice");
+  const html = C.docHtml(d);
+  assert.ok(html.includes(">Purpose of the role<") && html.includes(">Example Holdings<"));
+  assert.match(C.docPdf(d, {timezone: h.timezone}), /^%PDF-1\.4/);
+  assert.ok(C.docDocx(d).length > 1000);
 });

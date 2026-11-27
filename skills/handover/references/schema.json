@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://incrhst.github.io/handover/schema/v1.json",
-  "title": "Handover file, format version 1 (newest: 1.1)",
-  "description": "A role handover: a first-month path, recurring duties, answers to common questions and reference material, and (since 1.1) the record of an assistant handover as it is run. Files use the .handover extension and contain UTF-8 JSON. This schema always describes the newest 1.x; every older 1.x file is valid against it. Frozen copies: v1.0.json, v1.1.json. Spec: https://github.com/incrhst/handover/blob/main/spec/SPEC.md",
+  "title": "Handover file, format version 1 (newest: 1.2)",
+  "description": "A role handover: a first-month path, recurring duties, answers to common questions and reference material, (since 1.1) the record of an assistant handover as it is run, and (since 1.2) the role itself and the jobs done as needed, for a job description. Files use the .handover extension and contain UTF-8 JSON. This schema always describes the newest 1.x; every older 1.x file is valid against it. Frozen copies: v1.0.json, v1.1.json, v1.2.json. Spec: https://github.com/incrhst/handover/blob/main/spec/SPEC.md",
   "type": "object",
   "required": ["handover", "id", "title"],
   "additionalProperties": false,
@@ -12,7 +12,7 @@
     "handover": {
       "type": "string",
       "pattern": "^1\\.[0-9]+$",
-      "description": "Format version: \"1.1\" for files using 1.1 fields, \"1.0\" otherwise. Readers open any 1.x."
+      "description": "Format version: the lowest that has every field the file uses: \"1.2\", \"1.1\" or \"1.0\". Readers open any 1.x."
     },
     "id": { "$ref": "#/$defs/id", "description": "Stable identifier for this handover. Keep it the same across versions so progress carries over." },
     "title": { "$ref": "#/$defs/line" },
@@ -90,6 +90,8 @@
       "items": { "$ref": "#/$defs/id" },
       "description": "1.1. Ids of sections written for 1.0 readers from the structured data. Readers that show the data hide these."
     },
+    "role": { "$ref": "#/$defs/jobRole" },
+    "asNeeded": { "type": "array", "description": "1.2. Jobs with no schedule, done when something calls for them. They never appear on the daily list.", "items": {"$ref": "#/$defs/asNeeded"} },
     "progress": { "$ref": "#/$defs/progress" }
   },
   "$defs": {
@@ -138,6 +140,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "text": { "$ref": "#/$defs/markdown" },
+        "area": { "$ref": "#/$defs/area" },
         "every": { "type": "string", "enum": ["day", "weekday", "week", "month", "quarter", "year"] },
         "on": {
           "description": "For every: week. Day or days of the week. Default mon.",
@@ -154,6 +157,38 @@
         "end": { "$ref": "#/$defs/date" },
         "detail": { "$ref": "#/$defs/markdown" },
         "see": { "$ref": "#/$defs/id", "description": "id of a section with more detail." }
+      }
+    },
+    "area": { "type": "string", "minLength": 1, "description": "1.2. The part of the role a job belongs to, e.g. \"Finance\". \" / \" (a slash with a space each side) puts it under a larger area: \"Villa / Bookings\"." },
+    "asNeeded": {
+      "type": "object",
+      "description": "1.2. A job with no schedule, done when something calls for it.",
+      "required": ["id", "text"],
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "text": { "$ref": "#/$defs/line", "description": "What the job is." },
+        "area": { "$ref": "#/$defs/area" },
+        "when": { "$ref": "#/$defs/line", "description": "What calls for it, e.g. \"When a new member of staff joins\". Absent: as needed." },
+        "detail": { "$ref": "#/$defs/markdown" },
+        "see": { "$ref": "#/$defs/id", "description": "id of a section with more detail." }
+      }
+    },
+    "jobRole": {
+      "type": "object",
+      "description": "1.2. The role itself, for a job description. Never pay or other personal financial details.",
+      "additionalProperties": false,
+      "patternProperties": { "^x-": true },
+      "properties": {
+        "organisation": { "$ref": "#/$defs/line", "description": "The organisation the role is in, as it should appear on a job description." },
+        "purpose": { "$ref": "#/$defs/markdown", "description": "Why the role exists, in two or three sentences." },
+        "location": { "$ref": "#/$defs/line", "description": "Where the work is done, e.g. \"Kingston office, two days a week from home\"." },
+        "hours": { "$ref": "#/$defs/line", "description": "The working pattern, e.g. \"Weekdays 8:30 to 5, some evening events\"." },
+        "travel": { "$ref": "#/$defs/line", "description": "How much travel the role involves." },
+        "manages": { "$ref": "#/$defs/line", "description": "Who the role manages or directs, if anyone." },
+        "skills": { "$ref": "#/$defs/markdown", "description": "The skills and experience the work calls for, usually a list." },
+        "measures": { "$ref": "#/$defs/markdown", "description": "What good looks like: how anyone can tell the role is done well." }
       }
     },
     "question": {

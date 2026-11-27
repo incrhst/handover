@@ -278,9 +278,21 @@ body.searching .questions{display:none}
 .alljobs{margin-top:14px}
 .alljobs summary{cursor:pointer;font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
 .alljobs .duty{margin-top:8px}
+.alljobs .area{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;line-height:1.5;border-radius:99px;padding:0 8px;background:var(--surface-2);color:var(--ink-3);vertical-align:1px}
+.alljobs-sub{margin:16px 0 0;font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
 .cfield .days{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:4px}
 .cfield .days label{display:flex;align-items:center;gap:4px;font-weight:500}
 .addrow{margin-top:10px}
+.role-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 18px;margin:14px 0 0;padding:0}
+.role-facts div{min-width:0}
+.role-facts dt{font-size:12px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.role-facts dd{margin:2px 0 0;font-size:15px}
+.role-empty{color:var(--ink-3);margin:0}
+#role .md{padding:0}
+#role .md > :first-child{margin-top:0}
+#role .md > :last-child{margin-bottom:0}
+.dlg footer .btn.danger{margin-right:auto;color:var(--red);border-color:var(--red-soft)}
+.dlg footer .btn.danger:hover{border-color:var(--red)}
 .addrow .closebtn{margin-left:0}
 .subhead{font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;display:flex;gap:8px;align-items:center}
 .board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
@@ -394,12 +406,12 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <button class="btn" id="searchJump" type="button">Search</button>
       <button class="gapchip" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
       <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
-      <button class="btn" type="button" data-cmd="report" id="reportBtn" hidden title="A short, plain report for the principal: what's under way, the assistant's jobs, or what needs them">Report…</button>
+      <button class="btn" type="button" data-cmd="report" id="reportBtn" hidden title="A short, plain report for the principal: what's under way, the assistant's jobs, what needs them, or a job description">Report…</button>
       <details class="menu" id="shareMenu">
         <summary class="btn primary">Share &amp; export</summary>
         <div class="menu-panel" role="menu">
           <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
-          <button type="button" data-cmd="report" id="reportMenuBtn" hidden><span id="reportMenuLabel">Report for the principal…</span><small>What we're working on, the assistant's jobs, or what needs them</small></button>
+          <button type="button" data-cmd="report" id="reportMenuBtn" hidden><span id="reportMenuLabel">Report for the principal…</span><small>What we're working on, the assistant's jobs, what needs them, or a job description</small></button>
           <button type="button" data-cmd="exportItems">Export items as a document…<small>Jobs, tasks or any other list, as PDF, Word or Excel</small></button>
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
@@ -417,6 +429,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
     <section class="hero" id="hero"></section>
     <div class="wrap" id="todayWrap"></div>
     <div class="wrap" id="pathWrap"></div>
+    <div class="wrap" id="roleWrap"></div>
     <div class="wrap" id="peopleWrap"></div>
     <div class="wrap" id="decideWrap"></div>
     <div class="wrap" id="recordsWrap"></div>
@@ -552,7 +565,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
 
 <dialog class="dlg" id="addDlg" aria-labelledby="addDlgTitle">
   <form method="dialog" id="addForm">
-    <header><h2 id="addDlgTitle">Add to the records</h2><p>Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
+    <header><h2 id="addDlgTitle">Add to the handover</h2><p>Never type a password, PIN, code or card number: say where it is kept and who grants access.</p></header>
     <div class="dlg-body">
       <label class="cfield">What are you adding? <select id="addKind"></select></label>
       <div id="addFields"></div>
@@ -571,7 +584,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <label class="cfield">Edited by <select id="editBy"></select></label>
       <p id="editMsg" hidden></p>
     </div>
-    <footer><button class="btn" type="button" id="editCancel">Cancel</button><button class="btn primary" type="submit" id="editGo">Save changes</button></footer>
+    <footer><button class="btn danger" type="button" id="editDelete" hidden>Delete</button><button class="btn" type="button" id="editCancel">Cancel</button><button class="btn primary" type="submit" id="editGo">Save changes</button></footer>
   </form>
 </dialog>
 
@@ -674,7 +687,7 @@ function md(src){
 function plain(s){ return String(s || "").replace(/\{TODO:\s*([^}]*)\}/g, "[TO FILL IN: $1]").replace(/\[([^\]]+)\]\(#[^)]*\)/g, "$1"); }
 
 /* Sections written for 1.0 readers (spec section 16) are hidden; links to them go to the structured view. */
-var renderedIds = {}, RENDER_TARGET = {"handover-people": "people", "handover-access": "rec-systems", "handover-knowledge": "rec-rules", "handover-open": "rec-inprogress", "handover-decide": "decide", "handover-plan": "handover"};
+var renderedIds = {}, RENDER_TARGET = {"handover-people": "people", "handover-access": "rec-systems", "handover-knowledge": "rec-rules", "handover-open": "rec-inprogress", "handover-decide": "decide", "handover-plan": "handover", "handover-role": "role", "handover-as-needed": "alljobs"};
 function secHref(id){ if (renderedIds[id] && RENDER_TARGET[id.replace(/-\d+$/, "")]) return "#" + RENDER_TARGET[id.replace(/-\d+$/, "")]; return "#" + (sectionIds[id] ? "sec-" + id : id); }
 function visibleSections(){ return (H.sections || []).filter(function(s){ return !renderedIds[s.id]; }); }
 
@@ -748,7 +761,7 @@ function render(){
   document.title = H.title;
   $("brand").textContent = H.title;
   $("fmtVersion").textContent = C.version + (H.handover !== C.version ? " (this file uses " + H.handover + ")" : "");
-  renderHero(); renderToday(); renderPath(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
+  renderHero(); renderToday(); renderPath(); renderRole(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
   $("notes").value = S.notes || "";
   var nav = [];
   if ($("today")) nav.push(["#today", "Today"]);
@@ -798,17 +811,22 @@ function dutyHtml(o, showDate){
 }
 function renderToday(){
   var w = $("todayWrap"), att = attention(TODAY);
-  if (!(H.recurring || []).length && !att.length){ w.innerHTML = ""; return; }
+  if (!(H.recurring || []).length && !(H.asNeeded || []).length && !att.length){ w.innerHTML = ""; return; }
   var sc = schedule(TODAY), dueDone = sc.due.filter(function(o){ return isDone(o.r.id, o.date); }).length;
   var cols = "";
   if (att.length) cols += '<div class="col attention"><h3>Needs attention <span class="count">' + att.length + "</span></h3>" + att.map(function(a){ return '<div class="duty plain"><span class="t">' + a.html + '</span><span class="when">' + a.when + (a.close || "") + "</span></div>"; }).join("") + "</div>";
   if (sc.overdue.length) cols += '<div class="col overdue"><h3>Overdue <span class="count">' + sc.overdue.length + "</span></h3>" + sc.overdue.map(function(o){ return dutyHtml(o, true); }).join("") + "</div>";
+  if (!(H.recurring || []).length && (H.asNeeded || []).length) cols += '<div class="col"><h3>Today</h3><div class="empty">No regular jobs. The jobs done as needed are listed below.</div></div>';
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
   var later = sc.later.length ? '<div class="upcoming"><h3 class="muted" style="font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;margin:0 0 8px">Coming up</h3><ul>' + sc.later.map(function(o){ return '<li><span class="d">' + esc(nice(o.date)) + "</span><span>" + inline(o.r.text) + "</span></li>"; }).join("") + "</ul></div>" : "";
-  var jobs = H.recurring || [], all = jobs.length ? '<details class="alljobs no-print" id="alljobs"><summary>All regular jobs (' + jobs.length + ")</summary>" + jobs.map(function(r){
-    return '<div class="duty plain"><span class="t">' + inline(r.text) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + editBtn("recurring", r) + "</span></div>";
-  }).join("") + "</details>" : "";
+  var jobs = H.recurring || [], needed = H.asNeeded || [];
+  var areaTag = function(x){ return x.area ? '<span class="area">' + esc(x.area) + "</span>" : ""; };
+  var all = jobs.length || needed.length ? '<details class="alljobs no-print" id="alljobs"><summary>All jobs (' + (jobs.length + needed.length) + ")</summary>" + jobs.map(function(r){
+    return '<div class="duty plain"><span class="t">' + inline(r.text) + areaTag(r) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + editBtn("recurring", r) + "</span></div>";
+  }).join("") + (needed.length ? '<h4 class="alljobs-sub">Done as needed</h4>' + needed.map(function(a){
+    return '<div class="duty plain"><span class="t">' + inline(a.text) + areaTag(a) + '</span><span class="when">' + esc(C.whenNeeded(a)) + (a.see && sectionIds[a.see] ? ' · <a href="' + esc(secHref(a.see)) + '">Details</a>' : "") + editBtn("asNeeded", a) + "</span>" + (a.detail ? '<div class="detail">' + md(a.detail) + "</div>" : "") + "</div>";
+  }).join("") : "") + '<div class="addrow"><button type="button" class="closebtn" data-add="asNeeded">Add a job done as needed…</button></div></details>' : "";
   w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + all + "</section>";
 }
 function stats(stage){ var d = 0; stage.tasks.forEach(function(t){ if (S.tasks[t.id]) d++; }); return {n: stage.tasks.length, d: d}; }
@@ -945,6 +963,17 @@ function checksHtml(c){ if (!c) return ""; return ["opens","create","level"].fil
 function block(id, title, count, body, openIt){ return '<details class="ref" id="' + esc(id) + '"' + (openIt ? " open" : "") + '><summary><h3>' + esc(title) + "</h3>" + (count ? chip(count, "") : "") + '</summary><div class="md">' + body + "</div></details>"; }
 function cardsHtml(items){ return '<div class="cards">' + items.join("") + "</div>"; }
 
+/* The role itself (1.2): what a job description is made from */
+function renderRole(){
+  var w = $("roleWrap"), r = H.role || {}, facts = C.roleFacts.filter(function(f){ return r[f[0]]; });
+  var edit = '<button class="btn no-print" type="button" data-edit="role:" title="Change the organisation, purpose, hours, skills and what good looks like">' + (H.role ? "Edit…" : "Describe the role…") + "</button>";
+  if (!H.role){ w.innerHTML = '<section class="panel block" id="role"><div class="panel-head"><h2>About the role</h2>' + edit + '</div><p class="role-empty">Not described yet. Its purpose, where and when the work is done and what it calls for go into the job description.</p></section>'; return; }
+  var sub = function(t, x){ return x ? '<div class="subhead">' + esc(t) + '</div><div class="md">' + md(x) + "</div>" : ""; };
+  w.innerHTML = '<section class="panel block" id="role"><div class="panel-head"><h2>About the role</h2>' + edit + "</div>" +
+    (r.purpose ? '<div class="md">' + md(r.purpose) + "</div>" : "") +
+    (facts.length ? '<dl class="role-facts">' + facts.map(function(f){ return "<div><dt>" + esc(f[1]) + "</dt><dd>" + inline(r[f[0]]) + "</dd></div>"; }).join("") + "</dl>" : "") +
+    sub("Skills and experience the work calls for", r.skills) + sub("What good looks like", r.measures) + "</section>";
+}
 function renderPeople(){
   var w = $("peopleWrap"), ppl = H.people || [], st = H.stakeholders || [];
   if (!ppl.length && !st.length){ w.innerHTML = ""; return; }
@@ -1314,7 +1343,7 @@ $("reportCancel").addEventListener("click", function(){ $("reportDlg").close(); 
 $("reportForm").addEventListener("submit", function(e){
   e.preventDefault();
   var doc = reportDoc(), fmt = (document.querySelector('[name="reportFmt"]:checked') || {}).value || "pdf";
-  var slug = doc.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  var slug = (doc.name || doc.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   var out = {
     pdf: {content: C.docPdf(doc, {timezone: H.timezone}), mime: "application/pdf"},
     docx: {base64: C.base64(C.docDocx(doc)), mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
@@ -1326,8 +1355,8 @@ $("reportForm").addEventListener("submit", function(e){
 });
 
 /* Add a record (spec section 11) */
-var ADD_KINDS = [["inProgress", "A thing in progress"], ["gaps", "A gap"], ["rules", "A rule (when this happens)"], ["decisions", "A decision"], ["risks", "A risk"], ["systems", "A system and its access"], ["documents", "A document"], ["decide", "A who-decides card"]];
-var ADD_PANEL = {inProgress: "rec-inprogress", gaps: "rec-gaps", rules: "rec-rules", decisions: "rec-decisions", risks: "rec-risks", systems: "rec-systems", documents: "rec-documents", decide: "decide"};
+var ADD_KINDS = [["inProgress", "A thing in progress"], ["gaps", "A gap"], ["rules", "A rule (when this happens)"], ["decisions", "A decision"], ["risks", "A risk"], ["systems", "A system and its access"], ["documents", "A document"], ["decide", "A who-decides card"], ["asNeeded", "A job done as needed"]];
+var ADD_PANEL = {inProgress: "rec-inprogress", gaps: "rec-gaps", rules: "rec-rules", decisions: "rec-decisions", risks: "rec-risks", systems: "rec-systems", documents: "rec-documents", decide: "decide", asNeeded: "alljobs"};
 function peopleRoles(){
   var roles = []; (H.people || []).forEach(function(p){ (p.roles || []).forEach(function(r){ if (["outgoing","incoming","principal","facilitator"].indexOf(r) > -1 && !roles.some(function(x){ return x[0] === r; })) roles.push([r, p.name + " (" + C.roleName[r].toLowerCase() + ")"]); }); });
   if (!roles.length) ["incoming","outgoing","principal"].forEach(function(r){ roles.push([r, C.roleName[r]]); });
@@ -1382,8 +1411,9 @@ function addFieldsRender(){
   $("addMsg").hidden = true;
 }
 function openAdd(kind){
-  if (!canAdd()){ toast("This file uses format 1.0, which has no records"); return; }
-  $("addKind").innerHTML = ADD_KINDS.map(function(k){ return '<option value="' + k[0] + '"' + (k[0] === (kind || "gaps") ? " selected" : "") + ">" + esc(k[1]) + "</option>"; }).join("");
+  /* A 1.0 file has no records, but a job done as needed can still be added: the file becomes 1.2 */
+  if (!canAdd() && kind !== "asNeeded"){ toast("This file uses format 1.0, which has no records"); return; }
+  $("addKind").innerHTML = ADD_KINDS.filter(function(k){ return canAdd() || k[0] === "asNeeded"; }).map(function(k){ return '<option value="' + k[0] + '"' + (k[0] === (kind || "gaps") ? " selected" : "") + ">" + esc(k[1]) + "</option>"; }).join("");
   $("addBy").innerHTML = roleOptions("Not recorded", peopleRoles().some(function(r){ return r[0] === "incoming"; }) ? "incoming" : "");
   addFieldsRender();
   $("addDlg").showModal();
@@ -1406,12 +1436,14 @@ $("addForm").addEventListener("submit", function(e){
 /* Edit a record, a first-weeks task or a regular job */
 var EDITING = null;
 function openEdit(ref){
-  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), values = C.editValues(H, list, id);
+  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), role = list === "role";
+  var values = role ? C.roleValues(H) : C.editValues(H, list, id);
   if (!values){ toast("That item isn't in the file any more"); return; }
   EDITING = {list: list, id: id};
   var noun = C.listNoun[list];
-  $("editDlgTitle").textContent = "Edit " + (/^[aeiou]/.test(noun) ? "an " : "a ") + noun;
-  $("editFields").innerHTML = fieldsHtml(C.editFields(list), "editF-", values);
+  $("editDlgTitle").textContent = role ? (H.role ? "Edit the role" : "Describe the role") : "Edit " + (/^[aeiou]/.test(noun) ? "an " : "a ") + noun;
+  $("editDelete").hidden = C.deletable.indexOf(list) < 0;
+  $("editFields").innerHTML = fieldsHtml(role ? C.roleFields : C.editFields(list), "editF-", values);
   fieldsShown($("editFields"));
   $("editBy").innerHTML = roleOptions("Not recorded", peopleRoles().some(function(r){ return r[0] === "incoming"; }) ? "incoming" : "");
   $("editMsg").hidden = true;
@@ -1421,10 +1453,24 @@ function openEdit(ref){
 $("editFields").addEventListener("change", function(){ fieldsShown($("editFields")); });
 $("addFields").addEventListener("change", function(){ fieldsShown($("addFields")); });
 $("editCancel").addEventListener("click", function(){ $("editDlg").close(); });
+$("editDelete").addEventListener("click", function(){
+  var list = EDITING.list, item = C.editValues(H, list, EDITING.id);
+  if (!item || !confirm("Delete “" + plain(item.text) + "”? It goes from the file, and the change log records it.")) return;
+  var res;
+  try { res = C.deleteItem(H, list, EDITING.id, {role: $("editBy").value || undefined, date: TODAY}); }
+  catch (err){ $("editMsg").textContent = err.message; $("editMsg").hidden = false; return; }
+  var allOpen = $("alljobs") && $("alljobs").open;
+  saveContent(res).then(function(ok){
+    if (!ok) return;
+    if (allOpen && $("alljobs")) $("alljobs").open = true;
+    $("editDlg").close(); toast("Deleted: " + C.listNoun[list]);
+  });
+});
 $("editForm").addEventListener("submit", function(e){
   e.preventDefault();
   var res;
-  try { res = C.editItem(H, EDITING.list, EDITING.id, formValues($("editFields")), {role: $("editBy").value || undefined, date: TODAY}); }
+  var o = {role: $("editBy").value || undefined, date: TODAY}, values = formValues($("editFields"));
+  try { res = EDITING.list === "role" ? C.editRole(H, values, o) : C.editItem(H, EDITING.list, EDITING.id, values, o); }
   catch (err){ fieldError($("editFields"), "editF-", $("editMsg"), err); return; }
   var allOpen = $("alljobs") && $("alljobs").open;
   saveContent(res.h).then(function(ok){
@@ -1436,7 +1482,7 @@ $("editForm").addEventListener("submit", function(e){
 
 /* Search */
 var q = $("q"), qinfo = $("qinfo"), qtimer;
-function units(){ return [$("today"), $("people"), $("decide")].concat(stages, Array.prototype.slice.call(document.querySelectorAll(".qa, details.ref"))).filter(Boolean); }
+function units(){ return [$("today"), $("role"), $("people"), $("decide")].concat(stages, Array.prototype.slice.call(document.querySelectorAll(".qa, details.ref"))).filter(Boolean); }
 function clearMarks(){ document.querySelectorAll("mark.hit").forEach(function(m){ var p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); }); }
 function clearSearch(){ if (!q.value && !document.body.classList.contains("searching")) return; q.value = ""; search(""); }
 function search(term){

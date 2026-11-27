@@ -22,7 +22,7 @@ function validate(h){
   var ver = h.handover.split(".").map(Number);
   if (ver[0] !== 1) return {errors: ["handover: this app reads format version 1.x, but the file is version " + h.handover + ". Update the app."], warnings: []};
   strict = ver[1] <= MINOR; /* a newer minor version may add fields: report them as warnings, never reject (spec section 8) */
-  keys(h, "", ["$schema","handover","id","title","summary","from","updated","timezone","settings","path","recurring","questions","sections","progress"].concat(V11));
+  keys(h, "", ["$schema","handover","id","title","summary","from","updated","timezone","settings","path","recurring","questions","sections","progress"].concat(V11, V12));
   pat(h, "id", "", ID, "lowercase letters, digits and dashes, e.g. ops-lead", true);
   if (h.title === undefined) errors.push("title: required"); else text(h, "title", "", true);
   if (h.summary !== undefined) text(h, "summary", "", false);
@@ -45,8 +45,9 @@ function validate(h){
   var recIds = {};
   list("recurring").forEach(function(r, i){
     var p = "recurring[" + i + "]"; if (!isObj(r)){ errors.push(p + ": must be an object"); return; }
-    keys(r, p, ["id","text","every","on","day","monthOfQuarter","date","time","start","end","detail","see"]);
+    keys(r, p, ["id","text","area","every","on","day","monthOfQuarter","date","time","start","end","detail","see"]);
     pat(r, "id", p, ID, "an id like payroll", true); text(r, "text", p, true);
+    if (r.area !== undefined) text(r, "area", p);
     if (r.id){ if (recIds[r.id]) errors.push(p + '.id: "' + r.id + '" is used twice'); recIds[r.id] = true; }
     if (EVERY.indexOf(r.every) < 0) errors.push(p + ".every: must be one of " + EVERY.join(", "));
     if (r.on !== undefined){ var on = [].concat(r.on); if (!on.length || on.some(function(d){ return DAYS.indexOf(d) < 0; })) errors.push(p + ".on: use mon, tue, wed, thu, fri, sat or sun, or a list of them"); }
@@ -68,17 +69,26 @@ function validate(h){
       if (g.notes !== undefined && typeof g.notes !== "string") errors.push("progress.notes: must be text"); }
   }
   validate11(h, {errors: errors, warnings: warnings, err: err, keys: keys, isObj: isObj, sec: sec, rec: recIds});
-  if (ver[1] === 0 && (V11.some(function(k){ return h[k] !== undefined; }) || (isObj(h.from) && (h.from.hours !== undefined || h.from.paid !== undefined))))
-    warnings.push('handover: the file says "1.0" but uses 1.1 fields. Set it to "1.1"');
+  var needs = usesMinor(h);
+  if (ver[1] < needs) warnings.push('handover: the file says "' + h.handover + '" but uses 1.' + needs + ' fields. Set it to "1.' + needs + '"');
   return {errors: errors, warnings: warnings};
 }
 
 /* ================= Validation of the 1.1 objects (spec sections 9 to 16) ================= */
-var MINOR = 1;
+var MINOR = 2;
 var ROLES = ["outgoing","incoming","principal","owner","facilitator"];
 var ASKS = ["breaks","profile","access","limits","confid","emergency","signoff"];
 var FINAL = ["recurring","in-progress","decisions","context","access","exceptions","decide"];
 var V11 = ["audience","profile","people","stakeholders","plan","asks","gaps","inProgress","rules","decisions","risks","systems","documents","decide","finalCheck","signoff","followUps","catchUps","history","rendered"];
+/* 1.2: the role itself (for a job description), jobs done as needed, and an area on regular jobs */
+var V12 = ["role","asNeeded"];
+/* The lowest minor version that has every field h uses (spec section 8) */
+function usesMinor(h){
+  if (!h || typeof h !== "object") return 0;
+  if (V12.some(function(k){ return h[k] !== undefined; }) || (Array.isArray(h.recurring) && h.recurring.some(function(r){ return r && r.area !== undefined; }))) return 2;
+  if (V11.some(function(k){ return h[k] !== undefined; }) || (h.from && typeof h.from === "object" && (h.from.hours !== undefined || h.from.paid !== undefined))) return 1;
+  return 0;
+}
 var RECORDS = ["gaps","inProgress","rules","decisions","risks","systems","documents"];
 function E(values){ return {e: values}; }
 var DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
@@ -105,8 +115,10 @@ var SPEC11 = {
   notes: {o: {id: "id", text: "md", role: "role", at: "datetime"}, r: ["id","text","at"]},
   followUps: {o: {id: E(["f1","f2"]), answers: "answers", gapsFound: "int", gapsFixed: "int", at: "datetime"}, r: ["id"]},
   catchUps: {o: {id: "id", at: "datetime"}, r: ["id","at"]},
-  history: {o: {id: "id", at: "datetime", role: "role", source: E(["app","ai"]), text: "md"}, r: ["id","at","source","text"]}
+  history: {o: {id: "id", at: "datetime", role: "role", source: E(["app","ai"]), text: "md"}, r: ["id","at","source","text"]},
+  asNeeded: {o: {id: "id", text: "line", area: "line", when: "line", detail: "md", see: "id"}, r: ["id","text"]}
 };
+var ROLE = {o: {organisation: "line", purpose: "md", location: "line", hours: "line", travel: "line", manages: "line", skills: "md", measures: "md"}, r: []};
 var PLAN = {o: {prepStart: "date", firstDay: "date", lastDay: "date", track: E(["light","full"]), practice: "bool", template: "line", steps: "skip"}, r: ["prepStart","lastDay"]};
 var DECIDE = {o: {confirmed: "bool", confirmedAt: "datetime", cards: "skip"}, r: []};
 var SIGNOFF = {o: {outgoing: "datetime", incoming: "datetime", principal: "datetime", frozen: "date", notes: "skip"}, r: []};
@@ -190,6 +202,9 @@ function validate11(h, c){
   list(h.followUps, "followUps", SPEC11.followUps);
   list(h.catchUps, "catchUps", SPEC11.catchUps);
   list(h.history, "history", SPEC11.history);
+  /* 1.2 */
+  if (h.role !== undefined) fields(h.role, "role", ROLE);
+  list(h.asNeeded, "asNeeded", SPEC11.asNeeded, function(o, q){ if (typeof o.see === "string" && !c.sec[o.see]) errors.push(q + '.see: no section has id "' + o.see + '"'); });
   if (h.rendered !== undefined){
     if (!Array.isArray(h.rendered)) errors.push("rendered: must be a list of section ids");
     else h.rendered.forEach(function(id, i){ if (!c.sec[id]) errors.push("rendered[" + i + ']: no section has id "' + id + '"'); else if (h.rendered.indexOf(id) !== i) errors.push("rendered[" + i + ']: "' + id + '" is listed twice'); });
@@ -402,7 +417,7 @@ function textFields(h){
     if (s.tip) add("path", "path[" + i + '] "' + s.title + '" tip', s.tip.text, ["path", i, "tip", "text"]);
     (s.tasks || []).forEach(function(t, j){ add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") text", t.text, ["path", i, "tasks", j, "text"]); add("path", "path[" + i + "].tasks[" + j + "] (" + t.id + ") detail", t.detail, ["path", i, "tasks", j, "detail"]); });
   });
-  (h.recurring || []).forEach(function(r, i){ add("recurring", "recurring[" + i + "] (" + r.id + ") text", r.text, ["recurring", i, "text"]); add("recurring", "recurring[" + i + "] (" + r.id + ") detail", r.detail, ["recurring", i, "detail"]); });
+  (h.recurring || []).forEach(function(r, i){ ["text", "area", "detail"].forEach(function(k){ add("recurring", "recurring[" + i + "] (" + r.id + ") " + k, r[k], ["recurring", i, k]); }); });
   (h.questions || []).forEach(function(q, i){ add("questions", "questions[" + i + '] "' + q.q + '"', q.a, ["questions", i, "a"]); });
   (h.sections || []).forEach(function(s, i){ if (!skip[s.id]) add("sections", "sections[" + i + "] (" + s.id + ") body", s.body, ["sections", i, "body"]); });
   if (h.from && typeof h.from === "object") ["contact","hours"].forEach(function(k){ add("from", "from." + k, h.from[k], ["from", k]); });
@@ -412,7 +427,7 @@ function textFields(h){
     else if (Array.isArray(v)) v.forEach(function(x, i){ walk(area, where + "[" + i + "]" + (x && typeof x === "object" && typeof x.id === "string" ? " (" + x.id + ")" : ""), x, path.concat([i])); });
     else if (v && typeof v === "object") Object.keys(v).forEach(function(k){ if (k !== "id") walk(area, where + "." + k, v[k], path.concat([k])); });
   }
-  V11.forEach(function(k){ if (k !== "rendered" && k !== "audience" && h[k] !== undefined) walk(k, k, h[k], [k]); });
+  V11.concat(V12).forEach(function(k){ if (k !== "rendered" && k !== "audience" && h[k] !== undefined) walk(k, k, h[k], [k]); });
   return out;
 }
 /* The gaps on one line, in order. Each is {what, start, end}: the text from start to end is what filling it replaces. */
@@ -445,7 +460,7 @@ function findGaps(h){
 var GAP_AREA = {summary: "Summary", path: "First weeks", recurring: "Jobs", questions: "Questions and answers", sections: "Reference", from: "Contact after the handover",
   people: "Who's who", stakeholders: "People to know", plan: "Handover plan", asks: "Questions for the principal", gaps: "Gaps", inProgress: "In progress", rules: "When this happens",
   decisions: "Decisions", risks: "Risks", systems: "Systems and access", documents: "Documents", decide: "Who decides what", finalCheck: "Final check", signoff: "Sign-off",
-  followUps: "Follow-ups", catchUps: "Check-ins", history: "History", profile: "Profile"};
+  followUps: "Follow-ups", catchUps: "Check-ins", history: "History", profile: "Profile", role: "About the role", asNeeded: "Jobs done as needed"};
 function getAt(o, path){ return path.reduce(function(v, k){ return v === undefined || v === null ? undefined : v[k]; }, o); }
 /* Something a person would recognise: the area, then the item it sits in */
 function gapLabel(h, path){
@@ -519,7 +534,13 @@ function logChange(out, o, text){
   if (o.role) entry.role = o.role;
   out.history = hist.concat([entry]);
 }
-function finish(out, o){ if (o.date) out.updated = o.date; return out.rendered ? withRendered(out) : out; }
+function finish(out, o){
+  if (o.date) out.updated = o.date;
+  /* A change that uses newer fields (an area on a regular job) raises the declared version to match */
+  var need = usesMinor(out), ver = String(out.handover || "1.0").split(".").map(Number);
+  if (ver[0] === 1 && ver[1] < need) out.handover = "1." + need;
+  return out.rendered ? withRendered(out) : out;
+}
 /* A copy of h with one record closed: o = {how, by (role), fix (line), date, at}. Throws with a message for the person. */
 function closeItem(h, list, id, o){
   o = o || {};
@@ -535,6 +556,7 @@ function closeItem(h, list, id, o){
   if (o.by) item.closed.by = o.by;
   if (fix) item.closed.fix = fix;
   o.idPrefix = "close";
+  if (o.by && !o.role) o.role = o.by;   // the change log names who closed it
   logChange(out, o, "Closed " + LIST_NOUN[list] + " " + id + " in the app: " + CLOSE_LABEL[o.how].toLowerCase() + ".");
   return finish(out, o);
 }
@@ -623,17 +645,16 @@ function addItem(h, list, values, o){
   o = o || {}; values = values || {};
   var defs = ADD_FIELDS[list];
   if (!defs) throw new Error("Items can't be added to " + list + ".");
-  if (!h.handover || h.handover === "1.0") throw new Error("This file uses format 1.0, which has no records. Ask the AI to write it again as format 1.1.");
+  if (list !== "asNeeded" && (!h.handover || h.handover === "1.0")) throw new Error("This file uses format 1.0, which has no records. Ask the AI to write it again as format 1.1.");
   var item = readFields(defs, values);
   if (list === "documents" && !item.url && !item.location) throw addError("Give a link, or say where the document is kept.", "url");
-  var out = clone(h), items = recordList(out, list), used = {};
+  var out = clone(h), items = list === "asNeeded" ? out.asNeeded || [] : recordList(out, list), used = {};
   items.forEach(function(x){ used[x.id] = true; });
   var base = slugFor(item.text || item.name || item.title, LIST_NOUN[list]), id = base, k = 2;
   while (used[id]) id = base + "-" + k++;
   var rec = {id: id};
   Object.keys(item).forEach(function(f){ rec[f] = item[f]; });
-  rec.added = stamp(o);
-  if (o.role) rec.addedBy = o.role;
+  if (list !== "asNeeded"){ rec.added = stamp(o); if (o.role) rec.addedBy = o.role; }  /* jobs carry no provenance: the change log says who added it */
   if (list === "decide"){ out.decide = out.decide || {}; out.decide.cards = (out.decide.cards || []).concat([rec]); }
   else out[list] = items.concat([rec]);
   o.idPrefix = "add";
@@ -642,10 +663,12 @@ function addItem(h, list, values, o){
 }
 
 /* ================= Editing (records, first-weeks tasks and regular jobs) ================= */
+var AREA_HINT = "The part of the role it belongs to, e.g. \"Finance\". To put it under a larger area, use a slash with spaces: \"Villa / Bookings\"";
 var EVERY_OPTS = [["day", "Every day"], ["weekday", "Monday to Friday"], ["week", "Every week"], ["month", "Every month"], ["quarter", "Every quarter"], ["year", "Every year"]];
 var EDIT_FIELDS = {
   path: [{k: "text", t: "line", req: true, label: "The task", n: "the task"}, {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
   recurring: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
+    {k: "area", t: "line", label: "Area of work", hint: AREA_HINT, n: "the area"},
     {k: "every", t: EVERY_OPTS, req: true, label: "How often", n: "how often"},
     {k: "on", t: "days", label: "On", hint: "Monday if none is ticked", when: {k: "every", is: ["week"]}, n: "the days"},
     {k: "day", t: "monthday", label: "Day of the month", hint: "1 to 31, or “last”. A day past the month's end falls on its last day. The 1st if left empty", when: {k: "every", is: ["month", "quarter"]}, n: "the day"},
@@ -654,14 +677,66 @@ var EDIT_FIELDS = {
     {k: "time", t: "time", label: "Time of day", hint: "e.g. 09:30", n: "the time"},
     {k: "start", t: "date", label: "From", hint: "Leave empty if it already applies", n: "the start"},
     {k: "end", t: "date", label: "Until", hint: "Leave empty if it carries on", n: "the end"},
+    {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}],
+  asNeeded: [{k: "text", t: "line", req: true, label: "The job", n: "the job"},
+    {k: "area", t: "line", label: "Area of work", hint: AREA_HINT, n: "the area"},
+    {k: "when", t: "line", label: "When it comes up", hint: "e.g. \"When a new member of staff joins\". \"As needed\" if left empty", n: "when it comes up"},
     {k: "detail", t: "md", label: "Details", hint: "How to do it, or where to look", n: "the details"}]
 };
-LIST_NOUN.path = "first-weeks task"; LIST_NOUN.recurring = "regular job";
+LIST_NOUN.path = "first-weeks task"; LIST_NOUN.recurring = "regular job"; LIST_NOUN.asNeeded = "job done as needed";
+ADD_FIELDS.asNeeded = EDIT_FIELDS.asNeeded;
+/* Lists whose items can be deleted outright. Records close instead, so their history stays; a job done as needed has none. */
+var DELETABLE = ["asNeeded"];
+/* A copy of h without one item: o = {role (who deleted it), date, at}. Throws with a message for the person. */
+function deleteItem(h, list, id, o){
+  o = o || {};
+  if (DELETABLE.indexOf(list) < 0) throw new Error("Items on " + list + " can't be deleted." + (CLOSE_HOW[list] ? " Close it instead, so its history stays." : ""));
+  var out = clone(h), items = out[list] || [], item = items.filter(function(x){ return x.id === id; })[0];
+  if (!item) throw new Error("That item isn't in the file any more.");
+  out[list] = items.filter(function(x){ return x !== item; });
+  if (!out[list].length) delete out[list];
+  o.idPrefix = "delete";
+  logChange(out, o, "Deleted " + LIST_NOUN[list] + " " + id + " in the app: " + plainText(item.text) + ".");
+  return finish(out, o);
+}
+
+/* ================= The role (1.2) ================= */
+var ROLE_FIELDS = [
+  {k: "organisation", t: "line", label: "Organisation", n: "the organisation"},
+  {k: "purpose", t: "md", label: "Purpose of the role", hint: "Two or three sentences: why the role exists", n: "the purpose"},
+  {k: "location", t: "line", label: "Location", hint: "Where the work is done, e.g. \"Head office, London, with some home working\"", n: "the location"},
+  {k: "hours", t: "line", label: "Hours", hint: "e.g. \"Weekdays 8:30 to 5:00\"", n: "the hours"},
+  {k: "travel", t: "line", label: "Travel", hint: "How much travel the role involves", n: "the travel"},
+  {k: "manages", t: "line", label: "Manages", hint: "Who the role manages, if anyone", n: "who it manages"},
+  {k: "skills", t: "md", label: "Skills and experience the work calls for", hint: "One per line, starting with \"- \"", n: "the skills"},
+  {k: "measures", t: "md", label: "What good looks like", hint: "How anyone can tell the role is done well. One per line, starting with \"- \"", n: "what good looks like"}];
+/* The role form's starting values */
+function roleValues(h){ var v = {}, r = h.role || {}; ROLE_FIELDS.forEach(function(d){ if (r[d.k] !== undefined) v[d.k] = r[d.k]; }); return v; }
+/* A copy of h with the role changed: values = every field of the form, o = {role (who edited it), date, at}.
+   Keeps x- fields; an empty form removes the role. Never the pay: a hiring decision, and personal financial data. Returns {h, changed}. */
+function editRole(h, values, o){
+  o = o || {}; values = values || {};
+  var next = readFields(ROLE_FIELDS, values);
+  ROLE_FIELDS.forEach(function(d){
+    if (next[d.k] && /\b(salary|salaries|pay (band|grade|scale|range|rate)|hourly rate|per annum)\b/i.test(next[d.k])) throw addError("Leave the pay out of the handover: it is a hiring decision, and pay is personal financial information.", d.k);
+  });
+  var out = clone(h), role = out.role || {}, changed = [];
+  ROLE_FIELDS.forEach(function(d){
+    if (JSON.stringify(role[d.k]) === JSON.stringify(next[d.k])) return;
+    changed.push(fieldName(d));
+    if (next[d.k] === undefined) delete role[d.k]; else role[d.k] = next[d.k];
+  });
+  if (!changed.length) throw new Error("Nothing has changed.");
+  if (Object.keys(role).length) out.role = role; else delete out.role;
+  o.idPrefix = "edit";
+  logChange(out, o, "Edited the role in the app: " + listWords(changed) + ".");
+  return {h: finish(out, o), changed: changed};
+}
 function editFields(list){ return EDIT_FIELDS[list] || ADD_FIELDS[list]; }
 function fieldName(d){ return d.n || (d.k === "text" ? "the text" : d.label.charAt(0).toLowerCase() + d.label.slice(1)); }
 function editList(h, list){
   if (list === "path"){ var all = []; (h.path || []).forEach(function(s){ all = all.concat(s.tasks || []); }); return all; }
-  return list === "recurring" ? h.recurring || [] : recordList(h, list);
+  return list === "recurring" || list === "asNeeded" ? h[list] || [] : recordList(h, list);
 }
 /* A form's starting values for one item: {field: value}, numbers and lists as the form shows them */
 function editValues(h, list, id){
@@ -774,6 +849,14 @@ function renderSections(h){
   var out = [];
   function add(id, title, parts){ parts = parts.filter(Boolean); if (parts.length) out.push({id: id, title: title, body: parts.join("\n\n")}); }
   var open = function(x){ return !x.closed; };
+  var ro = h.role && typeof h.role === "object" ? h.role : null;
+  if (ro) add("handover-role", "About the role", [
+    ro.purpose || "",
+    ROLE_FACTS.some(function(f){ return ro[f[0]]; }) ? tableMd(["About the role", "Details"], ROLE_FACTS.filter(function(f){ return ro[f[0]]; }).map(function(f){ return [f[1], ro[f[0]]]; })) : "",
+    ro.skills ? "### " + ROLE_SKILLS + "\n\n" + ro.skills : "",
+    ro.measures ? "### " + ROLE_MEASURES + "\n\n" + ro.measures : ""
+  ]);
+  add("handover-as-needed", "Jobs done as needed", [(h.asNeeded || []).length ? tableMd(["Job", "When", "Area", "Details"], h.asNeeded.map(function(a){ return [a.text, whenNeeded(a), a.area || "", a.detail || ""]; })) : ""]);
   add("handover-people", "People", [
     (h.people || []).length ? tableMd(["Name", "Role", "Contact"], h.people.map(function(p){ return [p.name, p.roles.map(function(r){ return ROLE_NAME[r]; }).join(", "), p.contact]; })) : "",
     (h.stakeholders || []).length ? "### People to know\n\n" + tableMd(["Name", "Who they are", "When to involve them", "Contact"], h.stakeholders.map(function(s){ return [s.name, s.relationship, s.involve, s.contact]; })) : ""
@@ -805,6 +888,12 @@ function renderSections(h){
   return out;
 }
 function cap(s){ return s ? String(s).charAt(0).toUpperCase() + String(s).slice(1) : ""; }
+/* 1.2: the role's facts, in the order a job description gives them */
+var ROLE_FACTS = [["organisation", "Organisation"], ["location", "Location"], ["hours", "Hours"], ["travel", "Travel"], ["manages", "Manages"]];
+var ROLE_SKILLS = "Skills and experience the work calls for", ROLE_MEASURES = "What good looks like";
+function whenNeeded(a){ return a.when || "As needed"; }
+/* An area as [top, sub]: "Villa / Bookings" is the Bookings part of the Villa */
+function areaParts(area){ var s = String(area || "").split(" / ").map(function(x){ return x.trim(); }).filter(Boolean); return [s[0] || "", s.slice(1).join(" / ")]; }
 var DOC_TYPE = {folder: "Folder", brief: "One-page brief", profile: "Principal profile", recording: "Recording", guide: "Step guide", template: "Template", protected: "Protected file", other: "Other"};
 function checksText(c){ if (!c) return ""; return ["opens","create","level"].filter(function(k){ return c[k]; }).map(function(k){ return {opens: "Opens", create: "Can create", level: "Right level"}[k] + ": " + (c[k].result === "pass" ? "pass" : "fail" + (c[k].note ? " (" + c[k].note + ")" : "")); }).join("; "); }
 /* A copy of h with the sections for 1.0 readers written again from the data */
@@ -832,7 +921,7 @@ var FINAL_TITLE = {recurring: "Recurring work", "in-progress": "Things in progre
 var EXPORT_KINDS = [
   {key: "overview", title: "Overview", hint: "What this handover is, the dates and how to reach the outgoing person"},
   {key: "people", title: "Who's who", hint: "The people in the handover and their roles"},
-  {key: "jobs", title: "Jobs", hint: "Recurring duties, by how often they happen"},
+  {key: "jobs", title: "Jobs", hint: "Regular duties by how often they happen, and the ones done as needed"},
   {key: "tasks", title: "First-weeks tasks", hint: "The path, stage by stage"},
   {key: "stakeholders", title: "People to know", hint: "Who they are and when to involve them"},
   {key: "decide", title: "Who decides what", hint: "Limits and approvers"},
@@ -851,7 +940,7 @@ var EXPORT_KINDS = [
   {key: "signoff", title: "Sign-off", hint: "Who signed, and notes added since"}
 ];
 var KIND_COLS = {
-  jobs: ["How often", "Job", "When", "Time", "Risk", "Notes"], tasks: ["Stage", "Task", "Detail"], steps: ["Phase", "Step", "Who", "Status", "Why"],
+  jobs: ["How often", "Job", "Area", "When", "Time", "Risk", "Notes"], tasks: ["Stage", "Task", "Detail"], steps: ["Phase", "Step", "Who", "Status", "Why"],
   inProgress: ["What", "Owner", "Due", "Status"], gaps: ["Gap", "Blocks work", "Status"], rules: ["When this happens", "Situation", "Status"],
   decisions: ["Decision", "Why", "Decided", "Status"], risks: ["Risk", "Kind", "Severity", "How it's passed on", "On the list", "Evidence", "Status"],
   systems: ["System", "Used for", "Login kept in", "Access from", "Access check", "Status"], documents: ["Document", "Type", "Where", "Link", "Status"],
@@ -873,9 +962,11 @@ function exportItems(h, key, o){
       return G(f[1], (h.recurring || []).filter(function(r){ return f[2].indexOf(r.every) > -1; }).map(function(r){
         var rk = riskFor[r.id], when = cadence(r), risk = rk && rk.severity ? cap(rk.severity) + " risk: " + rk.text : "";
         var span = r.start || r.end ? (r.start ? "From " + nice(r.start) : "") + (r.start && r.end ? " " : "") + (r.end ? "until " + nice(r.end) : "") : "";
-        return {id: r.id, title: r.text, meta: [when + (r.time ? " · " + r.time : ""), risk, span], note: r.detail, row: [f[1], r.text, when + (span ? " (" + span + ")" : ""), r.time || "", risk, r.detail || ""]};
+        return {id: r.id, title: r.text, meta: [when + (r.time ? " · " + r.time : ""), r.area || "", risk, span], note: r.detail, row: [f[1], r.text, r.area || "", when + (span ? " (" + span + ")" : ""), r.time || "", risk, r.detail || ""]};
       }));
-    });
+    }).concat([G("As needed", (h.asNeeded || []).map(function(a){
+      return {id: a.id, title: a.text, meta: [whenNeeded(a), a.area || ""], note: a.detail, row: ["As needed", a.text, a.area || "", whenNeeded(a), "", "", a.detail || ""]};
+    }))]);
     case "tasks": return (h.path || []).map(function(st){ return G(st.title, st.tasks.map(function(t){ return {id: t.id, title: t.text, note: t.detail, row: [st.title, t.text, t.detail || ""]}; })); });
     case "steps": var steps = (h.plan && h.plan.steps) || [], ov = overlap(h.plan); return PHASES.map(function(ph){
       var label = phaseLabel(ph, ov);
@@ -973,7 +1064,8 @@ function itemsDocument(h, o){
 var REPORTS = [
   {key: "working", title: "What we're working on", hint: "What's under way, what's been finished lately, and what's next in the handover"},
   {key: "jobs", title: "The assistant's jobs", hint: "The regular jobs, and what the assistant decides alone or brings to you"},
-  {key: "needs", title: "What needs you", hint: "Questions waiting for an answer, things handed to you, and the who-decides board to confirm"}
+  {key: "needs", title: "What needs you", hint: "Questions waiting for an answer, things handed to you, and the who-decides board to confirm"},
+  {key: "jd", title: "Job description", hint: "The role's duties by area of work, what it decides, who it works with and what it calls for. Leaves out anything marked for some people only"}
 ];
 function forPrincipal(x){ return !Array.isArray(x.visibleTo) || x.visibleTo.indexOf("principal") > -1; }
 function plural(n, one, many){ return n + " " + (n === 1 ? one : many || one + "s"); }
@@ -1038,6 +1130,7 @@ function principalReport(h, key, o){
     var rec = h.recurring || [], counts = [];
     FREQ.forEach(function(f){ var n = rec.filter(function(r){ return f[2].indexOf(r.every) > -1; }).length; if (n) counts.push(n + " " + f[1].toLowerCase()); });
     intro.push(rec.length ? A + " does " + plural(rec.length, "regular job") + " for you: " + listWords(counts) + ". Each one comes up on " + A + "'s list on the day it's due, with its time." : "No regular jobs are recorded yet.");
+    if ((h.asNeeded || []).length) intro[0] += " " + A + " also does " + plural(h.asNeeded.length, "job") + " when " + (h.asNeeded.length === 1 ? "it comes" : "they come") + " up.";
     var c = function(col){ return board.filter(function(x){ return x.column === col; }).length; };
     if (board.length){
       intro.push(A + " decides " + plural(c("alone"), "kind of thing", "kinds of thing") + " alone, checks with you first on " + c("check") + ", and always brings " + c("principal") + " to you.");
@@ -1048,9 +1141,12 @@ function principalReport(h, key, o){
     var jobs = [];
     FREQ.forEach(function(f){ rec.filter(function(r){ return f[2].indexOf(r.every) > -1; }).forEach(function(r){ jobs.push(I(r.id, r.text, [f[1].replace(/^Every /, "Each ").replace("Each day", "Daily"), cadence(r), r.time || ""])); }); });
     part("Regular jobs", ["Job", "How often", "When", "Time"], [{title: "", items: jobs}]);
+    part("Done as needed", ["Job", "When"], [{title: "", items: (h.asNeeded || []).map(function(a){ return I(a.id, a.text, [whenNeeded(a)]); })}]);
     part("Who decides what", BOARD_COLS, boardGroups());
     var ru = (h.rules || []).filter(open), sits = ru.map(function(r){ return r.situation || ""; }).filter(function(s, i, a){ return a.indexOf(s) === i; }).sort(function(a, b){ return a === "" ? -1 : b === "" ? 1 : 0; });
     part("When something comes up", ["What happens"], sits.map(function(s){ return {title: s || "Any time", items: ru.filter(function(r){ return (r.situation || "") === s; }).map(function(r){ return I(r.id, r.text); })}; }));
+  } else if (key === "jd"){
+    return jobDescription(h, date, meta);
   } else {
     var asks = (h.asks || []).filter(function(a){ return a.status === "draft" || a.status === "sent"; });
     var mins = asks.reduce(function(n, a){ return n + (typeof a.minutes === "number" ? a.minutes : 0); }, 0);
@@ -1079,12 +1175,67 @@ function principalReport(h, key, o){
     part("Checks waiting on you", ["Check", "Due", "Note"], [{title: "", items: checks.map(function(x){ return I(x.id, FINAL_TITLE[x.id], [x.due ? nice(x.due) : "", x.note || ""]); })}]);
     part("Still being found out", ["What " + A + " is finding out", "Effect"], [{title: "", items: findingOut(gq)}]);
   }
-  return {style: "report", report: key, title: meta.title, subtitle: h.title + " · for " + P + " · " + nice(date, "long"),
+  return {style: "report", report: key, name: meta.title, title: meta.title, subtitle: h.title + " · for " + P + " · " + nice(date, "long"),
     kicker: "Handover report", role: h.title, preparedFor: P, preparedBy: Afull, date: nice(date, "long"), figures: figures, intro: intro, parts: parts};
+}
+/* A job description, written from the file: the role as it is done today. It is meant to go beyond the principal
+   (to HR, or to candidates), so it leaves out every item marked for some people only, every contact, and closed items. */
+function jobDescription(h, date, meta){
+  var hasP = (h.people || []).some(function(p){ return (p.roles || []).indexOf("principal") > -1; });
+  var P = hasP ? who(h, "principal") : "", Pf = hasP ? P.split(" ")[0] : "the principal";
+  var ro = h.role && typeof h.role === "object" ? h.role : {};
+  var everyone = function(x){ return !x.closed && !Array.isArray(x.visibleTo); };
+  var I = function(id, title, cells, extra){ var it = {id: id, title: title, cells: cells || [], status: null, meta: [], note: "", body: "", block: false, row: []}; Object.keys(extra || {}).forEach(function(k){ it[k] = extra[k]; }); it.meta = it.cells.filter(Boolean); return it; };
+  var parts = [], part = function(title, columns, groups, bold){ groups = groups.filter(function(g){ return g.items.length; }); if (groups.length) parts.push({key: "jd", title: title, columns: columns, groups: groups, plain: !bold}); };
+  var block = function(id, body){ return I(id, "", [], {block: true, body: body}); };
+  /* A duty: its text, then the first paragraph of its details, which usually says how or why */
+  var duty = function(text, md){
+    var b = parseBlocks(md || "")[0]; if (!b || b.t !== "p" || /TODO:/.test(b.text)) return text;  /* a gap is for the handover, not the job description */
+    var t = String(text).replace(/[.\s]+$/, "");
+    return t + ". " + b.text;
+  };
+  var regular = function(r){ return I(r.id, duty(r.text, r.detail), [cadence(r) + (r.time ? ", " + r.time : "")]); };
+  var needed = function(a){ return I(a.id, duty(a.text, a.detail), [whenNeeded(a)]); };
+  var DUTY = ["Duty", "When"];
+  /* About the role */
+  var facts = ROLE_FACTS.filter(function(f){ return f[0] !== "organisation" && ro[f[0]]; }).map(function(f){ return I("role-" + f[0], f[1], [ro[f[0]]]); });
+  if (hasP) facts.unshift(I("role-reports", "Reports to", [P]));
+  part("About the role", ["", ""], [{title: "", items: facts}], true);
+  /* Duties: by area when the file gives areas, otherwise by how often */
+  var rec = h.recurring || [], an = h.asNeeded || [], duties = rec.map(function(r){ return {area: r.area, item: regular(r)}; }).concat(an.map(function(a){ return {area: a.area, item: needed(a)}; }));
+  if (duties.some(function(d){ return d.area; })){
+    var areas = [], find = function(list, title){ var x = list.filter(function(a){ return a.title === title; })[0]; if (!x){ x = {title: title, groups: [], items: []}; list.push(x); } return x; };
+    duties.forEach(function(d){ var ap = areaParts(d.area), top = find(areas, ap[0]); find(top.groups, ap[1]).items.push(d.item); });
+    areas.sort(function(a, b){ return (a.title ? 0 : 1) - (b.title ? 0 : 1); });  /* duties with no area come last */
+    areas.forEach(function(a){ part(a.title || (areas.length > 1 ? "Other duties" : "Duties"), DUTY, a.groups.sort(function(x, y){ return (x.title ? 1 : 0) - (y.title ? 1 : 0); })); });
+  } else {
+    part("Regular duties", DUTY, FREQ.map(function(f){ return {title: f[1], items: rec.filter(function(r){ return f[2].indexOf(r.every) > -1; }).map(regular)}; }));
+    part("Done as needed", DUTY, [{title: "", items: an.map(needed)}]);
+  }
+  /* Authority: the who-decides board, in the third person */
+  var cards = ((h.decide && h.decide.cards) || []).filter(everyone), stake = {};
+  (h.stakeholders || []).forEach(function(x){ stake[x.id] = x.name; });
+  var COL = {alone: "Decides alone", check: "Checks with " + Pf + " first", principal: "Always goes to " + Pf};
+  part("Authority and limits", ["Kind of decision", "Limit", "Approved by"], ["alone", "check", "principal"].map(function(c){
+    return {title: COL[c], items: cards.filter(function(x){ return x.column === c; }).map(function(x){
+      var ap = x.approver ? (x.approver.role ? who(h, x.approver.role) : stake[x.approver.stakeholder] || "") : "";
+      return I(x.id, x.text, [x.limit ? "Up to " + money(x.limit) : "", ap]);
+    })};
+  }));
+  var ru = (h.rules || []).filter(everyone), sits = ru.map(function(r){ return r.situation || ""; }).filter(function(x, i, a){ return a.indexOf(x) === i; }).sort(function(a, b){ return a === "" ? -1 : b === "" ? 1 : 0; });
+  part("When something comes up", [""], sits.map(function(x){ return {title: x || "Any time", items: ru.filter(function(r){ return (r.situation || "") === x; }).map(function(r){ return I(r.id, r.text); })}; }));
+  part("Working relationships", ["Who", "Relationship", "Working together"], [{title: "", items: (h.stakeholders || []).filter(everyone).map(function(x){ return I(x.id, x.name, [x.relationship || "", x.involve ? oneLine(x.involve) : ""]); })}], true);
+  part("Systems used", ["System", "What it's for"], [{title: "", items: (h.systems || []).filter(everyone).map(function(x){ return I(x.id, x.name, [x.purpose || ""]); })}], true);
+  if (ro.skills) part(ROLE_SKILLS, [], [{title: "", items: [block("role-skills", ro.skills)]}]);
+  if (ro.measures) part(ROLE_MEASURES, [], [{title: "", items: [block("role-measures", ro.measures)]}]);
+  var line = "Job description" + (hasP ? " · Reports to " + P : "");
+  return {style: "report", report: "jd", name: meta.title, title: h.title, subtitle: (ro.organisation ? ro.organisation + " · " : "") + line + " · " + nice(date, "long"),
+    kicker: ro.organisation || "Job description", role: ro.organisation ? line : (hasP ? "Reports to " + P : ""), preparedFor: "", preparedBy: "", date: nice(date, "long"),
+    figures: [], introLabel: "Purpose of the role", intro: ro.purpose ? parseBlocks(ro.purpose).filter(function(b){ return b.text; }).map(function(b){ return b.text; }) : [], parts: parts};
 }
 function docMarkdown(doc){
   var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""];
-  if (doc.intro && doc.intro.length) doc.intro.forEach(function(s){ L.push(s, ""); });
+  if (doc.intro && doc.intro.length){ if (doc.introLabel) L.push("## " + doc.introLabel, ""); doc.intro.forEach(function(s){ L.push(s, ""); }); }
   doc.parts.forEach(function(p){
     L.push("## " + p.title, "");
     p.groups.forEach(function(g){
@@ -1092,12 +1243,13 @@ function docMarkdown(doc){
       g.items.forEach(function(it){
         var t = oneLine(it.title), lv = g.title ? 4 : 3;
         if (it.block){
-          L.push(hashes(lv) + " " + t, "");
+          if (t) L.push(hashes(lv) + " " + t, "");
           if (it.body) L.push(mdBody(it.body, lv), "");
           if (it.meta.length) L.push("*" + it.meta.map(oneLine).join(" · ") + "*", "");
           if (it.note) L.push(oneLine(it.note), "");
           return;
         }
+        if (p.plain){ L.push("- " + t + (it.meta.length ? " *(" + it.meta.map(oneLine).join(" · ") + ")*" : "")); if (it.note) L.push("  - " + oneLine(it.note)); return; }
         L.push("- " + (/\*\*/.test(t) ? t : "**" + t + "**"));
         if (it.meta.length) L.push("  - " + it.meta.map(oneLine).join(" · "));
         if (it.note) L.push("  - " + oneLine(it.note));
@@ -1364,6 +1516,7 @@ function reportColumns(cols, items){
   if (cols.length > 1 + nc && items.some(function(it){ return it.status; })) out.push({k: "status", label: cols[cols.length - 1] || ""});
   return out;
 }
+function noHead(C){ return C.every(function(c){ return !c.label; }); }
 function cellOf(it, c){ return c.k === "title" ? it.title : c.k === "status" ? (it.status ? it.status.text : "") : it.cells[c.k] || ""; }
 function blockLines(src){ var out = []; parseBlocks(src).forEach(function(b){ if (b.items) b.items.forEach(function(x){ out.push("• " + x); }); else if (b.text) out.push(b.text); }); return out; }
 function reportPdf(doc, o){
@@ -1410,7 +1563,7 @@ function reportPdf(doc, o){
     doc.intro.forEach(function(s, i){ wrap(s, false, 10.5, CW - 48).forEach(function(l, j){ lines.push({t: l, first: j === 0, gap: j === 0 && i > 0}); }); });
     var bh = 46 + lines.length * 14.5 + (doc.intro.length - 1) * 4;
     need(bh); rect(M, y - bh, CW, bh, RPT.tint); rect(M, y - bh, 3, bh, RPT.accent);
-    text(M + 18, y - 20, "SUMMARY", "F2", 7.5, RPT.accent, 1.2);
+    text(M + 18, y - 20, (doc.introLabel || "Summary").toUpperCase(), "F2", 7.5, RPT.accent, 1.2);
     var sy = y - 38;
     lines.forEach(function(l){ if (l.gap) sy -= 4; if (l.first) rect(M + 18, sy + 2.5, 4, 4, RPT.gold); text(M + 32, sy, l.t, "F1", 10.5, RPT.ink); sy -= 14.5; });
     y -= bh + 28;
@@ -1419,9 +1572,9 @@ function reportPdf(doc, o){
     var t = RPT.tones[st.tone] || RPT.tones.neutral, w = textWidth(st.text, true, 7.5) + 12;
     rect(x, top - 13, w, 13, t[1]); text(x + 6, top - 9.3, st.text, "F2", 7.5, t[0]);
   }
-  function table(cols, items){
-    var C = reportColumns(cols, items), size = 9, lh = 11.5, pad = 5, widths = [];
-    var natural = function(c){ var w = textWidth(plainText(c.label).toUpperCase(), true, 7.5) + 2 * pad; items.forEach(function(it){ var v = plainText(cellOf(it, c)); w = Math.max(w, c.k === "status" ? textWidth(v, true, 7.5) + 12 + 2 * pad + 2 : textWidth(v, c.k === "title", size) + 2 * pad + 3); }); return w; };
+  function table(cols, items, plain){
+    var C = reportColumns(cols, items), size = 9, lh = 11.5, pad = 5, widths = [], bold = function(c){ return c.k === "title" && !plain; };
+    var natural = function(c){ var w = textWidth(plainText(c.label).toUpperCase(), true, 7.5) + 2 * pad; items.forEach(function(it){ var v = plainText(cellOf(it, c)); w = Math.max(w, c.k === "status" ? textWidth(v, true, 7.5) + 12 + 2 * pad + 2 : textWidth(v, bold(c), size) + 2 * pad + 3); }); return w; };
     var nat = C.map(natural), fixed = 0, flex = 0;
     C.forEach(function(c, i){ if (c.k === "title") return; nat[i] = Math.min(nat[i], c.k === "status" ? 120 : 150); fixed += nat[i]; });
     var titleW = Math.max(CW - fixed, CW * 0.42);
@@ -1429,20 +1582,20 @@ function reportPdf(doc, o){
     var scale = C.length > 1 ? (CW - titleW) / fixed : 1;
     C.forEach(function(c, i){ widths[i] = c.k === "title" ? titleW : nat[i] * scale; });
     function header(){
-      if (C.length === 1 && !C[0].label) return;
+      if (noHead(C)) return;
       need(24); var x = M;
       C.forEach(function(c, i){ text(x + pad, y - 10, plainText(c.label).toUpperCase(), "F2", 7, RPT.grey, 0.6); x += widths[i]; });
       y -= 16; hline(M, y, W - M, RPT.accent, 0.8);
     }
     header();
     items.forEach(function(it){
-      var cells = C.map(function(c, i){ return c.k === "status" ? null : wrap(cellOf(it, c), c.k === "title", size, widths[i] - 2 * pad); });
+      var cells = C.map(function(c, i){ return c.k === "status" ? null : wrap(cellOf(it, c), bold(c), size, widths[i] - 2 * pad); });
       var nl = Math.max.apply(null, cells.map(function(l){ return l ? l.length : 1; })), rh = nl * lh + 2 * pad + 2, before = pages.length;
       need(rh); if (pages.length > before) header();
       var top = y, x = M;
       C.forEach(function(c, i){
         if (c.k === "status"){ if (it.status) pill(x + pad, top - pad + 1, it.status); }
-        else cells[i].forEach(function(l, li){ text(x + pad, top - pad - 8 - li * lh, l, c.k === "title" ? "F2" : "F1", size, RPT.ink); });
+        else cells[i].forEach(function(l, li){ text(x + pad, top - pad - 8 - li * lh, l, bold(c) ? "F2" : "F1", size, RPT.ink); });
         x += widths[i];
       });
       y = top - rh; hline(M, y, W - M, RPT.rule, 0.5);
@@ -1450,10 +1603,10 @@ function reportPdf(doc, o){
     y -= 10;
   }
   function card(it){
-    var inner = CW - 34, tl2 = wrap(it.title, true, 11, inner), body = [];
+    var inner = CW - 34, tl2 = it.title ? wrap(it.title, true, 11, inner) : [], body = [];
     blockLines(it.body).forEach(function(s){ wrap(s, false, 10, inner).forEach(function(l){ body.push(l); }); });
     var meta = it.cells.filter(Boolean).join("  ·  "), ml = meta ? wrap(meta, false, 8.5, inner) : [], nl = it.note ? wrap(it.note, false, 9, inner) : [];
-    var hgt = 22 + tl2.length * 14 + body.length * 13 + (ml.length ? 6 + ml.length * 11 : 0) + (nl.length ? 4 + nl.length * 12 : 0);
+    var hgt = (tl2.length ? 22 : 18) + tl2.length * 14 + body.length * 13 + (ml.length ? 6 + ml.length * 11 : 0) + (nl.length ? 4 + nl.length * 12 : 0);
     need(hgt); rect(M, y - hgt, CW, hgt, RPT.card); rect(M, y - hgt, 3, hgt, RPT.gold);
     var cy = y - 18;
     tl2.forEach(function(l){ text(M + 18, cy, l, "F2", 11, RPT.ink); cy -= 14; });
@@ -1470,7 +1623,7 @@ function reportPdf(doc, o){
     y -= 26;
     p.groups.forEach(function(g){
       if (g.title){ need(50); text(M, y - 9, plainText(g.title).toUpperCase(), "F2", 7.5, RPT.accent, 0.8); y -= 16; }
-      if (g.items.some(function(it){ return it.block; })) g.items.forEach(card); else table(p.columns || [], g.items);
+      if (g.items.some(function(it){ return it.block; })) g.items.forEach(card); else table(p.columns || [], g.items, p.plain);
     });
     y -= 12;
   });
@@ -1490,18 +1643,18 @@ function reportHtml(doc){
   b.push('<header class="band"><div class="kicker">' + escHtml(doc.kicker || "Report") + "</div><h1>" + inlineHtml(doc.title) + "</h1>" + (doc.role ? '<div class="line">' + inlineHtml(doc.role) + "</div>" : "") +
     '<div class="line">' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " &middot; " : "") + escHtml(doc.date || "") + "</div></header>");
   if ((doc.figures || []).length) b.push('<div class="figs">' + doc.figures.map(function(f){ return '<div class="fig ' + (T[f.tone] ? f.tone : "neutral") + '"><b>' + escHtml(f.value) + "</b><span>" + escHtml(f.label) + "</span></div>"; }).join("") + "</div>");
-  if ((doc.intro || []).length) b.push('<div class="summary"><div class="kick">Summary</div><ul>' + doc.intro.map(function(s){ return "<li>" + inlineHtml(s) + "</li>"; }).join("") + "</ul></div>");
+  if ((doc.intro || []).length) b.push('<div class="summary"><div class="kick">' + escHtml(doc.introLabel || "Summary") + '</div><ul>' + doc.intro.map(function(s){ return "<li>" + inlineHtml(s) + "</li>"; }).join("") + "</ul></div>");
   doc.parts.forEach(function(p, pi){
     b.push('<h2><span class="num">' + (pi < 9 ? "0" : "") + (pi + 1) + "</span>" + inlineHtml(p.title) + "</h2>");
     p.groups.forEach(function(g){
       if (g.title) b.push('<h3>' + inlineHtml(g.title) + "</h3>");
       if (g.items.some(function(it){ return it.block; })){
-        g.items.forEach(function(it){ b.push('<div class="card"><h4>' + inlineHtml(it.title) + "</h4>" + (it.body ? htmlBody(it.body, 4) : "") + (it.cells.filter(Boolean).length ? '<p class="cmeta">' + it.cells.filter(Boolean).map(inlineHtml).join(" &middot; ") + "</p>" : "") + (it.note ? '<p class="cnote">' + inlineHtml(it.note) + "</p>" : "") + "</div>"); });
+        g.items.forEach(function(it){ b.push('<div class="card">' + (it.title ? "<h4>" + inlineHtml(it.title) + "</h4>" : "") + (it.body ? htmlBody(it.body, 4) : "") + (it.cells.filter(Boolean).length ? '<p class="cmeta">' + it.cells.filter(Boolean).map(inlineHtml).join(" &middot; ") + "</p>" : "") + (it.note ? '<p class="cnote">' + inlineHtml(it.note) + "</p>" : "") + "</div>"); });
         return;
       }
       var C = reportColumns(p.columns || [], g.items);
-      b.push("<table>" + (C.length === 1 && !C[0].label ? "" : "<thead><tr>" + C.map(function(c){ return "<th" + (c.k === "status" ? ' class="st"' : "") + ">" + escHtml(c.label) + "</th>"; }).join("") + "</tr></thead>") + "<tbody>" +
-        g.items.map(function(it){ return "<tr>" + C.map(function(c){ return c.k === "status" ? '<td class="st">' + pillH(it.status) + "</td>" : "<td" + (c.k === "title" ? ' class="t"' : "") + ">" + inlineHtml(cellOf(it, c)) + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>");
+      b.push("<table>" + (noHead(C) ? "" : "<thead><tr>" + C.map(function(c){ return "<th" + (c.k === "status" ? ' class="st"' : "") + ">" + escHtml(c.label) + "</th>"; }).join("") + "</tr></thead>") + "<tbody>" +
+        g.items.map(function(it){ return "<tr>" + C.map(function(c){ return c.k === "status" ? '<td class="st">' + pillH(it.status) + "</td>" : "<td" + (c.k === "title" && !p.plain ? ' class="t"' : "") + ">" + inlineHtml(cellOf(it, c)) + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table>");
     });
   });
   b.push('<footer>' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " from the handover file" : "From the handover file") + (doc.date ? " &middot; " + escHtml(doc.date) : "") + "</footer>");
@@ -1655,7 +1808,7 @@ function docDocx(doc){
     if ((doc.intro || []).length){
       body.push(gapP(240));
       body.push(box([{w: TWD, fill: RPT.tint, left: RPT.accent, pad: 180, padX: 300, body:
-        para(r("SUMMARY", {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
+        para(r((doc.introLabel || "Summary").toUpperCase(), {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
         doc.intro.map(function(s){ return para(r("■  ", {color: RPT.gold, size: 14}) + runs(s, {size: 21}), sp(0, 80) + '<w:ind w:left="300" w:hanging="300"/>'); }).join("")}]));
     }
     /* Sections */
@@ -1666,7 +1819,7 @@ function docDocx(doc){
         if (gr.items.some(function(it){ return it.block; })){
           gr.items.forEach(function(it){
             body.push(box([{w: TWD, fill: RPT.card, left: RPT.gold, pad: 140, padX: 260, body:
-              para(runs(it.title, {bold: true, size: 22}), sp(0, 60)) + (it.body ? blocks(it.body) : "") +
+              (it.title ? para(runs(it.title, {bold: true, size: 22}), sp(0, 60)) : "") + (it.body ? blocks(it.body) : "") +
               (it.cells.filter(Boolean).length ? para(r(it.cells.filter(Boolean).map(plainText).join("  ·  "), {bold: true, color: RPT.accent, size: 17}), sp(60, 20)) : "") +
               (it.note ? para(r(plainText(it.note), {italic: true, color: RPT.grey, size: 18}), sp(20, 0)) : "")}]));
             body.push(gapP(120));
@@ -1680,10 +1833,10 @@ function docDocx(doc){
         var edge = function(e, sz, col){ return "<w:" + e + ' w:val="single" w:sz="' + sz + '" w:space="0" w:color="' + col + '"/>'; };
         var tc = function(i, content, head){ return '<w:tc><w:tcPr><w:tcW w:w="' + widths[i] + '" w:type="dxa"/><w:tcBorders>' + edge("bottom", head ? 12 : 4, head ? RPT.accent : RPT.rule) + "</w:tcBorders></w:tcPr>" + content + "</w:tc>"; };
         var cellP = function(content){ return para(content, sp(40, 40)); };
-        var head = C.length === 1 && !C[0].label ? "" : "<w:tr><w:trPr><w:tblHeader/></w:trPr>" + C.map(function(c, i){ return tc(i, cellP(r(c.label.toUpperCase(), {bold: true, color: RPT.grey, size: 14, spacing: 10})), true); }).join("") + "</w:tr>";
+        var head = noHead(C) ? "" : "<w:tr><w:trPr><w:tblHeader/></w:trPr>" + C.map(function(c, i){ return tc(i, cellP(r(c.label.toUpperCase(), {bold: true, color: RPT.grey, size: 14, spacing: 10})), true); }).join("") + "</w:tr>";
         var rows = gr.items.map(function(it){ return "<w:tr><w:trPr><w:cantSplit/></w:trPr>" + C.map(function(c, i){
           if (c.k === "status"){ var t = it.status ? T[it.status.tone] || T.neutral : null; return tc(i, cellP(t ? r(" " + it.status.text + " ", {bold: true, color: t[0], size: 15, fill: t[1]}) : "")); }
-          return tc(i, cellP(c.k === "title" ? runs(cellOf(it, c), {bold: true, size: 19}) : runs(cellOf(it, c), {size: 19})));
+          return tc(i, cellP(c.k === "title" && !pt.plain ? runs(cellOf(it, c), {bold: true, size: 19}) : runs(cellOf(it, c), {size: 19})));
         }).join("") + "</w:tr>"; }).join("");
         body.push('<w:tbl><w:tblPr><w:tblW w:w="' + TWD + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>' + none() + '</w:tblBorders><w:tblCellMar><w:left w:w="90" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>' + widths.map(function(w){ return '<w:gridCol w:w="' + w + '"/>'; }).join("") + "</w:tblGrid>" + head + rows + "</w:tbl>");
         body.push(gapP(120));
@@ -1794,9 +1947,9 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.1", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.2", validate: validate, schedule: schedule, occursOn: occursOn, cadence: cadence, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, addItem: addItem, addFields: ADD_FIELDS, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

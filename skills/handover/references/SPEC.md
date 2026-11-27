@@ -1,13 +1,21 @@
-# The handover format, version 1.1
+# The handover format, version 1.2
 
 A handover file describes how to take over a role. It's built for people: the Handover app turns it into a guided first month, a daily dashboard and a reference you can search. It's also built for tools: the format is plain JSON with a published schema, so anything can read it, write it or add to it.
 
 - **File extension:** `.handover`
 - **Encoding:** UTF-8 JSON
-- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json))
-- **Examples:** [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.1, an executive assistant handover with no overlap: the reference case, and the one for sections 9 to 15) and [`sample.handover`](../site/examples/sample.handover) (1.0, a simpler operations lead handover)
+- **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json), [`v1.2.json`](../site/schema/v1.2.json))
+- **Examples:** [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.2, an executive assistant handover with no overlap: the reference case, and the one for sections 9 to 17) and [`sample.handover`](../site/examples/sample.handover) (1.0, a simpler operations lead handover)
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
+
+## What's new in 1.2
+
+Version 1.2 lets a file describe the role itself, so a tool can write a job description from it: what the role is for and what it calls for, and every job grouped by the part of the role it belongs to, including the jobs that have no schedule. Everything is optional, and every 1.0 and 1.1 file stays valid with the same meaning.
+
+- **The role** (section 17): `role`, with the organisation, purpose, location, hours, travel, who the role manages, the skills the work calls for and what good looks like.
+- **Areas of work** (section 17): `area` on a `recurring` duty, such as `"Finance"` or `"Villa / Bookings"`.
+- **Jobs done as needed** (section 17): `asNeeded`, the jobs with no schedule. They never appear on the daily list.
 
 ## What's new in 1.1
 
@@ -38,7 +46,7 @@ A tool that finds a secret in a file it is writing MUST leave it out and SHOULD 
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
-| `handover` | yes | string | Format version: `"1.1"` for this spec, `"1.0"` for files that use only 1.0 fields. |
+| `handover` | yes | string | Format version: the lowest that has every field the file uses: `"1.2"`, `"1.1"` or `"1.0"`. |
 | `id` | yes | id | Stable identifier. Keep it the same across versions of the same handover so a reader's progress carries over. |
 | `title` | yes | string | What the handover is for, e.g. "Operations lead handover". |
 | `$schema` | no | string | The schema URL above. Helps editors and validators. |
@@ -62,6 +70,8 @@ A tool that finds a secret in a file it is writing MUST leave it out and SHOULD 
 | `decide` | no | object | 1.1. Who decides what, with spending limits (section 12). |
 | `finalCheck`, `signoff`, `followUps`, `catchUps`, `history` | no | | 1.1. Finishing the handover (section 13). |
 | `rendered` | no | id[] | 1.1. Sections written for 1.0 readers from structured data (section 16). |
+| `role` | no | object | 1.2. The role itself, for a job description (section 17). |
+| `asNeeded` | no | asNeeded[] | 1.2. Jobs with no schedule, done when something calls for them (section 17). |
 
 **Types.** An *id* matches `^[a-z0-9][a-z0-9-]{0,63}$`. A *date* is `YYYY-MM-DD`. A *date-time* is ISO 8601 with a time zone, e.g. `2026-10-05T09:12:00-05:00`. A *time* is 24-hour `HH:MM`. *Markdown* is described in section 4. A *role* is one of `outgoing`, `incoming`, `principal`, `owner`, `facilitator`.
 
@@ -85,7 +95,7 @@ Roles are a fixed list, not references: a step can belong to `incoming` before a
 
 **Task** (`path[].tasks[]`): `id`, `text` required. Optional `detail`.
 
-**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below.
+**Recurring duty** (`recurring[]`): `id`, `text`, `every` required. Optional `time`, `start`, `end`, `detail`, `see`, plus the schedule fields below, and since 1.2 `area` (section 17).
 
 **Question** (`questions[]`): `q` (the question, plain text) and `a` (the answer, markdown) required. Optional `id`, `tag` (a short category label) and `see`.
 
@@ -161,12 +171,12 @@ Any object MAY carry extra fields whose names start with `x-`, for example `"x-o
 
 **Readers.** A tool that reads 1.x MUST open any later 1.x file. It MUST NOT reject the file because of fields it doesn't know. It SHOULD ignore them, tell the person that some parts may not show, and keep them if it rewrites the file.
 
-**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` otherwise. A 1.0 file that uses 1.1 fields is still readable; validators SHOULD warn about it.
+**Writers.** A file SHOULD declare the lowest version that has every field it uses: `"1.0"` when it uses only 1.0 fields, `"1.1"` when it uses 1.1 fields but none added in 1.2, and `"1.2"` otherwise. A file that declares a version lower than the fields it uses is still readable; validators SHOULD warn about it. A tool that adds a newer field to a file SHOULD raise the declared version to match.
 
 **Schemas.** The schema rejects unknown fields (`additionalProperties: false`, apart from `x-` fields) so that writers catch typos. That strictness is a check for writers, not readers. To stop a strict schema from rejecting newer files:
 
 - `schema/v1.json` is always the schema for the newest 1.x. Because a minor version only adds optional fields, every older 1.x file is valid against it.
-- `schema/v1.0.json`, `schema/v1.1.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
+- `schema/v1.0.json`, `schema/v1.1.json`, `schema/v1.2.json` and so on are frozen copies, for a writer that must prove a file uses nothing newer.
 - A validator that has only an older schema and meets a file with a higher minor version SHOULD treat unknown fields as warnings, not errors. The reference implementation (`core.js`) does this.
 
 ## 9. People (1.1)
@@ -310,7 +320,7 @@ A file is something people share. Some items are only for some roles: a principa
 | | `newcomer` | `record` |
 |---|---|---|
 | For | Someone taking over, and anyone after them. Default `audience`: `["incoming"]`. | The people running the handover: a backup, a move to another tool, an archive. |
-| Content (`path`, `recurring`, `questions`, `sections`, `people`, `stakeholders`) | Kept | Kept |
+| Content (`path`, `recurring`, `asNeeded`, `role`, `questions`, `sections`, `people`, `stakeholders`) | Kept | Kept |
 | Records (section 11) and `decide` | Open items kept; closed items left out | Kept, closed items too |
 | `rendered` sections (section 16) | Written again from what is kept | Written again from what is kept |
 | Item fields `added`, `addedBy`, `aiDrafted`, `visibleTo`, `contactVisibleTo` | Left out | Kept |
@@ -346,11 +356,38 @@ A reader that only knows 1.0 ignores the 1.1 fields. To make sure it loses struc
 - "when this happens" rules, decisions and risks;
 - things in progress and open gaps;
 - who decides what, with limits and approvers;
-- the plan, with step dates when the tool knows them.
+- the plan, with step dates when the tool knows them;
+- since 1.2, the role and the jobs done as needed.
 
 Leave out what the profile and audience leave out (section 14). List the ids of those sections in `rendered`. A reader that understands the structured data SHOULD hide the rendered sections instead of showing everything twice, and a tool that rewrites the file SHOULD write them again from the data rather than edit them by hand.
 
+## 17. The role, areas of work and jobs done as needed (1.2)
+
+A handover already holds most of what a job description says: the regular jobs and their timing, who decides what, who the role works with and the systems it uses. Version 1.2 adds the rest of what the outgoing person knows about the role, so a tool can write the job description from the file. Like everything else in the file, these fields describe the role as it is done today.
+
+**Role** (`role`, an object). Every field is optional.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `organisation` | line | The organisation the role is in, as it should appear on a job description. |
+| `purpose` | markdown | Why the role exists, in two or three sentences. |
+| `location` | line | Where the work is done, e.g. "Kingston office, two days a week from home". |
+| `hours` | line | The working pattern, e.g. "Weekdays 8:30 to 5, some evening events". Not the same as `from.hours`, which is when the outgoing person can be contacted. |
+| `travel` | line | How much travel the role involves. |
+| `manages` | line | Who the role manages or directs, if anyone. |
+| `skills` | markdown | The skills and experience the work calls for, usually a list. |
+| `measures` | markdown | What good looks like: how anyone can tell the role is done well. |
+
+`role` MUST NOT hold pay, benefits or any other personal financial detail (section 1). Pay is decided when someone is hired, not handed over. Who the role reports to is not stored either: it is the person with the `principal` role (section 9).
+
+**Area** (`area`, a line, on a `recurring` duty or an `asNeeded` job): the part of the role the job belongs to, such as `"Finance"` or `"Office and staff"`. To put an area under a larger one, write both with ` / ` (a slash with a space each side) between them: `"Olive Branch Villa / Bookings"` is the Bookings part of Olive Branch Villa. A slash with no spaces, as in `"Account Executive/Admin Assistant"`, is part of the name. Jobs with the same `area` belong together. Areas are listed in the order they first appear, regular jobs first. Use the same spelling each time.
+
+**Job done as needed** (`asNeeded[]`): a job with no schedule, done when something calls for it. `id` and `text` (line) are required. Optional `area`, `when` (line: what calls for it, e.g. "When a new member of staff joins"; absent means "as needed"), `detail` (markdown) and `see` (a section id). Ids MUST be unique within `asNeeded`. A job done as needed never appears on a daily list and has no progress. A job that happens on a date, even a rough one, belongs in `recurring`, with the rule it can't express in `detail` (section 5).
+
+**Job descriptions.** A tool that writes a job description from a file SHOULD say only what the file shows. A job description usually goes beyond the people in the handover, to HR or to candidates, so it SHOULD leave out every item with `visibleTo`, every stakeholder `contact`, and closed items. It SHOULD group the jobs by `area` when the file gives areas, and by how often they happen otherwise.
+
 ## Changelog
 
+- **1.2** (2026-11-27). Added `role`, `asNeeded` and `area` on `recurring` duties (section 17), so a file can describe the role for a job description. Added `v1.2.json`. Changed the writers' rule to name 1.2, and asked tools that add a newer field to raise the declared version. Nothing in 1.0 or 1.1 changed meaning.
 - **1.1** (2026-11-26). Added `audience`, `profile`, `people`, `stakeholders`, `plan`, `asks`, `gaps`, `inProgress`, `rules`, `decisions`, `risks`, `systems`, `documents`, `decide`, `finalCheck`, `signoff`, `followUps`, `catchUps`, `history` and `rendered`, plus `from.hours` and `from.paid`. Extended the no-secrets rule to every new text field. Added uniqueness and reference rules for the new lists, the visibility rules and the `newcomer` and `record` profiles, the list of values that are worked out rather than stored, and the rule to render structured data into `sections` for 1.0 readers. Settled the schema conflict: `v1.json` is the newest 1.x, frozen copies are published for each minor version, and readers MUST NOT reject a 1.x file for unknown fields. Nothing in 1.0 changed meaning.
 - **1.0** (2026-11). First version.
