@@ -548,6 +548,63 @@ function mergeProgress(state, p){
 function contentOnly(h){ var c = {}; Object.keys(h).forEach(function(k){ if (k !== "progress") c[k] = h[k]; }); return c; }
 function clone(v){ return JSON.parse(JSON.stringify(v)); }
 
+/* ================= Apple Reminders: the regular jobs as a to-do list ================= */
+/* The jobs to keep in a Reminders list on day today: one item per job, for its next date that isn't ticked (or the one that
+   is overdue). It shows from o.days (default 7) days before that date, or from the day the work starts for a job with a lead
+   time, and stays until it is ticked. Each item is {key (<id>@<date>), title, notes, due, time, starts}. ticked lists the
+   occurrences done in the last 400 days (a yearly job can be ticked late), so their reminders can be ticked too. Items for some people only are left out. */
+var TODO_BACK = 400;
+function todoList(h, progress, today, o){
+  o = o || {}; progress = progress || {};
+  var done = progress.recurring || {}, days = o.days || 7, title = plainText(h.title || "Handover"), items = [];
+  var overdue = {}; schedule(h, progress, today).overdue.forEach(function(x){ overdue[x.r.id] = x.date; });
+  (h.recurring || []).forEach(function(r){
+    if (!r || r.visibleTo) return;
+    var d = overdue[r.id] || null;
+    for (var i = 0; !d && i <= 400; i++){ var s = addDays(today, i); if (r.end && s > r.end) break; if (occursOn(r, s) && !done[r.id + "@" + s]) d = s; }
+    if (!d) return;
+    var lead = leadOf(r), starts = lead ? addDays(d, -lead) : "";
+    if (d > today && (starts || d) > addDays(today, days)) return;
+    var notes = [cadence(r) + (r.time ? ", at " + r.time : "") + "."];
+    if (r.detail) notes.push(String(r.detail).split("\n").map(plainText).join("\n").trim());
+    notes.push("From the handover: " + title);
+    items.push({key: r.id + "@" + d, title: plainText(r.text), notes: notes.filter(Boolean).join("\n\n"), due: d, time: TIME.test(r.time || "") ? r.time : "", starts: starts});
+  });
+  items.sort(function(a, b){ return a.due < b.due ? -1 : a.due > b.due ? 1 : (a.time || "") < (b.time || "") ? -1 : 1; });
+  var since = addDays(today, -TODO_BACK);
+  return {items: items, ticked: Object.keys(done).filter(function(k){ return done[k] && (k.split("@")[1] || "") >= since; }).sort()};
+}
+/* What to change so the Reminders list matches, and the other way round. want is todoList's result; have is the list's
+   reminders as {id, key, done}. seen maps each key to whether its reminder was ticked when the two last matched, and
+   written to a fingerprint of what was last written into it. A reminder ticked or unticked in Reminders since then (done
+   differs from seen) goes back to the app as ticks, and wins over the app for that round. Otherwise the app wins: reminders
+   are ticked or unticked to match, rewritten when the job changed (not when someone edited the reminder), created, or
+   removed when not ticked and no longer wanted. Returns {ticks: [{key, done}], create: [item], update: [{id, ...item}],
+   set: [{id, done}], remove: [id], seen, written}. */
+function todoSig(w){ return [w.title, w.notes, w.due, w.time, w.starts].map(function(v){ return v || ""; }).join("\n\u0001"); }
+function todoPlan(want, have, seen, written){
+  seen = seen || {}; written = written || {};
+  var wanted = {}, ticked = {}, kept = {}, out = {ticks: [], create: [], update: [], set: [], remove: [], seen: {}, written: {}};
+  (want.items || []).forEach(function(w){ wanted[w.key] = w; });
+  (want.ticked || []).forEach(function(k){ ticked[k] = true; });
+  function keep(k){ if (written[k]) out.written[k] = written[k]; }
+  (have || []).forEach(function(x){
+    if (!x || !x.key || kept[x.key]){ if (x && x.id) out.remove.push(x.id); return; }
+    var k = x.key, done = !!x.done, w = wanted[k];
+    kept[k] = true;
+    if (done !== (seen[k] === true)){ out.ticks.push({key: k, done: done}); out.seen[k] = done; keep(k); return; }
+    if (!!ticked[k] !== done){ done = !!ticked[k]; out.set.push({id: x.id, done: done}); }
+    if (!done && !w){ out.remove.push(x.id); return; }
+    out.seen[k] = done;
+    if (w && !done && written[k] !== todoSig(w)){
+      var u = {id: x.id}; Object.keys(w).forEach(function(f){ u[f] = w[f]; });
+      out.update.push(u); out.written[k] = todoSig(w);
+    } else keep(k);
+  });
+  (want.items || []).forEach(function(w){ if (!kept[w.key] && !ticked[w.key]){ out.create.push(w); out.seen[w.key] = false; out.written[w.key] = todoSig(w); } });
+  return out;
+}
+
 /* ================= Merging two copies of the content (a shared folder) ================= */
 /* mergeHandover(base, mine, theirs) combines two copies of one handover that were changed apart.
    base is the copy both started from, or null if it isn't known (then nothing counts as removed).
@@ -2510,6 +2567,6 @@ function docXlsx(doc){
 var api = {version: "1.4", guidesFor: guidesFor, guideLabel: guideLabel, docType: DOC_TYPE, validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, calendarFile: calendarFile, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
-  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};
+  exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit, todoList: todoList, todoPlan: todoPlan};
 if (typeof module === "object" && module.exports) module.exports = api; else root.HandoverCore = api;
 })(typeof window !== "undefined" ? window : this);

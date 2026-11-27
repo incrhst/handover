@@ -1213,3 +1213,84 @@ test("calendar: the CLI writes a calendar file, for every job or the ones named"
   assert.deepEqual(icsEvents(one).map(e => [e.UID, e.DTSTART, e.RRULE]), [["card-reconcile@" + ea().id + ".handover", "20261205", "FREQ=MONTHLY;BYMONTHDAY=5"]]);
   assert.throws(() => execFileSync("node", [cli, "ics", file, "--jobs", "nope"], { stdio: "pipe" }), /No regular job with the id nope/);
 });
+
+/* Apple Reminders: a fake list that makes the changes a plan asks for, as the Mac app does */
+function fakeList(){
+  const l = { items: [], seen: {}, written: {}, n: 0 };
+  l.have = () => l.items.map(x => ({ id: x.id, key: x.key, done: x.done }));
+  l.apply = p => {
+    p.create.forEach(w => l.items.push(Object.assign({ id: "r" + ++l.n, done: false }, w)));
+    p.update.forEach(u => Object.assign(l.items.find(x => x.id === u.id), u));
+    p.set.forEach(s => { l.items.find(x => x.id === s.id).done = s.done; });
+    l.items = l.items.filter(x => !p.remove.includes(x.id));
+    l.seen = p.seen; l.written = p.written;
+  };
+  return l;
+}
+/* One round as the page runs it: read the list, take ticks made there, make the rest of the changes */
+function round(h, S, today, l){
+  const p = C.todoPlan(C.todoList(h, S, today), l.have(), l.seen, l.written);
+  p.ticks.forEach(t => { if (t.done) S.recurring[t.key] = "x"; else delete S.recurring[t.key]; });
+  l.apply(p);
+  return p;
+}
+const quiet = p => !p.ticks.length && !p.create.length && !p.update.length && !p.set.length && !p.remove.length;
+const office = () => ({ handover: "1.3", id: "office", title: "Office manager", timezone: "Europe/London", recurring: [
+  { id: "post", text: "Collect the **post**", every: "weekday", time: "09:00" },
+  { id: "rent", text: "Pay the rent", every: "month", day: 1, detail: "Standing order; check it went." },
+  { id: "van", text: "Renew the van's insurance", every: "year", date: "12-20", lead: 30 },
+  { id: "audit", text: "Book the audit", every: "year", date: "06-01" },
+  { id: "payroll", text: "Run payroll", every: "month", day: 25, visibleTo: ["outgoing"] }] });
+
+test("reminders list: each job once, for its next date, a week ahead or from when its work starts", () => {
+  const w = C.todoList(office(), { recurring: { "post@2026-11-27": "x" }, firstSeen: "2026-11-27" }, "2026-11-27");
+  assert.deepEqual(w.items.map(i => [i.key, i.time, i.starts]), [["post@2026-11-30", "09:00", ""], ["rent@2026-12-01", "", ""], ["van@2026-12-20", "", "2026-11-20"]]);
+  assert.equal(w.items.find(i => i.key.startsWith("rent")).notes, "Monthly, the 1st.\n\nStanding order; check it went.\n\nFrom the handover: Office manager");
+  assert.equal(w.items.find(i => i.key.startsWith("post")).title, "Collect the post");
+  assert.ok(!w.items.some(i => /audit|payroll/.test(i.key)), "too far ahead, or for some people only");
+  assert.deepEqual(w.ticked, ["post@2026-11-27"]);
+  const late = C.todoList(office(), { recurring: {}, firstSeen: "2026-11-20" }, "2026-11-27").items.find(i => i.key.startsWith("post"));
+  assert.equal(late.key, "post@2026-11-26", "an overdue date comes first");
+});
+
+test("reminders list: both sides settle after one round, and nothing goes round in circles", () => {
+  const h = office(), S = { recurring: {}, firstSeen: "2026-11-27" }, l = fakeList();
+  let p = round(h, S, "2026-11-27", l);
+  assert.equal(p.create.length, 3); assert.ok(quiet(round(h, S, "2026-11-27", l)), "the same again changes nothing");
+
+  l.items.find(x => x.key === "post@2026-11-27").done = true;                                  // ticked in Reminders
+  p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.ticks, [{ key: "post@2026-11-27", done: true }]); assert.equal(S.recurring["post@2026-11-27"], "x");
+  assert.equal(p.remove.length + p.set.length, 0, "the ticked reminder is left alone");
+  p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.create.map(w => w.key), ["post@2026-11-30"], "the next one appears"); assert.ok(quiet(round(h, S, "2026-11-27", l)));
+
+  S.recurring["rent@2026-12-01"] = "x";                                                          // ticked in the app
+  p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.set, [{ id: l.items.find(x => x.key === "rent@2026-12-01").id, done: true }]); assert.ok(quiet(round(h, S, "2026-11-27", l)));
+
+  l.items.find(x => x.key === "rent@2026-12-01").done = false;                                  // unticked in Reminders
+  p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.ticks, [{ key: "rent@2026-12-01", done: false }]); assert.ok(!S.recurring["rent@2026-12-01"]);
+  assert.ok(l.items.some(x => x.key === "rent@2026-12-01" && !x.done), "kept, not removed");
+  assert.ok(quiet(round(h, S, "2026-11-27", l)));
+});
+
+test("reminders list: edits to a job rewrite its reminder once; gone jobs and copies are removed, done ones kept", () => {
+  const h = office(), S = { recurring: { "post@2026-11-27": "x" }, firstSeen: "2026-11-27" }, l = fakeList();
+  round(h, S, "2026-11-27", l);
+  l.items.find(x => x.key.startsWith("rent")).title = "My own wording";                         // edited in Reminders: left alone
+  assert.ok(quiet(round(h, S, "2026-11-27", l)));
+  h.recurring.find(r => r.id === "rent").text = "Check the rent went out";                      // edited in the app
+  let p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.update.map(u => [u.key, u.title]), [["rent@2026-12-01", "Check the rent went out"]]); assert.ok(quiet(round(h, S, "2026-11-27", l)));
+  const van = l.items.find(x => x.key.startsWith("van")); van.done = true; round(h, S, "2026-11-27", l);
+  l.items.push({ id: "copy", key: "post@2026-11-30", done: false });                            // a copy, e.g. from another Mac
+  const post = l.items.find(x => x.key === "post@2026-11-30").id;
+  h.recurring = h.recurring.filter(r => r.id !== "post" && r.id !== "van");                     // jobs deleted
+  p = round(h, S, "2026-11-27", l);
+  assert.deepEqual(p.remove.sort(), ["copy", post].sort());
+  assert.ok(!l.items.some(x => x.key.startsWith("post")), "an open reminder for a deleted job goes");
+  assert.ok(l.items.some(x => x.key.startsWith("van") && x.done), "a done one stays");
+  assert.ok(quiet(round(h, S, "2026-11-27", l)));
+});

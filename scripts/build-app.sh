@@ -34,7 +34,8 @@ sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD/" -e "s/__BUNDLE_ID__/$B
 plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 if [ -n "${SIGN_IDENTITY:-}" ]; then
-  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+  # The hardened runtime needs the calendars entitlement for Apple Reminders.
+  codesign --force --options runtime --timestamp --entitlements app/macos/Handover.entitlements --sign "$SIGN_IDENTITY" "$APP"
 else
   echo "SIGN_IDENTITY not set: signing ad hoc (fine for this Mac, not for sharing)"
   codesign --force --sign - "$APP"
