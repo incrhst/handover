@@ -96,6 +96,7 @@ dialog.dlg.wide{width:min(980px,calc(100vw - 32px))}
 .rep{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px;min-height:0}
 .rep .chow label{flex-direction:column;gap:2px}
 .rep .chow small{color:var(--ink-3);font-size:12.5px;font-weight:400}
+.rep .combo{display:grid;gap:4px;margin:4px 0 8px}.rep .combo label{display:flex;gap:8px;align-items:center;justify-content:flex-start;font-weight:500;margin:0}.rep .combo input{width:auto;flex:none;margin:0}
 .rep iframe{width:100%;height:min(60vh,560px);border:1px solid var(--line);border-radius:10px;background:#fff}
 @media (max-width:720px){.rep{grid-template-columns:1fr}.rep iframe{height:50vh}}
 
@@ -550,6 +551,8 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
     <div class="dlg-body rep">
       <div>
         <div class="chow" id="reportKinds" role="radiogroup" aria-label="Which report"></div>
+        <div class="cfield" id="reportComboRow" hidden><span>Include</span><div class="combo" id="reportCombo"></div>
+          <label class="cfield">Title <input type="text" id="reportTitle" placeholder="Handover update" autocomplete="off"></label></div>
         <label class="cfield" id="reportSinceRow">Finished since <input type="date" id="reportSince"></label>
         <div class="xopts"><div class="fmt" role="radiogroup" aria-label="Format">
           <label><input type="radio" name="reportFmt" value="pdf" checked> PDF</label>
@@ -1321,24 +1324,35 @@ function reopen(ref){
 }
 
 /* Reports for the principal */
-var REPORT = {key: "working"};
+var REPORT = {key: "working", combo: ["working", "jobs", "needs"]};
+var COMBINED = {key: "combined", title: "Combined", hint: "Several of these in one document, each as its own part, with a short overview first"};
 function principalFirst(){ var p = (H.people || []).filter(function(x){ return (x.roles || []).indexOf("principal") > -1; })[0]; return p ? p.name.split(" ")[0] : ""; }
-function reportDoc(){ return C.principalReport(H, REPORT.key, {date: TODAY, since: $("reportSince").value || undefined}); }
+function reportDoc(){
+  var o = {date: TODAY, since: $("reportSince").value || undefined};
+  return REPORT.key === "combined" ? C.principalReports(H, REPORT.combo, Object.assign(o, {title: $("reportTitle").value})) : C.principalReport(H, REPORT.key, o);
+}
 function reportRender(){
-  $("reportSinceRow").hidden = REPORT.key !== "working";
+  var combined = REPORT.key === "combined";
+  $("reportComboRow").hidden = !combined;
+  $("reportSinceRow").hidden = !(combined ? REPORT.combo.indexOf("working") > -1 : REPORT.key === "working");
+  $("reportGo").disabled = combined && !REPORT.combo.length;
+  if (combined && !REPORT.combo.length){ $("reportPreview").srcdoc = '<p style="font:14px -apple-system,sans-serif;color:#666;padding:20px">Tick at least one report to include.</p>'; return; }
   $("reportPreview").srcdoc = C.docHtml(reportDoc());
 }
 function openReport(){
   if (!has11()) return;
   var p = principalFirst();
   $("reportDlgTitle").textContent = p ? "Report for " + p : "Report for the principal";
-  $("reportKinds").innerHTML = C.reports.map(function(r){ return '<label><span><input type="radio" name="reportKind" value="' + r.key + '"' + (r.key === REPORT.key ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
+  $("reportCombo").innerHTML = C.reports.map(function(r){ return '<label><input type="checkbox" value="' + r.key + '"' + (REPORT.combo.indexOf(r.key) > -1 ? " checked" : "") + "> " + esc(r.title) + "</label>"; }).join("");
+  $("reportKinds").innerHTML = C.reports.concat([COMBINED]).map(function(r){ return '<label><span><input type="radio" name="reportKind" value="' + r.key + '"' + (r.key === REPORT.key ? " checked" : "") + "> <b>" + esc(r.title) + "</b></span><small>" + esc(r.hint) + "</small></label>"; }).join("");
   var d = new Date(Date.parse(TODAY + "T00:00:00Z") - 7 * 864e5); $("reportSince").value = d.toISOString().slice(0, 10);
   reportRender();
   $("reportDlg").showModal();
 }
 $("reportKinds").addEventListener("change", function(e){ if (e.target.name === "reportKind"){ REPORT.key = e.target.value; reportRender(); } });
 $("reportSince").addEventListener("change", reportRender);
+$("reportCombo").addEventListener("change", function(){ REPORT.combo = [].slice.call($("reportCombo").querySelectorAll("input:checked")).map(function(x){ return x.value; }); reportRender(); });
+$("reportTitle").addEventListener("input", function(){ clearTimeout(REPORT.t); REPORT.t = setTimeout(reportRender, 300); });
 $("reportCancel").addEventListener("click", function(){ $("reportDlg").close(); });
 $("reportForm").addEventListener("submit", function(e){
   e.preventDefault();

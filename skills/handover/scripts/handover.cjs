@@ -12,7 +12,7 @@
 //   node handover.cjs render <file> [out]      write the sections for 1.0 readers again from the 1.1 data
 //   node handover.cjs export <file> [out] [--items jobs,tasks] [--format pdf|docx|xlsx|md|html] [--title "…"]
 //                                              chosen items as a document; the format defaults to out's extension
-//   node handover.cjs report <file> [out] [--kind jd|working|jobs|needs] [--since YYYY-MM-DD] [--format pdf|docx|md|html]
+//   node handover.cjs report <file> [out] [--kind jd|working|jobs|needs, or several joined with commas for a combined report] [--title T] [--since YYYY-MM-DD] [--format pdf|docx|md|html]
 //                                              a document for the principal; jd (the default) is a job description
 //   node handover.cjs merge <file> <other> [out]
 //                                              merge the progress in <other> into <file>
@@ -143,16 +143,17 @@ switch (cmd) {
     break;
   }
   case "report": {
-    const kind = flag("--kind", "jd"), since = flag("--since", undefined);
+    const kind = flag("--kind", "jd"), since = flag("--since", undefined), rtitle = flag("--title", undefined);
     let format = flag("--format", "");
     const h = read(args[0]); requireValid(h, args[0]);
     const kinds = C.reports.map(r => r.key);
-    if (kinds.indexOf(kind) < 0) die("--kind is one of " + kinds.join(", "));
+    const picked = kind.split(",").map(k => k.trim()).filter(Boolean);
+    if (!picked.length || picked.some(k => kinds.indexOf(k) < 0)) die("--kind is one of " + kinds.join(", ") + ", or several joined with commas, e.g. working,jobs,needs");
     if (!format) format = args[1] ? path.extname(args[1]).slice(1).toLowerCase() || "md" : "md";
     const FORMATS = ["pdf", "docx", "md", "html"];
     if (FORMATS.indexOf(format) < 0) die("--format is one of " + FORMATS.join(", "));
     if (format === "docx" && !args[1]) die("Give an output file for docx, e.g. job-description.docx");
-    const doc = C.principalReport(h, kind, {date: C.zoneParts(h.timezone).date, since});
+    const doc = C.principalReports(h, picked, {date: C.zoneParts(h.timezone).date, since, title: rtitle});
     const out = {pdf: () => C.docPdf(doc, {timezone: h.timezone}), docx: () => Buffer.from(C.docDocx(doc)), md: () => C.docMarkdown(doc), html: () => C.docHtml(doc)}[format]();
     if (args[1]) { fs.writeFileSync(args[1], out); console.error("Wrote " + args[1]); } else process.stdout.write(out);
     break;
