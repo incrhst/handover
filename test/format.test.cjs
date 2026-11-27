@@ -647,14 +647,22 @@ test("combined reports: several reports as parts of one document", () => {
   // With no title, it says where the handover is: counting down to the last day, then the incoming assistant's weeks
   assert.equal(C.principalReports(h, ["working", "jobs"], o).title, "Handover update: Marcus's week 8");
   const T = d => C.reportTitle(h, d);
-  assert.deepEqual(["2026-09-10", "2026-09-19", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-11", "2026-10-12"].map(T),
-    ["Handover update: 3 weeks to Priya's last day", "Handover update: Priya's last week", "Handover update: Priya's last day",
+  assert.deepEqual(["2026-09-01", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-05", "2026-10-11", "2026-10-12"].map(T),
+    ["Handover update: 24 days to Priya's last day", "Handover update: 1 day to Priya's last day", "Handover update: Priya's last day",
      "Handover update: week 1 since Priya left", "Handover update: Marcus's week 1", "Handover update: Marcus's week 1", "Handover update: Marcus's week 2"]);
   const ov = JSON.parse(JSON.stringify(h)); ov.plan.firstDay = "2026-09-14";
-  assert.equal(C.reportTitle(ov, "2026-09-16"), "Handover update: 2 weeks to Priya's last day", "overlapping: the countdown comes first");
+  assert.equal(C.reportTitle(ov, "2026-09-16"), "Handover update: 9 days to Priya's last day", "overlapping: the countdown comes first");
+  // The cover counts the days to (or since) the handover and gives its date
+  const F = d => C.principalReports(h, ["working", "needs"], {date: d}).figures.map(f => [f.value, f.label, f.tone]);
+  assert.deepEqual(F("2026-09-01"), [["24", "Days to Priya's last day", "neutral"], ["Fri 25 Sept", "Handover day", "neutral"]]);
+  assert.deepEqual(F("2026-09-24")[0], ["1", "Day to Priya's last day", "warn"], "the last week stands out");
+  assert.deepEqual(F("2026-09-25")[0], ["Today", "Priya's last day", "warn"]);
+  assert.deepEqual(F("2026-11-27")[0], ["63", "Days since Priya's last day", "ok"]);
+  assert.match(C.docMarkdown(C.principalReports(h, ["working", "needs"], {date: "2026-09-01"})), /\*\*24\*\* Days to Priya's last day · \*\*Fri 25 Sept\*\* Handover day/);
   assert.equal(C.reportTitle(ov, "2026-10-01"), "Handover update: Marcus's week 3");
   const np = JSON.parse(JSON.stringify(h)); delete np.plan;
   assert.deepEqual(["2026-11-27", "2021-01-03", "2026-12-31"].map(d => C.reportTitle(np, d)), ["Handover update: week 48, 2026", "Handover update: week 53, 2020", "Handover update: week 53, 2026"], "no plan: the ISO week");
+  assert.deepEqual(C.principalReports(np, ["working", "needs"], o).figures, [], "no handover date, no countdown");
   assert.equal(d.preparedFor, "Dana Whitfield");
   assert.deepEqual(d.chapters.map(c => c.title), C.reports.filter(r => r.key !== "jd").map(r => r.title));
   // Each part is the single report, figures, summary and sections unchanged

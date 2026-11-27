@@ -1233,7 +1233,7 @@ function jobDescription(h, date, meta){
     kicker: ro.organisation || "Job description", role: ro.organisation ? line : (hasP ? "Reports to " + P : ""), preparedFor: "", preparedBy: "", date: nice(date, "long"),
     figures: [], introLabel: "Purpose of the role", intro: ro.purpose ? parseBlocks(ro.purpose).filter(function(b){ return b.text; }).map(function(b){ return b.text; }) : [], parts: parts};
 }
-/* A combined report's title, placed in the handover's own time: counting down to the outgoing assistant's last day,
+/* A combined report's title, placed in the handover's own time: the days left to the outgoing assistant's last day,
    then the incoming assistant's weeks (week 1 is their first seven days). With no last day, the ISO week of the year. */
 function reportTitle(h, date){
   var pl = h.plan || {}, days = function(a, b){ return Math.round((utc(b) - utc(a)) / 864e5); };
@@ -1242,8 +1242,7 @@ function reportTitle(h, date){
   var t;
   if (pl.lastDay && DATE.test(pl.lastDay) && DATE.test(date)){
     var left = days(date, pl.lastDay);
-    if (left > 6) t = plural(Math.ceil(left / 7), "week") + " to " + poss(Out) + " last day";
-    else if (left > 0) t = poss(Out) + " last week";
+    if (left > 0) t = plural(left, "day") + " to " + poss(Out) + " last day";
     else if (left === 0) t = poss(Out) + " last day";
     else if (pl.firstDay && DATE.test(pl.firstDay) && date >= pl.firstDay) t = poss(In) + " week " + (Math.floor(days(pl.firstDay, date) / 7) + 1);
     else t = "week " + (Math.floor((-left - 1) / 7) + 1) + " since " + Out + " left";
@@ -1253,6 +1252,17 @@ function reportTitle(h, date){
     t = "week " + wk + ", " + d.getUTCFullYear();
   }
   return "Handover update" + (t ? ": " + t : "");
+}
+/* The handover date on a combined report's cover: days to (or since) the outgoing assistant's last day, and the date */
+function handoverFigures(h, date){
+  var pl = h.plan || {};
+  if (!pl.lastDay || !DATE.test(pl.lastDay) || !DATE.test(date)) return [];
+  var has = (h.people || []).some(function(p){ return (p.roles || []).indexOf("outgoing") > -1; }), Out = has ? who(h, "outgoing").split(" ")[0] : "the outgoing assistant";
+  var left = Math.round((utc(pl.lastDay) - utc(date)) / 864e5), poss = Out + "'s";
+  var first = left > 0 ? {value: String(left), label: (left === 1 ? "Day" : "Days") + " to " + poss + " last day", tone: left <= 7 ? "warn" : "neutral"}
+    : left === 0 ? {value: "Today", label: poss + " last day", tone: "warn"}
+    : {value: String(-left), label: (left === -1 ? "Day" : "Days") + " since " + poss + " last day", tone: "ok"};
+  return [first, {value: nice(pl.lastDay), label: "Handover day", tone: "neutral"}];
 }
 /* Several reports in one document: a cover, a short "In this report" box, then each report as a part with its own
    figures, summary and sections. One key gives the single report unchanged. o = {date, since, title}; the title defaults to reportTitle. */
@@ -1269,7 +1279,7 @@ function principalReports(h, keys, o){
   return {style: "report", report: "combined", reports: pick, name: title, title: title,
     subtitle: h.title + " · for " + lead.preparedFor + " · " + nice(date, "long") + " · " + listWords(docs.map(function(d){ return d.name; })),
     kicker: "Handover report", role: h.title, preparedFor: lead.preparedFor, preparedBy: lead.preparedBy, date: nice(date, "long"),
-    figures: [], introLabel: "In this report",
+    figures: handoverFigures(h, date), introLabel: "In this report",
     intro: chapters.map(function(c, i){ return "**" + (i + 1) + ". " + c.title + ".** " + (c.intro[0] || (c.parts.length ? "" : "Nothing to report.")); }),
     chapters: chapters, parts: [].concat.apply([], chapters.map(function(c){ return c.parts; }))};
 }
@@ -1278,11 +1288,12 @@ function docChapters(doc){ return doc.chapters || [{title: "", figures: doc.figu
 function docMarkdown(doc){
   var L = ["# " + doc.title, "", "*" + doc.subtitle + "*", ""], ch = !!doc.chapters, d = ch ? 1 : 0;
   function summary(intro, label, lv){ if (intro && intro.length){ if (label) L.push(hashes(lv) + " " + label, ""); intro.forEach(function(s){ L.push(s, ""); }); } }
-  if (ch) summary(doc.intro, doc.introLabel, 2);
+  var figLine = function(F){ if ((F || []).length) L.push(F.map(function(f){ return "**" + f.value + "** " + f.label; }).join(" · "), ""); };
+  if (ch){ figLine(doc.figures); summary(doc.intro, doc.introLabel, 2); }
   docChapters(doc).forEach(function(c, ci){
   if (ch){
     L.push("## Part " + (ci + 1) + ": " + c.title, "");
-    if (c.figures.length) L.push(c.figures.map(function(f){ return "**" + f.value + "** " + f.label; }).join(" · "), "");
+    figLine(c.figures);
     summary(c.intro, c.introLabel, 3);
     if (!c.parts.length) L.push("Nothing to report.", "");
   } else summary(c.intro, c.introLabel, 2);
