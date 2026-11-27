@@ -1072,12 +1072,23 @@ function plural(n, one, many){ return n + " " + (n === 1 ? one : many || one + "
 function isAre(n){ return n === 1 ? "is" : "are"; }
 function addDays(d, n){ var t = new Date(utc(d)); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); }
 function listWords(xs){ return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]; }
+/* In reports, an assistant with no name in the file is spelled out as a role, like a name */
+var ASSISTANT = {incoming: "Incoming Assistant", outgoing: "Outgoing Assistant"};
+function personOf(h, role){ return (h.people || []).filter(function(p){ return (p.roles || []).indexOf(role) > -1; })[0]; }
+function nameFor(h, role){ var p = personOf(h, role); return p ? p.name : ASSISTANT[role] || who(h, role); }
+function firstFor(h, role){ var p = personOf(h, role); return p ? p.name.split(" ")[0] : ASSISTANT[role] || who(h, role); }
+/* Whose work the reports describe: the outgoing assistant until their last day if nobody is named to take over, else the incoming one */
+function assistantRole(h, date){
+  if (personOf(h, "incoming")) return "incoming";
+  var last = h.plan && h.plan.lastDay;
+  return personOf(h, "outgoing") && (!last || !DATE.test(last) || date <= last) ? "outgoing" : "incoming";
+}
 function principalReport(h, key, o){
   o = o || {};
   var date = o.date || new Date().toISOString().slice(0, 10);
-  var P = who(h, "principal"), hasIncoming = (h.people || []).some(function(p){ return (p.roles || []).indexOf("incoming") > -1; });
-  var Afull = hasIncoming ? who(h, "incoming") : who(h, "outgoing"), A = Afull.split(" ")[0];
-  var whoFor = function(role){ return role === "principal" ? "you" : who(h, role); };
+  var P = who(h, "principal"), ar = assistantRole(h, date);
+  var Afull = nameFor(h, ar), A = firstFor(h, ar);
+  var whoFor = function(role){ return role === "principal" ? "you" : nameFor(h, role); };
   var meta = REPORTS.filter(function(r){ return r.key === key; })[0];
   if (!meta) throw new Error("No report called " + key + ".");
   var open = function(x){ return !x.closed && forPrincipal(x); };
@@ -1237,8 +1248,7 @@ function jobDescription(h, date, meta){
    then the incoming assistant's weeks (week 1 is their first seven days). With no last day, the ISO week of the year. */
 function reportTitle(h, date){
   var pl = h.plan || {}, days = function(a, b){ return Math.round((utc(b) - utc(a)) / 864e5); };
-  var first = function(role, dflt){ var has = (h.people || []).some(function(p){ return (p.roles || []).indexOf(role) > -1; }); return has ? who(h, role).split(" ")[0] : dflt; };
-  var Out = first("outgoing", "the outgoing assistant"), In = first("incoming", "the incoming assistant"), poss = function(n){ return n + "'s"; };
+  var Out = firstFor(h, "outgoing"), In = firstFor(h, "incoming"), poss = function(n){ return n + "'s"; };
   var t;
   if (pl.lastDay && DATE.test(pl.lastDay) && DATE.test(date)){
     var left = days(date, pl.lastDay);
@@ -1257,7 +1267,7 @@ function reportTitle(h, date){
 function handoverFigures(h, date){
   var pl = h.plan || {};
   if (!pl.lastDay || !DATE.test(pl.lastDay) || !DATE.test(date)) return [];
-  var has = (h.people || []).some(function(p){ return (p.roles || []).indexOf("outgoing") > -1; }), Out = has ? who(h, "outgoing").split(" ")[0] : "the outgoing assistant";
+  var Out = firstFor(h, "outgoing");
   var left = Math.round((utc(pl.lastDay) - utc(date)) / 864e5), poss = Out + "'s";
   var first = left > 0 ? {value: String(left), label: (left === 1 ? "Day" : "Days") + " to " + poss + " last day", tone: left <= 7 ? "warn" : "neutral"}
     : left === 0 ? {value: "Today", label: poss + " last day", tone: "warn"}

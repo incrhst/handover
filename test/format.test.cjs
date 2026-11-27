@@ -663,6 +663,14 @@ test("combined reports: several reports as parts of one document", () => {
   const np = JSON.parse(JSON.stringify(h)); delete np.plan;
   assert.deepEqual(["2026-11-27", "2021-01-03", "2026-12-31"].map(d => C.reportTitle(np, d)), ["Handover update: week 48, 2026", "Handover update: week 53, 2020", "Handover update: week 53, 2026"], "no plan: the ISO week");
   assert.deepEqual(C.principalReports(np, ["working", "needs"], o).figures, [], "no handover date, no countdown");
+  // An assistant with no name is spelled out as a role; the outgoing one is credited only until their last day
+  const ni = JSON.parse(JSON.stringify(h)); ni.people = ni.people.filter(p => !p.roles.includes("incoming"));
+  assert.equal(C.reportTitle(ni, "2026-10-12"), "Handover update: Incoming Assistant's week 2");
+  assert.match(C.principalReport(ni, "jobs", {date: "2026-10-12"}).intro[0], /^Incoming Assistant does 6 regular jobs/);
+  assert.match(C.principalReport(ni, "jobs", {date: "2026-09-01"}).intro[0], /^Priya does 6 regular jobs/, "before the last day, the outgoing assistant still does them");
+  assert.ok(C.principalReport(ni, "working", {date: "2026-10-12"}).parts[0].groups[0].items.every(it => it.cells[0] !== "Incoming assistant"), "owners are spelled out too");
+  const no = JSON.parse(JSON.stringify(h)); no.people = no.people.filter(p => !p.roles.includes("outgoing"));
+  assert.equal(C.reportTitle(no, "2026-09-01"), "Handover update: 24 days to Outgoing Assistant's last day");
   assert.equal(d.preparedFor, "Dana Whitfield");
   assert.deepEqual(d.chapters.map(c => c.title), C.reports.filter(r => r.key !== "jd").map(r => r.title));
   // Each part is the single report, figures, summary and sections unchanged
