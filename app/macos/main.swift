@@ -1,6 +1,6 @@
 // Handover for macOS: a window around app/web/index.html, plus the parts a web
 // page can't do reliably on its own: real files on disk, a clock that keeps
-// running, the daily task sheet, nightly backups and opening at login.
+// running, the daily task sheet, reminders as notifications, nightly backups and opening at login.
 //
 // Data folder (default ~/Documents/Handover, or $HANDOVER_DATA):
 //   handovers/<id>.handover   the content of each handover, as loaded
@@ -18,6 +18,7 @@ import AppKit
 import CryptoKit
 import ServiceManagement
 import UniformTypeIdentifiers
+import UserNotifications
 import WebKit
 
 let handoverType = UTType(exportedAs: "io.github.incrhst.handover", conformingTo: .json)
@@ -177,6 +178,7 @@ final class Store {
 final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandlerWithReply, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
     let store = Store()
     let updater = Updater()
+    let reminders = Reminders()
     var window: NSWindow!
     var web: WKWebView!
     var ready = false
@@ -189,6 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     var titleObs: NSKeyValueObservation?
 
     var webDir: URL { Bundle.main.resourceURL!.appendingPathComponent("web", isDirectory: true) }
+
+    // Set before launch finishes, so a click on a reminder that opened the app isn't missed.
+    func applicationWillFinishLaunching(_ n: Notification) { reminders.host = self; reminders.setUp() }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         buildMenu()
@@ -271,6 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         ready = true
         pendingOpens.forEach(importFile); pendingOpens = []
+        reminders.flush()
     }
     // Links: anything outside the app opens in the user's browser.
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void) {
@@ -308,7 +314,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
         switch action {
         case "init":
-            var r: [String: Any] = ["library": store.library(), "dataFolder": store.root.path, "loginItem": SMAppService.mainApp.status == .enabled, "version": updater.current, "autoUpdate": updater.auto]
+            var r: [String: Any] = ["library": store.library(), "dataFolder": store.root.path, "loginItem": SMAppService.mainApp.status == .enabled, "version": updater.current, "autoUpdate": updater.auto, "reminders": reminders.prefs]
             if let id = store.last, let src = store.source(id) { r["source"] = src; r["state"] = store.state(id) ?? NSNull() }
             reply(r)
         case "adopt":
@@ -406,6 +412,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             updater.check(userInitiated: true); reply(["ok": true])
         case "setAutoUpdate":
             updater.auto = payload["on"] as? Bool ?? true; reply(["enabled": updater.auto])
+        case "reminders":
+            // Everything to remind about from now on, worked out by the page (core.js reminders). It replaces what was scheduled.
+            let items = payload["items"] as? [[String: Any]] ?? []
+            let ticked = payload["ticked"] as? [String] ?? []
+            let handover = str("handover"), day = str("day"), today = payload["today"] as? [String: Any]
+            // Refresh what's shown only once the old schedule is cleared, so the clear-out can't take the refreshed summary with it.
+            reminders.schedule(handover: handover, items: items, ticked: ticked) { status in
+                reply(["status": status])
+                self.reminders.refreshShown(handover: handover, day: day, today: today, ticked: ticked)
+            }
+        case "setReminderPrefs":
+            reminders.prefs = ["morning": payload["morning"] as? Bool ?? true, "jobs": payload["jobs"] as? Bool ?? true]; reply(["ok": true])
+        case "notificationSettings":
+            reminders.openSettings(); reply(["ok": true])
         case "log":
             NSLog("Handover page: \(str("msg"))"); reply(nil)
         default:
@@ -505,6 +525,140 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let text = (try? String(contentsOf: webDir.appendingPathComponent("prompt.md"), encoding: .utf8)) ?? ""
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
     }
+}
+
+// MARK: Reminders
+// The page works out what to remind about and when; this posts them as notifications, at the right time
+// even while the window is closed or the app isn't running. A job's reminder has Done, which ticks it off,
+// and Remind Me in an Hour.
+
+final class Reminders: NSObject, UNUserNotificationCenterDelegate {
+    weak var host: AppDelegate?
+    let center = UNUserNotificationCenter.current()
+    let defaults = UserDefaults.standard
+    let prefix = "handover.", snoozed = "snooze."
+    /// Clicks that came in before the page was ready (a click can open the app)
+    var queued: [[Any]] = []
+
+    var prefs: [String: Bool] {
+        get { defaults.dictionary(forKey: "reminders") as? [String: Bool] ?? ["morning": true, "jobs": true] }
+        set { defaults.set(newValue, forKey: "reminders") }
+    }
+
+    func setUp() {
+        center.delegate = self
+        let done = UNNotificationAction(identifier: "done", title: "Done", options: [])
+        let later = UNNotificationAction(identifier: "later", title: "Remind Me in an Hour", options: [])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "job", actions: [done, later], intentIdentifiers: [], options: []),
+            UNNotificationCategory(identifier: "summary", actions: [], intentIdentifiers: [], options: []),
+        ])
+    }
+
+    static func statusName(_ s: UNAuthorizationStatus) -> String {
+        switch s { case .notDetermined: return "notDetermined"; case .denied: return "denied"; default: return "authorized" }
+    }
+
+    /// A job's reminder put off with Remind Me in an Hour. One per job occurrence, so it can be dropped once the job is ticked.
+    func snoozeID(_ handover: String, _ key: String) -> String { snoozed + handover + "." + key }
+
+    /// Replace the scheduled reminders with these, and drop any put off for later whose job is now ticked.
+    /// The first time there is something to schedule, macOS asks whether Handover may send notifications.
+    /// Replies with "authorized", "denied" or "notDetermined".
+    func schedule(handover: String, items: [[String: Any]], ticked: [String], done: @escaping (String) -> Void) {
+        if validID(handover) && !ticked.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ticked.map { snoozeID(handover, $0) }) }
+        let iso = ISO8601DateFormatter()
+        let now = Date()
+        let requests: [UNNotificationRequest] = items.compactMap { it in
+            guard let id = it["id"] as? String, let atText = it["at"] as? String, let at = iso.date(from: atText), at > now else { return nil }
+            let c = UNMutableNotificationContent()
+            c.title = it["title"] as? String ?? "Handover"
+            c.subtitle = it["subtitle"] as? String ?? ""
+            c.body = it["body"] as? String ?? ""
+            c.sound = .default
+            let kind = it["kind"] as? String ?? "summary"
+            c.categoryIdentifier = kind == "job" ? "job" : "summary"
+            c.threadIdentifier = handover
+            c.userInfo = ["handover": handover, "key": it["key"] as? String ?? "", "kind": kind]
+            let when = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: at)
+            return UNNotificationRequest(identifier: prefix + handover + "." + id, content: c, trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false))
+        }
+        center.getNotificationSettings { settings in
+            let go = { (status: UNAuthorizationStatus) in
+                self.center.getPendingNotificationRequests { pending in
+                    // Reminders put off for later stay, unless their job was ticked (above): the person asked for them.
+                    let stale = pending.map { $0.identifier }.filter { $0.hasPrefix(self.prefix) }
+                    self.center.removePendingNotificationRequests(withIdentifiers: stale)
+                    if status != .denied { requests.forEach { r in self.center.add(r) { e in if let e = e { NSLog("Handover: couldn't schedule a reminder: \(e)") } } } }
+                    DispatchQueue.main.async { done(Reminders.statusName(status)) }
+                }
+            }
+            if settings.authorizationStatus == .notDetermined && !requests.isEmpty {
+                self.center.requestAuthorization(options: [.alert, .sound]) { ok, _ in go(ok ? .authorized : .denied) }
+            } else { go(settings.authorizationStatus) }
+        }
+    }
+
+    /// Bring what Notification Center already shows up to date: take out the reminders for jobs now ticked, and
+    /// rewrite this morning's summary with what is left (quietly: no banner or sound), or take it out when nothing is.
+    func refreshShown(handover: String, day: String, today: [String: Any]?, ticked: [String]) {
+        guard validID(handover) else { return }
+        center.getDeliveredNotifications { shown in
+            let ids = Set(shown.map { $0.request.identifier })
+            let gone = ticked.flatMap { [self.prefix + handover + ".job." + $0, self.snoozeID(handover, $0)] }.filter { ids.contains($0) }
+            if !gone.isEmpty { self.center.removeDeliveredNotifications(withIdentifiers: gone) }
+            let sid = self.prefix + handover + ".summary." + day
+            guard !day.isEmpty, let old = shown.first(where: { $0.request.identifier == sid })?.request.content else { return }
+            guard let today = today else { self.center.removeDeliveredNotifications(withIdentifiers: [sid]); return }
+            let subtitle = today["subtitle"] as? String ?? "", body = today["body"] as? String ?? ""
+            guard subtitle != old.subtitle || body != old.body else { return }
+            let c = old.mutableCopy() as! UNMutableNotificationContent
+            c.subtitle = subtitle; c.body = body; c.sound = nil
+            c.interruptionLevel = .passive
+            var info = c.userInfo; info["refresh"] = true; c.userInfo = info
+            // The same identifier replaces the one shown, in place.
+            self.center.add(UNNotificationRequest(identifier: sid, content: c, trigger: nil)) { e in if let e = e { NSLog("Handover: couldn't update the summary: \(e)") } }
+        }
+    }
+
+    func openSettings() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        let deep = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")!
+        if !NSWorkspace.shared.open(deep) { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.notifications")!) }
+    }
+
+    /// Show reminders even while Handover is the app in front.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // A summary brought up to date only changes what Notification Center shows.
+        done(notification.request.content.userInfo["refresh"] as? Bool == true ? [.list] : [.banner, .list, .sound])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {
+        let content = response.notification.request.content, info = content.userInfo
+        let handover = info["handover"] as? String ?? "", key = info["key"] as? String ?? ""
+        DispatchQueue.main.async {
+            switch response.actionIdentifier {
+            case "done":
+                self.send(["done", handover, key])
+            case "later":
+                let again = content.mutableCopy() as! UNMutableNotificationContent
+                let id = validID(handover) && !key.isEmpty ? self.snoozeID(handover, key) : self.snoozed + UUID().uuidString
+                let r = UNNotificationRequest(identifier: id, content: again, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3600, repeats: false))
+                self.center.add(r, withCompletionHandler: nil)
+            case UNNotificationDismissActionIdentifier: break
+            default:
+                self.host?.showWindow()
+                self.send(["open", handover, key])
+            }
+            done()
+        }
+    }
+
+    func send(_ args: [Any]) {
+        guard let host = host, host.ready else { queued.append(args); return }
+        host.callJS("handoverReminder", args)
+    }
+    func flush() { let q = queued; queued = []; q.forEach(send) }
 }
 
 // MARK: Updates

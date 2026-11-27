@@ -922,3 +922,90 @@ test("1.3: the CLI lists what to start now and when the work starts", () => {
     assert.match(out, /Next 5 days:\n  Sat 13 Feb  Start: Renew the van's insurance  \(due Mon 15 Mar\)/);
   } finally { fs.unlinkSync(f); }
 });
+
+/* Reminders (the Mac app posts these as notifications) */
+const desk = () => ({handover: "1.3", id: "desk", title: "Front desk", timezone: "America/Jamaica", settings: {dailyExportTime: "07:30"}, recurring: [
+  {id: "post", text: "Open the **post**", every: "weekday", time: "09:00"},
+  {id: "petty", text: "Count the petty cash", every: "week", on: "fri", time: "16:00", detail: "Use the blue tin.\nLog it in the book."},
+  {id: "rates", text: "Pay the rates", every: "month", day: 1},
+  {id: "van-insurance", text: "Renew the van's insurance", every: "year", date: "12-10", lead: 30}],
+  inProgress: [{id: "boiler", text: "Get the boiler serviced", due: "2026-12-01"}, {id: "old", text: "Closed already", due: "2026-11-01", closed: {how: "done"}}]});
+const jam = (date, time) => Date.parse(date + "T" + time + ":00-05:00");
+
+test("reminders: a morning summary of what's to do, and each timed job at its time, in the handover's zone", () => {
+  const r = C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3});   // a Friday
+  assert.deepEqual(r.map(x => [x.id, new Date(x.at).toISOString()]), [
+    ["summary.2026-11-27", "2026-11-27T12:30:00.000Z"],
+    ["job.post@2026-11-27", "2026-11-27T14:00:00.000Z"],
+    ["job.petty@2026-11-27", "2026-11-27T21:00:00.000Z"],
+    ["summary.2026-11-28", "2026-11-28T12:30:00.000Z"],
+    ["summary.2026-11-29", "2026-11-29T12:30:00.000Z"]]);
+  const [sum, post, petty] = r;
+  assert.equal(sum.title, "Front desk");
+  assert.equal(sum.subtitle, "4 things to do today");
+  assert.equal(sum.body, "Due: Open the post (09:00), Count the petty cash (16:00)\nOverdue: Open the post\nUnder way: Renew the van's insurance (13 days left)");
+  assert.deepEqual([post.kind, post.key, post.date, post.title, post.subtitle, post.body], ["job", "post@2026-11-27", "2026-11-27", "Open the post", "Front desk", "Due at 09:00"]);
+  assert.equal(petty.body, "Due at 16:00. Use the blue tin.");
+  // the weekend: nothing due, but the lead-time job and the overdue post are still there
+  assert.equal(r[3].body, "Overdue: Open the post, Count the petty cash\nUnder way: Renew the van's insurance (12 days left)");
+});
+
+test("reminders: ticks, the time of day and the settings decide what is left", () => {
+  const h = desk(), now = jam("2026-11-30", "10:00");   // Monday, after the summary and the post
+  const p = {firstSeen: "2026-11-25", recurring: {"post@2026-11-27": "x", "petty@2026-11-27": "x", "van-insurance@2026-12-10": "x"}};
+  const r = C.reminders(h, p, now, {days: 2});
+  assert.deepEqual(r.map(x => x.id), ["summary.2026-12-01", "job.post@2026-12-01"]);
+  assert.equal(r[0].body, "Due: Pay the rates, Open the post (09:00)\nOverdue: Open the post\nIn progress: Get the boiler serviced");
+  // ticked today's post: no reminder for it, and tomorrow's summary drops it from overdue
+  p.recurring["post@2026-11-30"] = "x"; p.recurring["post@2026-12-01"] = "x";
+  assert.deepEqual(C.reminders(h, p, now, {days: 2}).map(x => [x.id, x.body]), [["summary.2026-12-01", "Due: Pay the rates\nIn progress: Get the boiler serviced"]]);
+  // overdue work in progress says so
+  assert.match(C.reminders(h, p, jam("2026-12-01", "10:00"), {days: 2})[0].body, /In progress: Get the boiler serviced \(overdue\)/);
+  // turned off, one kind at a time
+  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3, morning: false}).map(x => x.kind), ["job", "job"]);
+  assert.deepEqual(C.reminders(desk(), {firstSeen: "2026-11-25"}, jam("2026-11-27", "06:00"), {days: 3, jobs: false}).map(x => x.kind), ["summary", "summary", "summary"]);
+  // a day with nothing to do has no summary; with no setting the summary is at 07:00; the schedule reaches two weeks ahead
+  const quiet = {handover: "1.0", id: "q", title: "Quiet", timezone: "Europe/London", recurring: [{id: "a", text: "A", every: "week", on: "mon"}]};
+  assert.deepEqual(C.reminders(quiet, {}, Date.parse("2026-07-05T00:00:00Z")).map(x => [x.id, new Date(x.at).toISOString()]),
+    [["summary.2026-07-06", "2026-07-06T06:00:00.000Z"], ["summary.2026-07-13", "2026-07-13T06:00:00.000Z"]]);
+  assert.equal(C.reminders(quiet, {}, Date.parse("2026-07-07T00:00:00Z")).map(x => x.id).join(), "summary.2026-07-13,summary.2026-07-20");
+  // never more than the limit, and only whole days: Monday's summary fits but its post doesn't, so Monday goes
+  const full = C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {limit: 6});
+  assert.deepEqual(full.map(x => x.id), ["summary.2026-11-27", "job.post@2026-11-27", "job.petty@2026-11-27", "summary.2026-11-28", "summary.2026-11-29"]);
+  assert.equal(C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {days: 30, limit: 7}).length, 7);
+  // two weeks of a busy desk fit under the default limit
+  const two = C.reminders(desk(), {}, jam("2026-11-27", "06:00"));
+  assert.ok(two.length <= 60);
+  assert.equal(two[two.length - 1].date, "2026-12-10");
+  // a single day with more than the limit still schedules the earliest
+  assert.equal(C.reminders(desk(), {}, jam("2026-11-27", "06:00"), {limit: 1}).length, 1);
+});
+
+test("reminders: a wall-clock time becomes the right instant either side of a clock change", () => {
+  assert.equal(new Date(C.zoneTime("2026-07-01", "09:00", "Europe/London")).toISOString(), "2026-07-01T08:00:00.000Z");
+  assert.equal(new Date(C.zoneTime("2026-01-15", "09:00", "Europe/London")).toISOString(), "2026-01-15T09:00:00.000Z");
+  assert.equal(new Date(C.zoneTime("2026-11-02", "07:00", "America/New_York")).toISOString(), "2026-11-02T12:00:00.000Z");
+  assert.equal(new Date(C.zoneTime("2026-10-30", "07:00", "America/New_York")).toISOString(), "2026-10-30T11:00:00.000Z");
+});
+
+test("reminders: the jobs ticked since a day, so a reminder put off for later can be dropped", () => {
+  const p = {recurring: {"post@2026-11-26": "x", "post@2026-11-27": "x", "petty@2026-11-27": "x", "van-insurance@2026-12-10": "x", "old@2026-11-01": "x", "gone@2026-11-28": ""}};
+  assert.deepEqual(C.ticksSince(p, "2026-11-27"), ["petty@2026-11-27", "post@2026-11-27", "van-insurance@2026-12-10"]);
+  assert.deepEqual(C.ticksSince({}, "2026-11-27"), []);
+  assert.deepEqual(C.ticksSince(undefined, "2026-11-27"), []);
+});
+
+test("reminders: a summary already shown can be brought up to date as jobs are ticked", () => {
+  const h = desk(), p = {firstSeen: "2026-11-25", recurring: {}};
+  // Friday, after 07:30: the summary has gone out, but what it should say now can still be worked out
+  let s = C.summaryFor(h, p, "2026-11-27");
+  assert.equal(new Date(s.at).toISOString(), "2026-11-27T12:30:00.000Z");
+  assert.equal(s.subtitle, "4 things to do today");
+  // the same as the one scheduled for that morning
+  assert.deepEqual(C.reminders(h, p, jam("2026-11-27", "06:00"), {days: 1, jobs: false})[0], s);
+  p.recurring["post@2026-11-27"] = "x"; p.recurring["post@2026-11-26"] = "x";
+  s = C.summaryFor(h, p, "2026-11-27");
+  assert.deepEqual([s.subtitle, s.body], ["2 things to do today", "Due: Count the petty cash (16:00)\nUnder way: Renew the van's insurance (13 days left)"]);
+  p.recurring["petty@2026-11-27"] = "x"; p.recurring["van-insurance@2026-12-10"] = "x";
+  assert.equal(C.summaryFor(h, p, "2026-11-27"), null, "nothing left: no summary");
+});

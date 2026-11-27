@@ -483,6 +483,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
             <li class="kit-only" id="kitNote">This is a transition kit: one file that works in any browser, with no app and no internet. It never sends anything anywhere. It is a copy of the handover and doesn't change when the handover does.</li>
             <li>Tick tasks as you go. Recurring duties come back on their schedule; anything missed shows as overdue.</li>
             <li id="autoExportNote">Each morning a task sheet for the day is saved in your data folder.</li>
+            <li class="native-only">Reminders come as notifications: one each morning with what's to do, and one when a job with a time is due. Click <b>Done</b> on a reminder to tick the job off.</li>
             <li>Yellow boxes are information the author still has to fill in.</li>
             <li>Press <kbd>/</kbd> to search<span class="not-kit">, or <kbd>⌘F</kbd> in the app</span>.</li>
           </ul>
@@ -497,6 +498,9 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <p class="native-only" style="margin:.2rem 0 .8rem">Choose a folder in iCloud Drive, Google Drive or Dropbox to back it up automatically. A dated copy is also kept every night.</p>
           <p class="native-only" style="margin:.2rem 0 .8rem">To work on a handover together, share that folder with the other person and have them choose it here too. Changes made on either Mac show up on the other within seconds of the cloud service copying them across, and changes made at the same time are combined. Each person keeps their own ticks and notes.</p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="loginItem"> Open at login, so the daily sheet is always written</label></div>
+          <div class="row native-only"><label class="switch"><input type="checkbox" id="remindMorning" checked> Remind me each morning of what's to do</label></div>
+          <div class="row native-only"><label class="switch"><input type="checkbox" id="remindJobs" checked> Remind me when a job with a time is due</label></div>
+          <p class="native-only" id="remindOff" hidden style="margin:.2rem 0 .8rem">Notifications are turned off for Handover, so no reminders will show. <button class="btn" type="button" data-cmd="notificationSettings">Open System Settings</button></p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="autoUpdate"> Check for updates automatically</label> <button class="btn" type="button" data-cmd="checkUpdates">Check now</button> <span class="muted" id="appVersion"></span></div>
           <div class="row kit-only">Your ticks and notes are kept in this browser only. To carry on in the Handover app, use Share &amp; export, Export with my progress, and open that file in the app.</div>
           <div class="row browser-only">Running in a browser: progress is saved in this browser only. Install the Mac app for files on disk, backups and the daily sheet.</div>
@@ -738,7 +742,52 @@ function save(){
   S.updated = new Date().toISOString();
   clearTimeout(saveTimer);
   saveTimer = setTimeout(function(){ call("saveState", {id: H.id, state: S}); }, 250);
+  syncReminders();
 }
+
+/* ================= Reminders: the Mac app posts them as notifications ================= */
+var REMIND = {morning: true, jobs: true}, sentReminders = null, remindTimer = null, pendingReminder = null;
+/* Hand the Mac app every reminder for the next two weeks (core.js reminders). It replaces the ones it had,
+   so ticks, edits and switching handover all take effect. ticked lists the jobs done since yesterday, so a reminder
+   put off for an hour doesn't go off for a job that is already done, and the app takes reminders for them out of
+   Notification Center. today is this morning's summary as it stands now (null once there is nothing left to do), so the
+   one already shown can be brought up to date. Nothing is sent when nothing changed. */
+function syncReminders(){
+  if (!native) return;
+  clearTimeout(remindTimer);
+  remindTimer = setTimeout(function(){
+    var items = H ? C.reminders(H, S, Date.now(), REMIND).map(function(r){ return {id: r.id, at: new Date(r.at).toISOString().replace(/\.\d+Z$/, "Z"), kind: r.kind, key: r.key, title: r.title, subtitle: r.subtitle, body: r.body}; }) : [];
+    var day = H ? zoneParts(H.timezone).date : "", ticked = H ? C.ticksSince(S, C.addDays(day, -1)) : [];
+    var now = H && REMIND.morning ? C.summaryFor(H, S, day) : null;
+    var today = now ? {title: now.title, subtitle: now.subtitle, body: now.body} : null;
+    var payload = {handover: H ? H.id : "", items: items, ticked: ticked, day: day, today: today}, sig = JSON.stringify(payload);
+    if (sig === sentReminders) return;
+    sentReminders = sig;
+    call("reminders", payload).then(remindStatus);
+  }, 400);
+}
+function remindStatus(r){ if (r && r.status) $("remindOff").hidden = !(r.status === "denied" && (REMIND.morning || REMIND.jobs)); }
+function setRemind(){
+  REMIND = {morning: $("remindMorning").checked, jobs: $("remindJobs").checked};
+  call("setReminderPrefs", REMIND).then(function(){ sentReminders = null; syncReminders(); });
+  toast(REMIND.morning || REMIND.jobs ? "Reminders on" : "Reminders off");
+}
+/* Called by the Mac app when a reminder is clicked: "done" ticks the job it was for, "open" shows Today */
+window.handoverReminder = function(action, id, key){
+  if (!H){ pendingReminder = [action, id, key]; return; }
+  if (id && H.id !== id){
+    pendingReminder = [action, id, key];
+    return call("switchTo", {id: id}).then(function(r){ if (r && r.source) boot(r); else pendingReminder = null; });
+  }
+  pendingReminder = null;
+  if (action === "done" && key){
+    var r = (H.recurring || []).filter(function(x){ return x.id === key.split("@")[0]; })[0];
+    if (!r) return;
+    if (!S.recurring[key]){ S.recurring[key] = new Date().toISOString(); save(); rerenderKeepSearch(); }
+    return toast("Done: " + plain(r.text));
+  }
+  var t = $("today"); if (t) t.scrollIntoView({block: "start"});
+};
 function progressOut(){ return {updated: S.updated || new Date().toISOString(), firstSeen: S.firstSeen, tasks: S.tasks, recurring: S.recurring, notes: S.notes || ""}; }
 
 /* ================= Loading ================= */
@@ -797,6 +846,7 @@ function render(){
   $("brand").textContent = H.title;
   $("fmtVersion").textContent = C.version + (H.handover !== C.version ? " (this file uses " + H.handover + ")" : "");
   renderHero(); renderToday(); renderPath(); renderRole(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
+  syncReminders();
   $("notes").value = S.notes || "";
   var nav = [];
   if ($("today")) nav.push(["#today", "Today"]);
@@ -1635,6 +1685,7 @@ function command(c){
     case "ask": return jumpToSearch();
     case "reveal": return call("reveal");
     case "checkUpdates": return call("checkUpdates");
+    case "notificationSettings": return call("notificationSettings");
     case "chooseFolder": return call("chooseFolder").then(function(r){ if (r && r.path){ $("dataFolder").textContent = r.path; toast("Data folder changed"); } });
     case "resetProgress": if (!confirm("Clear all your ticks and notes for this handover? This can't be undone.")) return; S = emptyState(TODAY); save(); render(); return toast("Progress cleared");
   }
@@ -1738,7 +1789,7 @@ function closeHandover(){
   var id = H.id, title = H.title;
   clearTimeout(saveTimer); saveTimer = null;
   return call("saveState", {id: id, state: S}).then(function(){ return call("close", {id: id}); }).then(function(){
-    H = null; S = null; SOURCE_NAME = ""; BASE = null;
+    H = null; S = null; SOURCE_NAME = ""; BASE = null; syncReminders();
     $("shareMenu").open = false; $("warnBanner").hidden = true; $("errors").hidden = true;
     document.title = "Handover";
     showWelcome(); window.scrollTo(0, 0);
@@ -1779,6 +1830,7 @@ window.handoverTick = function(){
   if (!H) return;
   var z = zoneParts(H.timezone);
   if (z.date !== TODAY) rerenderKeepSearch();
+  syncReminders();
   if (native && z.time >= exportTime() && S.lastAutoExport !== z.date){
     S.lastAutoExport = z.date; save();
     call("exportSheet", {id: H.id, date: z.date, filename: H.id + "-" + z.date + ".md", content: sheet(z.date), auto: true});
@@ -1793,6 +1845,7 @@ function boot(res){
   if (res && res.dataFolder) $("dataFolder").textContent = res.dataFolder;
   if (res && typeof res.loginItem === "boolean") $("loginItem").checked = res.loginItem;
   if (res && typeof res.autoUpdate === "boolean") $("autoUpdate").checked = res.autoUpdate;
+  if (res && res.reminders){ REMIND = {morning: res.reminders.morning !== false, jobs: res.reminders.jobs !== false}; $("remindMorning").checked = REMIND.morning; $("remindJobs").checked = REMIND.jobs; }
   if (res && res.version) $("appVersion").textContent = "Version " + res.version;
   if (lib.length > 1){ $("switchRow").hidden = false; $("switchSel").innerHTML = '<option value="">Choose…</option>' + lib.map(function(x){ return '<option value="' + esc(x.id) + '">' + esc(x.title || x.id) + "</option>"; }).join(""); }
   if (res && res.source){
@@ -1802,8 +1855,11 @@ function boot(res){
     BASE = res.source;
     load(contentOnly(obj), res.state ? normalise(res.state, today) : emptyState(today), "", v.warnings);
     window.handoverTick();
-  } else showWelcome();
+    if (pendingReminder && (!pendingReminder[1] || pendingReminder[1] === H.id)) window.handoverReminder.apply(null, pendingReminder);
+  } else { pendingReminder = null; showWelcome(); syncReminders(); }
 }
+$("remindMorning").addEventListener("change", setRemind);
+$("remindJobs").addEventListener("change", setRemind);
 $("autoUpdate").addEventListener("change", function(){ call("setAutoUpdate", {on: this.checked}).then(function(r){ if (r) toast(r.enabled ? "Will check for updates" : "Won't check for updates"); }); });
 $("loginItem").addEventListener("change", function(){ var on = this.checked; call("setLogin", {on: on}).then(function(r){ if (r && typeof r.enabled === "boolean"){ $("loginItem").checked = r.enabled; toast(r.enabled ? "Will open at login" : "Won't open at login"); if (r.message) toast(r.message); } }); });
 
