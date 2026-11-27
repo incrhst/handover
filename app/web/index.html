@@ -254,6 +254,14 @@ body.searching .questions{display:none}
 .card.closed{background:var(--bg);color:var(--ink-3)}
 .meta-line{font-size:13px;color:var(--ink-3);display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
 .meta-line .mbit+.mbit::before{content:"·";margin-right:6px}
+.closebtn{border:1px solid var(--line);background:var(--surface);color:var(--accent);font:inherit;font-size:12.5px;font-weight:650;border-radius:999px;padding:2px 10px;cursor:pointer;margin-left:auto}
+.closebtn:hover{border-color:var(--accent)}
+.when .closebtn{margin-left:6px}
+.chow{display:grid;gap:6px;margin:4px 0 12px}
+.chow label{display:flex;gap:8px;align-items:baseline;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:var(--surface)}
+.cfield{display:block;margin:0 0 12px;font-size:13px;font-weight:650;color:var(--ink-2,inherit)}
+.cfield input,.cfield select{display:block;width:100%;box-sizing:border-box;margin-top:4px;font:inherit;font-size:15px;font-weight:400;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg,#fff);color:inherit}
+#closeMsg{color:#b3261e;font-size:13px;margin:0 0 8px}
 .subhead{font-size:12.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 8px;display:flex;gap:8px;align-items:center}
 .board{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .board .colh{font-size:13px;font-weight:800;margin:0 0 8px;color:var(--ink-2)}
@@ -487,6 +495,19 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   </form>
 </dialog>
 
+<dialog class="dlg" id="closeDlg" aria-labelledby="closeDlgTitle">
+  <form method="dialog" id="closeForm">
+    <header><h2 id="closeDlgTitle">Close this item</h2><p id="closeWhat"></p></header>
+    <div class="dlg-body">
+      <div class="chow" id="closeHow" role="radiogroup" aria-label="How it was closed"></div>
+      <label class="cfield" id="closeFixRow">Where the answer is <small style="font-weight:400;color:var(--ink-3)">(optional: a link, a document or who has it, never a password)</small><input type="text" id="closeFix" autocomplete="off"></label>
+      <label class="cfield">Closed by <select id="closeBy"></select></label>
+      <p id="closeMsg" hidden></p>
+    </div>
+    <footer><button class="btn" type="button" id="closeCancel">Cancel</button><button class="btn primary" type="submit" id="closeGo">Close item</button></footer>
+  </form>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
@@ -708,7 +729,7 @@ function renderToday(){
   if (!(H.recurring || []).length && !att.length){ w.innerHTML = ""; return; }
   var sc = schedule(TODAY), dueDone = sc.due.filter(function(o){ return isDone(o.r.id, o.date); }).length;
   var cols = "";
-  if (att.length) cols += '<div class="col attention"><h3>Needs attention <span class="count">' + att.length + "</span></h3>" + att.map(function(a){ return '<div class="duty plain"><span class="t">' + a.html + '</span><span class="when">' + a.when + "</span></div>"; }).join("") + "</div>";
+  if (att.length) cols += '<div class="col attention"><h3>Needs attention <span class="count">' + att.length + "</span></h3>" + att.map(function(a){ return '<div class="duty plain"><span class="t">' + a.html + '</span><span class="when">' + a.when + (a.close || "") + "</span></div>"; }).join("") + "</div>";
   if (sc.overdue.length) cols += '<div class="col overdue"><h3>Overdue <span class="count">' + sc.overdue.length + "</span></h3>" + sc.overdue.map(function(o){ return dutyHtml(o, true); }).join("") + "</div>";
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Today <span class="count">' + dueDone + " of " + sc.due.length + "</span></h3>" + (sc.due.length ? sc.due.map(function(o){ return dutyHtml(o, false); }).join("") : '<div class="empty">Nothing due today.</div>') + "</div>";
   if ((H.recurring || []).length) cols += '<div class="col"><h3>Next 7 days <span class="count">' + sc.next.length + "</span></h3>" + (sc.next.length ? sc.next.map(function(o){ return '<div class="duty plain"><span class="t">' + inline(o.r.text) + '</span><span class="when">' + esc([nice(o.date), o.r.time || ""].filter(Boolean).join(" · ")) + riskChip(o.r.id) + "</span></div>"; }).join("") : '<div class="empty">Nothing else this week.</div>') + "</div>";
@@ -804,10 +825,10 @@ function link(id, text){ return '<a href="#' + esc(id) + '">' + esc(text) + "</a
 /* What needs someone today, worked out from the records (spec section 15: never stored) */
 function attention(today){
   var out = [], soon = C.addDays(today, 7);
-  (H.gaps || []).filter(function(g){ return open_(g) && g.blocks; }).forEach(function(g){ out.push({html: inline(g.text), when: chip("Blocks work", "bad") + " " + link("rec-gaps", "Gaps list"), plain: "Blocks work: " + plain(g.text)}); });
+  (H.gaps || []).filter(function(g){ return open_(g) && g.blocks; }).forEach(function(g){ out.push({html: inline(g.text), when: chip("Blocks work", "bad") + " " + link("rec-gaps", "Gaps list"), plain: "Blocks work: " + plain(g.text), close: closeBtn("gaps", g)}); });
   (H.inProgress || []).filter(function(x){ return open_(x) && x.due && x.due <= soon; }).sort(function(a, b){ return a.due < b.due ? -1 : 1; }).forEach(function(x){
     var late = x.due < today;
-    out.push({html: inline(x.text), when: chip(late ? "Overdue" : "Due " + nice(x.due), late ? "bad" : "warn") + (x.owner ? " " + esc(who(x.owner)) : ""), plain: plain(x.text) + " (" + (late ? "overdue, was due " : "due ") + nice(x.due) + (x.owner ? ", " + who(x.owner) : "") + ")"});
+    out.push({close: closeBtn("inProgress", x), html: inline(x.text), when: chip(late ? "Overdue" : "Due " + nice(x.due), late ? "bad" : "warn") + (x.owner ? " " + esc(who(x.owner)) : ""), plain: plain(x.text) + " (" + (late ? "overdue, was due " : "due ") + nice(x.due) + (x.owner ? ", " + who(x.owner) : "") + ")"});
   });
   (H.asks || []).filter(function(a){ return a.status === "sent"; }).forEach(function(a){
     var late = a.replyBy && a.replyBy < today;
@@ -830,13 +851,17 @@ var DOCTYPE = {folder: "Folder", brief: "One-page brief", profile: "Principal pr
 var STATUS = {draft: ["Draft", ""], sent: ["Sent", "warn"], confirmed: ["Confirmed", "ok"], corrected: ["Corrected", "warn"], defaulted: ["Default applied", ""], open: ["Open", ""], done: ["Done", "ok"], na: ["Not needed", ""], pass: ["Pass", "ok"], fail: ["Fail", "bad"]};
 function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
 /* Provenance, visibility and closure of one item (spec section 11) */
+var RECORD_LISTS = ["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide"];
+function listOf(o){ for (var i = 0; i < RECORD_LISTS.length; i++){ var k = RECORD_LISTS[i], l = k === "decide" ? (H.decide && H.decide.cards) || [] : H[k] || []; if (l.indexOf(o) > -1) return k; } return ""; }
+function closeBtn(list, o){ return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
 function metaLine(o, extra){
-  var bits = (extra || []).slice();
+  var bits = (extra || []).slice(), list = listOf(o);
   if (o.closed) bits.push(chip(CLOSED[o.closed.how] || "Closed", "ok") + (o.closed.at ? " " + esc(day(o.closed.at)) : "") + (o.closed.fix ? " · " + (/^https?:/.test(o.closed.fix) ? '<a href="' + esc(o.closed.fix) + '" target="_blank" rel="noopener">the fix</a>' : esc(o.closed.fix)) : ""));
   if (o.aiDrafted) bits.push(chip("AI draft", "ai", "Drafted by an AI. Check it."));
   if (o.visibleTo) bits.push(chip("Only " + o.visibleTo.map(who).filter(uniq).join(", "), "lock", "Only these people may see it"));
   if (o.added) bits.push("Added " + esc(day(o.added)) + (o.addedBy ? " by " + esc(who(o.addedBy)) : ""));
-  return bits.length ? '<div class="meta-line">' + bits.map(function(b){ return /^<span class="chip/.test(b) ? b : '<span class="mbit">' + b + "</span>"; }).join("") + "</div>" : "";
+  if (list) bits.push(closeBtn(list, o));
+  return bits.length ? '<div class="meta-line">' + bits.map(function(b){ return /^<(span class="chip|button)/.test(b) ? b : '<span class="mbit">' + b + "</span>"; }).join("") + "</div>" : "";
 }
 function checksHtml(c){ if (!c) return ""; return ["opens","create","level"].filter(function(k){ return c[k]; }).map(function(k){ return chip(CHECK[k] + ": " + c[k].result, c[k].result === "pass" ? "ok" : "bad", c[k].note || ""); }).join(" ") + ["opens","create","level"].filter(function(k){ return c[k] && c[k].note; }).map(function(k){ return '<p class="sub">' + esc(CHECK[k]) + ": " + inline(c[k].note) + "</p>"; }).join(""); }
 function block(id, title, count, body, openIt){ return '<details class="ref" id="' + esc(id) + '"' + (openIt ? " open" : "") + '><summary><h3>' + esc(title) + "</h3>" + (count ? chip(count, "") : "") + '</summary><div class="md">' + body + "</div></details>"; }
@@ -988,6 +1013,8 @@ document.addEventListener("click", function(e){
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
   var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
   var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
+  var cb = t.closest("[data-close]"); if (cb){ e.preventDefault(); openClose(cb.dataset.close); return; }
+  var rb = t.closest("[data-reopen]"); if (rb){ e.preventDefault(); reopen(rb.dataset.reopen); return; }
   var a = t.closest('a[href^="#"]');
   if (a && $("app").contains(a)){
     var target = $(a.getAttribute("href").slice(1)); if (!target) return;
@@ -1035,20 +1062,63 @@ $("fillForm").addEventListener("submit", function(e){
     else toast(err.message);
     return;
   }
-  var v = validate(res.h);
-  if (v.errors.length){ toast("Not saved: the file would not be valid (" + v.errors[0] + ")"); return; }
-  call("adopt", {id: res.h.id, title: res.h.title, text: JSON.stringify(res.h, null, 2), name: SOURCE_NAME}).then(function(r){
-    if (!r){ toast("Couldn't save the handover"); return; }
-    var y = window.scrollY;
-    H = res.h;
-    sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
-    renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
-    render(); window.scrollTo(0, y);
+  saveContent(res.h).then(function(ok){
+    if (!ok) return;
     $("fillDlg").close();
     var left = C.gapList(H).length;
     toast("Filled " + res.filled + (res.filled === 1 ? " gap" : " gaps") + (left ? " · " + left + " left" : " · no gaps left"));
   });
 });
+
+/* Save a changed handover into the library and show it, keeping the scroll position */
+function saveContent(next){
+  var v = validate(next);
+  if (v.errors.length){ toast("Not saved: the file would not be valid (" + v.errors[0] + ")"); return Promise.resolve(false); }
+  return call("adopt", {id: next.id, title: next.title, text: JSON.stringify(next, null, 2), name: SOURCE_NAME}).then(function(r){
+    if (!r){ toast("Couldn't save the handover"); return false; }
+    var y = window.scrollY, open = [].slice.call(document.querySelectorAll("#main details[open][id]")).map(function(d){ return d.id; });
+    H = next;
+    sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
+    renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
+    render();
+    open.forEach(function(id){ var d = $(id); if (d) d.open = true; });
+    window.scrollTo(0, y);
+    return true;
+  });
+}
+
+/* Close or reopen a record (spec section 11) */
+var CLOSING = null;
+function findRecord(list, id){ var l = list === "decide" ? (H.decide && H.decide.cards) || [] : H[list] || []; return l.filter(function(x){ return x.id === id; })[0]; }
+function openClose(ref){
+  var i = ref.indexOf(":"), list = ref.slice(0, i), id = ref.slice(i + 1), item = findRecord(list, id);
+  if (!item) return;
+  CLOSING = {list: list, id: id};
+  $("closeWhat").textContent = plain(item.text || item.name || item.title || item.what || id).replace(/\*\*/g, "");
+  var hows = C.closeHow[list];
+  $("closeHow").innerHTML = hows.map(function(h, n){ return '<label><input type="radio" name="closeHow" value="' + h + '"' + (n === 0 ? " checked" : "") + "> <span>" + esc(C.closeLabel[h]) + "</span></label>"; }).join("");
+  $("closeFix").value = "";
+  var roles = []; (H.people || []).forEach(function(p){ (p.roles || []).forEach(function(r){ if (["outgoing","incoming","principal","facilitator"].indexOf(r) > -1 && !roles.some(function(x){ return x[0] === r; })) roles.push([r, p.name + " (" + C.roleName[r].toLowerCase() + ")"]); }); });
+  $("closeBy").innerHTML = '<option value="">Not recorded</option>' + roles.map(function(r){ return '<option value="' + r[0] + '">' + esc(r[1]) + "</option>"; }).join("");
+  $("closeMsg").hidden = true;
+  closeFixShown();
+  $("closeDlg").showModal();
+}
+function closeFixShown(){ var h = (document.querySelector('input[name="closeHow"]:checked') || {}).value; $("closeFixRow").hidden = h === "dropped" || h === "done"; }
+$("closeHow").addEventListener("change", closeFixShown);
+$("closeCancel").addEventListener("click", function(){ $("closeDlg").close(); });
+$("closeForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var how = (document.querySelector('input[name="closeHow"]:checked') || {}).value, next;
+  try { next = C.closeItem(H, CLOSING.list, CLOSING.id, {how: how, by: $("closeBy").value || undefined, fix: $("closeFixRow").hidden ? "" : $("closeFix").value, date: TODAY}); }
+  catch (err){ $("closeMsg").textContent = err.message; $("closeMsg").hidden = false; return; }
+  saveContent(next).then(function(ok){ if (ok){ $("closeDlg").close(); toast("Closed: " + C.closeLabel[how].toLowerCase()); } });
+});
+function reopen(ref){
+  var i = ref.indexOf(":"), next;
+  try { next = C.reopenItem(H, ref.slice(0, i), ref.slice(i + 1), {date: TODAY}); } catch (err){ toast(err.message); return; }
+  saveContent(next).then(function(ok){ if (ok) toast("Reopened"); });
+}
 
 /* Search */
 var q = $("q"), qinfo = $("qinfo"), qtimer;
