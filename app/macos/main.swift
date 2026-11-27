@@ -360,7 +360,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
         let p = NSOpenPanel(); p.allowedContentTypes = [handoverType, .json]
         p.beginSheetModal(for: window) { r in if r == .OK, let u = p.url { self.importFile(u) } }
     }
-    @objc func openSample() { showWindow(); importFile(webDir.appendingPathComponent("sample.handover")) }
+    @objc func openSample() { showWindow(); importFile(webDir.appendingPathComponent("ea-no-overlap.handover")) }
     @objc func exportToday() { command("exportToday") }
     @objc func shareFile() { command("shareFile") }
     @objc func exportProgress() { command("exportProgress") }

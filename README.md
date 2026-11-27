@@ -29,7 +29,7 @@ The app checks GitHub for a new release once a day (or **Handover › Check for 
 
 A `.handover` file is UTF-8 JSON: a `path` of stages and tasks, `recurring` duties on a schedule, `questions` with short answers and reference `sections`. Version 1.1 adds the full record of an assistant handover: people and stakeholders, the plan and the questions for the principal, gaps, rules, decisions, risks, systems and documents, who decides what (with limits and approvers), the final check, sign-off and check-ins. Every 1.0 file is still a valid 1.1 file.
 
-See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) (frozen copies: [1.0](site/schema/v1.0.json), [1.1](site/schema/v1.1.json)) and two examples: [an operations lead](site/examples/sample.handover) (1.0) and [an executive assistant with no overlap](site/examples/ea-no-overlap.handover) (1.1). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
+See [the specification](spec/SPEC.md), the [JSON Schema](site/schema/v1.json) (frozen copies: [1.0](site/schema/v1.0.json), [1.1](site/schema/v1.1.json)) and two examples: [an executive assistant handover with no overlap](site/examples/ea-no-overlap.handover) (1.1, the reference case) and [a simpler operations lead handover](site/examples/sample.handover) (1.0). Other tools are welcome to read and write it. `x-` fields are reserved for extensions.
 
 Never put passwords or keys in a handover file. Say where they're kept instead.
 
@@ -64,7 +64,7 @@ scripts/build-app.sh            # build/Handover.app, signed ad hoc
 scripts/build-dmg.sh            # dist/Handover.dmg
 ```
 
-To try the page in a browser without the app, serve the repo and open `app/web/index.html?src=../../site/examples/sample.handover`.
+To try the page in a browser without the app, serve the repo and open `app/web/index.html?src=../../site/examples/ea-no-overlap.handover`.
 
 ### Releasing
 

@@ -39,7 +39,9 @@ jobs:
         run: scripts/sync-shared.sh --check
       - name: Check the example and the skill
         if: steps.gate.outputs.go == 'true'
-        run: node skills/handover/scripts/handover.cjs check site/examples/sample.handover
+        run: |
+          node skills/handover/scripts/handover.cjs check site/examples/ea-no-overlap.handover
+          node skills/handover/scripts/handover.cjs check site/examples/sample.handover
       - name: Import the signing certificate
         if: steps.gate.outputs.go == 'true'
         env:

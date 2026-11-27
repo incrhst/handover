@@ -5,7 +5,7 @@ A handover file describes how to take over a role. It's built for people: the Ha
 - **File extension:** `.handover`
 - **Encoding:** UTF-8 JSON
 - **Schema:** [`https://incrhst.github.io/handover/schema/v1.json`](../site/schema/v1.json) (JSON Schema 2020-12, always the newest 1.x; frozen copies: [`v1.0.json`](../site/schema/v1.0.json), [`v1.1.json`](../site/schema/v1.1.json))
-- **Examples:** [`sample.handover`](../site/examples/sample.handover) (1.0, an operations lead) and [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.1, an executive assistant handover with no overlap, the reference case for sections 9 to 15)
+- **Examples:** [`ea-no-overlap.handover`](../site/examples/ea-no-overlap.handover) (1.1, an executive assistant handover with no overlap: the reference case, and the one for sections 9 to 15) and [`sample.handover`](../site/examples/sample.handover) (1.0, a simpler operations lead handover)
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
 

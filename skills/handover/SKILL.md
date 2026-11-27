@@ -5,7 +5,7 @@ description: Create, convert, check, edit and merge role handover files (.handov
 
 # Handover files
 
-A `.handover` file is UTF-8 JSON describing how to take over a role: a first-month **path** of stages and tasks, **recurring** duties on a schedule, common **questions** with short answers, and reference **sections**. It is an open format: spec in `references/SPEC.md`, JSON Schema in `references/schema.json`, a 1.0 example in `references/sample.handover` and a full 1.1 example (an executive assistant handover with no overlap) in `references/ea-no-overlap.handover`. The Handover app (https://incrhst.github.io/handover/) opens these files; any other tool can read them too.
+A `.handover` file is UTF-8 JSON describing how to take over a role: a first-month **path** of stages and tasks, **recurring** duties on a schedule, common **questions** with short answers, and reference **sections**. It is an open format: spec in `references/SPEC.md`, JSON Schema in `references/schema.json`, the reference example, an executive assistant handover with no overlap that uses all of 1.1, in `references/ea-no-overlap.handover`, and a simpler 1.0 example in `references/sample.handover`. The Handover app (https://incrhst.github.io/handover/) opens these files; any other tool can read them too.
 
 ## Rules that always apply
 
