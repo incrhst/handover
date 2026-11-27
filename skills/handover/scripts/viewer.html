@@ -444,6 +444,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
           <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
+          <button type="button" data-cmd="calendar">Add jobs to calendar (.ics)…<small>Every regular job, repeating, for Apple Calendar, Google Calendar or Outlook</small></button>
           <button type="button" data-cmd="kit" id="kitMenuBtn">Transition kit (HTML)…<small>One file that opens in any browser, with no app or internet</small></button>
           <hr>
           <button type="button" data-cmd="print">Print…</button>
@@ -955,7 +956,7 @@ function renderToday(){
   var jobs = H.recurring || [], needed = H.asNeeded || [];
   var areaTag = function(x){ return x.area ? '<span class="area">' + esc(x.area) + "</span>" : ""; };
   var all = jobs.length || needed.length ? '<details class="alljobs no-print" id="alljobs"><summary>All jobs (' + (jobs.length + needed.length) + ")</summary>" + jobs.map(function(r){
-    return '<div class="duty plain"><span class="t">' + inline(r.text) + areaTag(r) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + editBtn("recurring", r) + "</span>" + guidesHtml("recurring", r) + "</div>";
+    return '<div class="duty plain"><span class="t">' + inline(r.text) + areaTag(r) + '</span><span class="when">' + esc([cadence(r), r.time || "", r.start ? "from " + nice(r.start) : "", r.end ? "until " + nice(r.end) : ""].filter(Boolean).join(" · ")) + calBtn(r) + editBtn("recurring", r) + "</span>" + guidesHtml("recurring", r) + "</div>";
   }).join("") + (needed.length ? '<h4 class="alljobs-sub">Done as needed</h4>' + needed.map(function(a){
     return '<div class="duty plain"><span class="t">' + inline(a.text) + areaTag(a) + '</span><span class="when">' + esc(C.whenNeeded(a)) + editBtn("asNeeded", a) + "</span>" + (a.detail ? '<div class="detail">' + md(a.detail) + "</div>" : "") + guidesHtml("asNeeded", a) + "</div>";
   }).join("") : "") + '<div class="addrow"><button type="button" class="closebtn" data-add="asNeeded">Add a job done as needed…</button></div></details>' : "";
@@ -1132,6 +1133,7 @@ $("guideRef").addEventListener("click", function(){
   var id = this.dataset.sec; $("guideDlg").close(); if (document.body.classList.contains("searching")) clearSearch();
   var target = $(secHref(id).slice(1)); if (target){ reveal(target); target.scrollIntoView({block: "start"}); if (target.tagName === "DETAILS") flash(target); }
 });
+function calBtn(r){ return '<button type="button" class="closebtn no-print" data-calendar="' + esc(r.id) + '" title="Save this job as a calendar file (.ics) that repeats on its schedule">Calendar</button>'; }
 function editBtn(list, o){ if (KIT) return ""; return '<button type="button" class="closebtn no-print' + (list === "path" ? " editbtn" : "") + '" data-edit="' + esc(list + ":" + o.id) + '" title="Change what isn\'t accurate">Edit…</button>'; }
 function canAdd(){ return !KIT && !!H.handover && H.handover !== "1.0"; }
 function addBtn(list){ return canAdd() ? '<div class="addrow no-print"><button type="button" class="closebtn" data-add="' + list + '">Add a ' + esc(C.listNoun[list]) + "…</button></div>" : ""; }
@@ -1307,6 +1309,7 @@ document.addEventListener("click", function(e){
   var cmd = t.closest("[data-cmd]"); if (cmd){ menu.open = false; command(cmd.dataset.cmd); return; }
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
+  var cal = t.closest("[data-calendar]"); if (cal){ e.preventDefault(); exportCalendar(cal.dataset.calendar); return; }
   if (KIT && t.closest("[data-export],#main .todo,[data-close],[data-reopen],[data-add],[data-edit]")) return;
   var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
   var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
@@ -1777,12 +1780,13 @@ function sheet(date){
 function slugDate(){ return TODAY; }
 function command(c){
   if (!H && ["open","sample"].indexOf(c) < 0) return;
-  if (KIT && ["exportToday","exportProgress","print","find","ask","resetProgress"].indexOf(c) < 0) return;
+  if (KIT && ["exportToday","exportProgress","calendar","print","find","ask","resetProgress"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
     case "close": return closeHandover();
     case "exportItems": return openExportDialog();
     case "kit": return openKit();
+    case "calendar": return exportCalendar();
     case "report": return openReport();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1874,6 +1878,15 @@ $("exportForm").addEventListener("submit", function(e){
     .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Exported " + o.title); });
 });
 
+/* The regular jobs, or one of them, as a calendar file (.ics) that repeats on each job's schedule (core.js makes it) */
+function exportCalendar(id){
+  $("shareMenu").open = false;
+  var out = C.calendarFile(H, {ids: id ? [id] : undefined, from: TODAY});
+  if (!out.count) return toast(id ? "That job has no dates left" : "There are no regular jobs with dates left");
+  var name = H.id + (id ? "-" + id : "-jobs") + ".ics";
+  return call("saveAs", {filename: name, content: out.text, mime: "text/calendar", title: id ? "Add the job to a calendar" : "Add jobs to a calendar"})
+    .then(function(r){ if ((r && r.path) || !native) toast("Saved " + (r && r.path ? r.path.split("/").pop() : name) + ". Open it to add " + (out.count === 1 ? "the job" : "the " + out.count + " jobs") + " to your calendar"); });
+}
 /* Transition kit: the whole handover as one HTML file that opens in any browser (core.js makes it) */
 function openKit(){
   $("shareMenu").open = false;

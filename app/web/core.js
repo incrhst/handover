@@ -424,6 +424,117 @@ function ticksSince(progress, since){
   return Object.keys(done).filter(function(k){ return done[k] && k.split("@")[1] >= since; }).sort();
 }
 
+/* ================= Calendar file (.ics, RFC 5545) ================= */
+/* The regular jobs as one calendar file that Apple Calendar, Google Calendar and Outlook can import. Each job is one event that
+   repeats on the job's schedule, from its first date on or after o.from (default: today in the handover's zone) until its end.
+   A job with a time is an event at that time in the handover's zone (a VTIMEZONE is written for it); one without is all-day.
+   A job with a lead time gets an alert that many days before. The UID is the job's id, so importing again can update it.
+   o: {ids (only these jobs), from (YYYY-MM-DD), now (ms, for DTSTAMP)}. Returns {text, count}. No change to the format. */
+var ICS_DAY = {mon: "MO", tue: "TU", wed: "WE", thu: "TH", fri: "FR", sat: "SA", sun: "SU"}, ICS_DOW = ["SU","MO","TU","WE","TH","FR","SA"];
+function icsText(s){ return String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n"); }
+/* Lines longer than 75 octets go on in a line that starts with a space, never splitting a character */
+function icsFold(line){
+  var out = [], cur = "", n = 0;
+  for (var i = 0; i < line.length; i++){
+    var c = line.charAt(i), code = line.charCodeAt(i);
+    if (code >= 0xD800 && code <= 0xDBFF && i + 1 < line.length){ c += line.charAt(++i); }
+    var b = code < 0x80 ? 1 : code < 0x800 ? 2 : c.length > 1 ? 4 : 3;
+    if (n + b > (out.length ? 74 : 75)){ out.push(cur); cur = ""; n = 0; }
+    cur += c; n += b;
+  }
+  out.push(cur);
+  return out.join("\r\n ");
+}
+function icsDate(s){ return s.replace(/-/g, ""); }
+function icsUtc(t){ return new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z"); }
+function icsOffset(ms){ var m = Math.round(ms / 60000), a = Math.abs(m); return (m < 0 ? "-" : "+") + ("0" + Math.floor(a / 60)).slice(-2) + ("0" + a % 60).slice(-2); }
+function validZone(tz){ if (!tz) return false; try { new Intl.DateTimeFormat("en-GB", {timeZone: tz}); return true; } catch(e){ return false; } }
+/* The nth (or, for -1, the last) weekday dow (0 = Sunday) of month m in year y, as a day of the month */
+function nthWeekday(y, m, dow, n){
+  if (n < 0){ var last = dim(y, m), ld = new Date(Date.UTC(y, m - 1, last)).getUTCDay(); return last - ((ld - dow + 7) % 7); }
+  var fd = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(); return 1 + ((dow - fd + 7) % 7) + (n - 1) * 7;
+}
+/* The zone's rules as worked out for year: each change of offset that year as a yearly rule (nth or last weekday of a month) */
+function vtimezone(tz, year){
+  function off(t){ return zoneClock(t, tz).offset; }
+  var lines = ["BEGIN:VTIMEZONE", "TZID:" + tz], prev = Date.UTC(year, 0, 1, 12), was = off(prev), found = 0;
+  for (var i = 1; i <= 366; i++){
+    var t = Date.UTC(year, 0, 1 + i, 12), now = off(t);
+    if (now === was){ prev = t; continue; }
+    var lo = prev, hi = t;
+    while (hi - lo > 60000){ var mid = Math.floor((lo + hi) / 2 / 60000) * 60000; if (off(mid) === was) lo = mid; else hi = mid; }
+    var wall = new Date(hi + was), m = wall.getUTCMonth() + 1, d = wall.getUTCDate(), dow = wall.getUTCDay();
+    var n = d + 7 > dim(year, m) ? -1 : Math.ceil(d / 7), kind = now > was ? "DAYLIGHT" : "STANDARD";
+    var hm = ("0" + wall.getUTCHours()).slice(-2) + ("0" + wall.getUTCMinutes()).slice(-2) + "00";
+    lines.push("BEGIN:" + kind, "DTSTART:1970" + ("0" + m).slice(-2) + ("0" + nthWeekday(1970, m, dow, n)).slice(-2) + "T" + hm,
+      "RRULE:FREQ=YEARLY;BYMONTH=" + m + ";BYDAY=" + n + ICS_DOW[dow], "TZOFFSETFROM:" + icsOffset(was), "TZOFFSETTO:" + icsOffset(now), "END:" + kind);
+    found++; was = now; prev = t;
+  }
+  if (!found) lines.push("BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:" + icsOffset(was), "TZOFFSETTO:" + icsOffset(was), "END:STANDARD");
+  lines.push("END:VTIMEZONE");
+  return lines;
+}
+/* The day of the month as a rule: a day past a month's end falls on its last day (spec section 5), so 29 to 31 take the last of 28..n */
+function icsMonthDay(day){
+  if (day === "last") return "BYMONTHDAY=-1";
+  var n = day || 1; if (n <= 28) return "BYMONTHDAY=" + n;
+  var ds = []; for (var k = 28; k <= n; k++) ds.push(k);
+  return "BYMONTHDAY=" + ds.join(",") + ";BYSETPOS=-1";
+}
+function icsRule(r){
+  switch (r.every){
+    case "day": return "FREQ=DAILY";
+    case "weekday": return "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR";
+    case "week": var on = [].concat(r.on || "mon"); return "FREQ=WEEKLY;BYDAY=" + DAYS.filter(function(d){ return on.indexOf(d) > -1; }).map(function(d){ return ICS_DAY[d]; }).join(",");
+    case "month": return "FREQ=MONTHLY;" + icsMonthDay(r.day);
+    case "quarter": return "FREQ=MONTHLY;INTERVAL=3;" + icsMonthDay(r.day);
+    case "year": var md = r.date.split("-").map(Number); return "FREQ=YEARLY;BYMONTH=" + md[0] + ";" + icsMonthDay(md[1]);
+  }
+  return "";
+}
+/* The first date on or after from that the job falls on, or null when it has none left */
+function firstOn(r, from){
+  var s = r.start && r.start > from ? r.start : from;
+  for (var i = 0; i <= 400; i++){ var d = addDays(s, i); if (r.end && d > r.end) return null; if (occursOn(r, d)) return d; }
+  return null;
+}
+function calendarFile(h, o){
+  o = o || {};
+  var tz = validZone(h.timezone) ? h.timezone : "", from = o.from || zoneParts(h.timezone).date, now = o.now || Date.now();
+  var title = plainText(h.title || "Handover"), events = [], timed = false;
+  (h.recurring || []).forEach(function(r){
+    if (!r || r.visibleTo || (o.ids && o.ids.indexOf(r.id) < 0)) return;
+    var first = firstOn(r, from); if (!first) return;
+    var at = TIME.test(r.time || "") ? r.time : "", lead = leadOf(r), rule = icsRule(r);
+    if (!rule) return;
+    var ev = ["BEGIN:VEVENT", "UID:" + r.id + "@" + (h.id || "handover") + ".handover", "DTSTAMP:" + icsUtc(now), "SUMMARY:" + icsText(plainText(r.text))];
+    if (at){
+      timed = true;
+      var local = icsDate(first) + "T" + at.replace(":", "") + "00";
+      ev.push(tz ? "DTSTART;TZID=" + tz + ":" + local : "DTSTART:" + local, "DURATION:PT30M");
+      if (r.end) rule += ";UNTIL=" + (tz ? icsUtc(zoneTime(r.end, at, tz)) : icsDate(r.end) + "T" + at.replace(":", "") + "00");
+    } else {
+      ev.push("DTSTART;VALUE=DATE:" + icsDate(first), "DTEND;VALUE=DATE:" + icsDate(addDays(first, 1)), "TRANSP:TRANSPARENT");
+      if (r.end) rule += ";UNTIL=" + icsDate(r.end);
+    }
+    ev.push("RRULE:" + rule);
+    var desc = [cadence(r) + (at ? ", at " + at : "") + "."];
+    if (r.detail) desc.push(String(r.detail).split("\n").map(plainText).join("\n").trim());
+    desc.push("From the handover: " + title);
+    ev.push("DESCRIPTION:" + icsText(desc.filter(Boolean).join("\n\n")));
+    if (r.area) ev.push("CATEGORIES:" + icsText(plainText(r.area)));
+    if (lead) ev.push("BEGIN:VALARM", "ACTION:DISPLAY", "DESCRIPTION:" + icsText("Start now: " + plainText(r.text) + " (due in " + leadWords(lead) + ")"), "TRIGGER:-P" + lead + "D", "END:VALARM");
+    ev.push("END:VEVENT");
+    events.push(ev);
+  });
+  var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//incrhst//Handover//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", "X-WR-CALNAME:" + icsText(title)];
+  if (tz) lines.push("X-WR-TIMEZONE:" + tz);
+  if (timed && tz) lines = lines.concat(vtimezone(tz, +from.slice(0, 4)));
+  events.forEach(function(ev){ lines = lines.concat(ev); });
+  lines.push("END:VCALENDAR");
+  return {text: lines.map(icsFold).join("\r\n") + "\r\n", count: events.length};
+}
+
 /* ================= Progress (spec section 6) ================= */
 function mergeProgress(state, p){
   if (!p) return state;
@@ -1556,6 +1667,20 @@ function readKit(html){
   var end = html.indexOf("</script>", at); return end < 0 ? null : JSON.parse(html.slice(at + KIT_OPEN.length, end));
 }
 
+/* Every report and export ends by saying it was made with Handover and how to get the app. The lines are inline
+   Markdown; each format draws them its own way, with the links kept as links. */
+var APP_SITE = "https://incrhst.github.io/handover/", APP_DMG = "https://github.com/incrhst/handover/releases/latest/download/Handover.dmg", MAKER = "https://incrementic.com";
+var APP_AD = {title: "Made with Handover", lines: [
+  "Handover is a free Mac app for taking over a role, made by [Incrementic](" + MAKER + "). It turns one file into a guided first month, a daily list of what's due and a reference you can search.",
+  "Get it at [incrhst.github.io/handover](" + APP_SITE + "), or [download it for Mac](" + APP_DMG + ") and drag it to Applications."]};
+/* The links in a line of Markdown, as {text, uri}: where a PDF puts its link areas */
+function appAdHtml(){ return '<aside class="app"><p class="app-t">' + escHtml(APP_AD.title) + "</p>" + APP_AD.lines.map(function(s){ return "<p>" + inlineHtml(s) + "</p>"; }).join("") + "</aside>"; }
+function mdLinks(md){ var out = [], re = /\[([^\]]+)\]\((https?:[^)\s]+)\)/g, m; while ((m = re.exec(md))) out.push({text: m[1], uri: m[2]}); return out; }
+/* The link areas for one printed line l of the Markdown md, drawn at x, y in font size: {r: [x1, y1, x2, y2], uri, text} */
+function pdfLinks(l, md, x, y, size, bold){
+  return mdLinks(md).map(function(k){ var i = l.indexOf(k.text); if (i < 0) return null; var x1 = x + textWidth(l.slice(0, i), bold, size);
+    return {r: [x1, y - size * 0.25, x1 + textWidth(k.text, bold, size), y + size * 0.8], uri: k.uri, text: k.text}; }).filter(Boolean);
+}
 /* The parts of a report document: its chapters, or the whole document as one */
 function docChapters(doc){ return doc.chapters || [{title: "", figures: doc.figures || [], intro: doc.intro || [], introLabel: doc.introLabel || "", parts: doc.parts}]; }
 function docMarkdown(doc){
@@ -1592,6 +1717,8 @@ function docMarkdown(doc){
     });
   });
   });
+  L.push("---", "", "**" + APP_AD.title + "**", "");
+  APP_AD.lines.forEach(function(s){ L.push(s, ""); });
   return L.join("\n");
 }
 /* Section bodies (spec section 9): headings, paragraphs, lists, notes (>), warnings (!>) and tables, as blocks */
@@ -1697,7 +1824,9 @@ function docHtml(doc){
       flush();
     });
   });
+  b.push(appAdHtml());
   return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(doc.title) + "</title><style>" +
+    ".app{border-top:1px solid #ddd;margin:28px 0 0;padding:12px 0 0;color:#555;font-size:9.5pt}.app p{margin:4px 0}.app .app-t{color:#1d1d1f;font-weight:700}" +
     "body{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f;max-width:720px;margin:24px auto;padding:0 16px}" +
     "h1{font-size:20pt;margin:0 0 4px}h2{font-size:15pt;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}h3{font-size:12pt;margin:14px 0 4px}" +
     ".sub{color:#666;margin:0 0 12px}.intro{background:#f3f6f1;border-left:3px solid #4f7a5a;padding:8px 14px;margin:8px 0 16px}.intro p{margin:6px 0}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
@@ -1809,14 +1938,26 @@ function docPdf(doc, o){
       });
     });
   });
+  /* Made with Handover, kept on one page */
+  var links = [], adSize = 9, adLh = adSize * 1.35;
+  var adLines = APP_AD.lines.map(function(md){ return {md: md, lines: wrapText(plainText(md), false, adSize, CW)}; });
+  need(30 + adLines.reduce(function(s, a){ return s + a.lines.length * adLh + 2; }, 0));
+  y -= 18; ops.push("0.85 0.84 0.8 RG 0.5 w " + M + " " + y.toFixed(2) + " m " + (W - M) + " " + y.toFixed(2) + " l S"); y -= 4;
+  para(APP_AD.title, {font: "F2", size: 9.5});
+  adLines.forEach(function(a){ a.lines.forEach(function(l){
+    y -= adLh; text(M, l, "F1", adSize, true);
+    var pi = pages.length - 1, ls = pdfLinks(l, a.md, M, y, adSize, false); links[pi] = (links[pi] || []).concat(ls);
+    ls.forEach(function(k){ ops.push("0.231 0.165 0.541 rg BT /F1 " + adSize + " Tf " + k.r[0].toFixed(2) + " " + y.toFixed(2) + " Td " + pdfStr(k.text) + " Tj ET"); });
+  }); y -= 2; });
   var n = pages.length;
   pages.forEach(function(pg, i){ var foot = plainText(doc.title) + "  ·  " + (i + 1) + " of " + n; pg.push("0.37 0.39 0.36 rg BT /F1 8 Tf " + M + " " + (M - 24) + " Td " + pdfStr(foot) + " Tj ET"); });
-  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle));
+  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle), links);
 }
 
 /* The PDF objects around the pages: three Helvetica fonts, an info dictionary and the cross-reference table */
-function pdfFile(pages, W, Hh, title, subject){
-  var objs = [];
+function pdfFile(pages, W, Hh, title, subject, links){
+  var objs = [], next = 7 + pages.length * 2;
+  links = links || [];
   objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
   objs[3] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
   objs[4] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";
@@ -1827,7 +1968,12 @@ function pdfFile(pages, W, Hh, title, subject){
   pages.forEach(function(pg, i){
     var pid = 7 + i * 2, cid = pid + 1, body = pg.join("\n");
     kids.push(pid + " 0 R");
-    objs[pid] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + Hh + "] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents " + cid + " 0 R >>";
+    /* Link areas on this page: a URI action each, no border */
+    var refs = (links[i] || []).map(function(k){
+      objs[next] = "<< /Type /Annot /Subtype /Link /Rect [" + k.r.map(function(v){ return v.toFixed(2); }).join(" ") + "] /Border [0 0 0] /A << /S /URI /URI " + pdfStr(k.uri) + " >> >>";
+      return (next++) + " 0 R";
+    });
+    objs[pid] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " + W + " " + Hh + "] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents " + cid + " 0 R" + (refs.length ? " /Annots [" + refs.join(" ") + "]" : "") + " >>";
     objs[cid] = "<< /Length " + body.length + " >>\nstream\n" + body + "\nendstream";
   });
   objs[2] = "<< /Type /Pages /Kids [" + kids.join(" ") + "] /Count " + n + " >>";
@@ -1983,6 +2129,20 @@ function reportPdf(doc, o){
     y -= 12;
   });
   }
+  /* Made with Handover: a tinted box after the last section, kept on one page */
+  var links = [], adSize = 9, adLh = adSize * 1.4, pad = 12, inner = CW - 2 * pad - 3;
+  var adLines = APP_AD.lines.map(function(md){ return {md: md, lines: wrapText(plainText(md), false, adSize, inner)}; });
+  var adH = pad + 12 + adLines.reduce(function(s, a){ return s + a.lines.length * adLh + 4; }, 0) + pad - 4;
+  need(adH + 24); y -= 18;
+  rect(M, y - adH, CW, adH, RPT.tint); rect(M, y - adH, 3, adH, RPT.accent);
+  var ax = M + 3 + pad, ay = y - pad - 6;
+  text(ax, ay, APP_AD.title.toUpperCase(), "F2", 7.5, RPT.accent, 1.1); ay -= 6;
+  adLines.forEach(function(a){ a.lines.forEach(function(l){
+    ay -= adLh; text(ax, ay, l, "F1", adSize, RPT.grey);
+    var pi = pages.length - 1, ls = pdfLinks(l, a.md, ax, ay, adSize, false); links[pi] = (links[pi] || []).concat(ls);
+    ls.forEach(function(k){ text(k.r[0], ay, k.text, "F1", adSize, RPT.accent); });
+  }); ay -= 4; });
+  y -= adH;
   var n = pages.length;
   pages.forEach(function(pg, i){
     ops = pg;
@@ -1990,7 +2150,7 @@ function reportPdf(doc, o){
     text(M, M, (doc.preparedFor ? "Prepared for " + doc.preparedFor + " from the handover file" : "From the handover file") + (doc.date ? "  ·  " + doc.date : ""), "F1", 7.5, RPT.grey);
     var pn = "Page " + (i + 1) + " of " + n; text(W - M - textWidth(pn, false, 7.5), M, pn, "F1", 7.5, RPT.grey);
   });
-  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle || ""));
+  return pdfFile(pages, W, Hh, plainText(doc.title), plainText(doc.subtitle || ""), links);
 }
 
 function reportHtml(doc){
@@ -2023,6 +2183,7 @@ function reportHtml(doc){
     });
   });
   });
+  b.push(appAdHtml());
   b.push('<footer>' + (doc.preparedFor ? "Prepared for " + escHtml(doc.preparedFor) + " from the handover file" : "From the handover file") + (doc.date ? " &middot; " + escHtml(doc.date) : "") + "</footer>");
   var tone = function(k){ return "." + k + "{--fg:#" + T[k][0] + ";--bg:#" + T[k][1] + "}"; };
   return '<!doctype html>\n<html><head><meta charset="utf-8"><title>' + escHtml(plainText(doc.title)) + "</title><style>" +
@@ -2042,6 +2203,7 @@ function reportHtml(doc){
     ".chapter{margin:40px 0 18px;padding-bottom:10px;border-bottom:2px solid #" + RPT.accent + "}.chapter:first-child{margin-top:4px}.partno{color:#" + RPT.gold + ";font-weight:700;font-size:8pt;letter-spacing:.14em;text-transform:uppercase}h2.ch{color:#" + RPT.accent + ";font-size:20pt;margin:4px 0 0}.none{color:#" + RPT.grey + "}" +
     "@media print{.chapter{break-before:page}.chapter:first-child{break-before:auto}}" +
     "footer{border-top:1px solid #" + RPT.rule + ";color:#" + RPT.grey + ";font-size:8pt;padding:8px 40px 20px;margin-top:10px}" +
+    ".app{background:#" + RPT.tint + ";border-left:3px solid #" + RPT.accent + ";padding:10px 18px;margin:30px 0 0;font-size:9pt;color:#" + RPT.grey + ";break-inside:avoid}.app p{margin:3px 0}.app .app-t{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase}.app a{color:#" + RPT.accent + "}" +
     "@media print{.band,.fig,.summary,.pill,.card{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
     "</style></head><body>\n" + b[0] + "\n<main>" + b.slice(1, -1).join("\n") + "</main>\n" + b[b.length - 1] + "\n</body></html>\n";
 }
@@ -2253,6 +2415,9 @@ function docDocx(doc){
     });
   });
   }
+  /* Made with Handover, after a rule, kept together */
+  body.push(p("", run(APP_AD.title, {bold: true, color: RPT.accent, size: 19}), '<w:keepNext/><w:pBdr><w:top w:val="single" w:sz="4" w:space="8" w:color="' + RPT.rule + '"/></w:pBdr><w:spacing w:before="480" w:after="60"/>'));
+  APP_AD.lines.forEach(function(s, i){ body.push(p("", runs(s, {size: 18, color: RPT.grey}), (i < APP_AD.lines.length - 1 ? "<w:keepNext/>" : "") + '<w:spacing w:before="0" w:after="60"/>')); });
   var W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
   var documentXml = XML_HEAD + "<w:document " + W + "><w:body>" + body.join("") +
     '<w:sectPr>' + (doc.style === "report" ? '<w:footerReference w:type="default" r:id="rIdF"/>' : "") + '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>';
@@ -2312,6 +2477,15 @@ function docXlsx(doc){
       '</sheetData><autoFilter ref="A1:' + last + '"/></worksheet>';
     return {name: name, xml: xml};
   });
+  /* A last sheet: made with Handover, how to get it, and the links as HYPERLINK formulas so they can be clicked */
+  var about = APP_AD.title, k = 2; while (used[about.toLowerCase()]) about = APP_AD.title + " " + k++;
+  var aboutRows = [cellXml("A1", APP_AD.title, 1)].concat(APP_AD.lines.map(function(s, i){ return cellXml("A" + (i + 2), plainText(s), 2); }));
+  [].concat.apply([], APP_AD.lines.map(mdLinks)).forEach(function(l){
+    var r = aboutRows.length + 1, shown = l.text.charAt(0).toUpperCase() + l.text.slice(1) + ": " + l.uri;
+    aboutRows.push('<c r="A' + r + '" t="str" s="2"><f>' + xmlEsc('HYPERLINK("' + l.uri.replace(/"/g, '""') + '","' + shown.replace(/"/g, '""') + '")') + "</f><v>" + xmlEsc(shown) + "</v></c>");
+  });
+  sheets.push({name: about, xml: XML_HEAD + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"' + (sheets.length ? "" : ' tabSelected="1"') + '/></sheetViews><cols><col min="1" max="1" width="100" customWidth="1"/></cols><sheetData>' +
+    aboutRows.map(function(c, i){ return '<row r="' + (i + 1) + '">' + c + "</row>"; }).join("") + "</sheetData></worksheet>"});
   var files = [
     {name: "[Content_Types].xml", text: XML_HEAD + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       sheets.map(function(sh, i){ return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join("") + "</Types>"},
@@ -2319,7 +2493,7 @@ function docXlsx(doc){
     {name: "docProps/core.xml", text: coreProps(plainText(doc.title))},
     {name: "xl/workbook.xml", text: XML_HEAD + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
       sheets.map(function(sh, i){ return '<sheet name="' + xmlEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join("") + "</sheets>" +
-      (sheets.length ? "<definedNames>" + sheets.map(function(sh, i){ return '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">\'' + xmlEsc(sh.name.replace(/'/g, "''")) + "'!" + sh.xml.match(/autoFilter ref="([^"]+)"/)[1].replace(/([A-Z]+)(\d+)/g, "$$$1$$$2") + "</definedName>"; }).join("") + "</definedNames>" : "") + "</workbook>"},
+      (sheets.length > 1 ? "<definedNames>" + sheets.map(function(sh, i){ var f = sh.xml.match(/autoFilter ref="([^"]+)"/); return f ? '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">\'' + xmlEsc(sh.name.replace(/'/g, "''")) + "'!" + f[1].replace(/([A-Z]+)(\d+)/g, "$$$1$$$2") + "</definedName>" : ""; }).join("") + "</definedNames>" : "") + "</workbook>"},
     {name: "xl/_rels/workbook.xml.rels", text: XML_HEAD + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       sheets.map(function(sh, i){ return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join("") +
       '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'},
@@ -2333,7 +2507,7 @@ function docXlsx(doc){
   return zip(files);
 }
 
-var api = {version: "1.4", guidesFor: guidesFor, guideLabel: guideLabel, docType: DOC_TYPE, validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
+var api = {version: "1.4", guidesFor: guidesFor, guideLabel: guideLabel, docType: DOC_TYPE, validate: validate, schedule: schedule, reminders: reminders, summaryFor: summaryFor, ticksSince: ticksSince, calendarFile: calendarFile, zoneTime: zoneTime, occursOn: occursOn, cadence: cadence, leadWords: leadWords, maxLead: MAX_LEAD, nice: nice, zoneParts: zoneParts, addDays: addDays, mergeProgress: mergeProgress, mergeHandover: mergeHandover, contentOnly: contentOnly,
   textFields: textFields, findGaps: findGaps, gapCounts: gapCounts, overlap: overlap, phaseLabel: phaseLabel, phases: PHASES, gates: gates, askMinutes: askMinutes,
   canSee: canSee, exportProfile: exportProfile, renderSections: renderSections, withRendered: withRendered, roles: ROLES, roleName: ROLE_NAME,
   exportKinds: exportKinds, itemsDocument: itemsDocument, docMarkdown: docMarkdown, docHtml: docHtml, docPdf: docPdf, docDocx: docDocx, docXlsx: docXlsx, base64: base64, parseBlocks: parseBlocks, blocksText: blocksText, gapList: gapList, fillGap: fillGap, fillGaps: fillGaps, secretReason: secretReason, closeItem: closeItem, reopenItem: reopenItem, closeHow: CLOSE_HOW, closeLabel: CLOSE_LABEL, reports: REPORTS, principalReport: principalReport, principalReports: principalReports, reportTitle: reportTitle, usesMinor: usesMinor, areaParts: areaParts, whenNeeded: whenNeeded, roleFacts: ROLE_FACTS, addItem: addItem, addFields: ADD_FIELDS, deleteItem: deleteItem, deletable: DELETABLE, roleFields: ROLE_FIELDS, roleValues: roleValues, editRole: editRole, planFields: PLAN_FIELDS, planValues: planValues, editPlan: editPlan, listNoun: LIST_NOUN, editItem: editItem, editFields: editFields, editValues: editValues, fieldApplies: fieldApplies, transitionKit: transitionKit, readKit: readKit};

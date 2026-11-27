@@ -270,12 +270,36 @@ test("Word export is a valid package with styles, bullets and external links", (
 test("Excel export has a sheet per kind, a header row and one row per item", () => {
   const h = ea(), files = unzipStored(C.docXlsx(C.itemsDocument(h, {kinds: ["jobs", "decide"]})));
   const wb = files["xl/workbook.xml"];
-  assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what"]);
+  assert.deepEqual([...wb.matchAll(/<sheet name="([^"]+)"/g)].map(m => m[1]), ["Jobs", "Who decides what", "Made with Handover"]);
   const jobs = files["xl/worksheets/sheet1.xml"];
   const n = h.recurring.length + h.asNeeded.length;
   assert.equal((jobs.match(/<row /g) || []).length, n + 1);
   assert.ok(jobs.includes(">How often<") && jobs.includes(">Every Thursday<") && jobs.includes(">11:00<") && jobs.includes(">As needed<") && jobs.includes(">Expenses<"));
   assert.match(jobs, new RegExp('<autoFilter ref="A1:G' + (n + 1) + '"/>'));
+});
+
+test("every report and export says it was made with Handover, by Incrementic, and how to get it", () => {
+  const h = ea(), site = "https://incrhst.github.io/handover/", dmg = "https://github.com/incrhst/handover/releases/latest/download/Handover.dmg", maker = "https://incrementic.com";
+  const docs = [C.itemsDocument(h, {kinds: ["jobs"]}), C.principalReport(h, "jd", {date: "2026-09-01"}), C.principalReports(h, ["working", "needs"], {date: "2026-09-01"})];
+  docs.forEach(doc => {
+    const md = C.docMarkdown(doc);
+    assert.match(md, /\n---\n\n\*\*Made with Handover\*\*\n/, "Markdown ends with the note");
+    [site, dmg, maker].forEach(u => assert.ok(md.includes("](" + u + ")"), "Markdown links " + u));
+    const html = C.docHtml(doc);
+    assert.ok(html.includes('<aside class="app">') && [site, dmg, maker].every(u => html.includes('href="' + u + '"')), "HTML links all three");
+    assert.ok(html.indexOf('<aside class="app">') > html.lastIndexOf("<h2"), "HTML puts it after the last section");
+    const pdf = C.docPdf(doc, {timezone: h.timezone});
+    assert.ok(pdf.includes("(Made with Handover)") || pdf.includes("(MADE WITH HANDOVER)"), "PDF says it");
+    assert.ok(pdf.includes("incrhst.github.io/handover"), "PDF shows the website");
+    [site, dmg, maker].forEach(u => assert.ok(pdf.includes("/URI (" + u + ")"), "PDF links " + u));
+    assert.match(pdf, /\/Annots \[\d+ 0 R/);
+    const docx = unzipStored(C.docDocx(doc));
+    assert.ok(docx["word/document.xml"].includes(">Made with Handover<"));
+    [site, dmg, maker].forEach(u => assert.ok(docx["word/_rels/document.xml.rels"].includes('Target="' + u + '"'), "Word links " + u));
+  });
+  const xl = unzipStored(C.docXlsx(docs[0])), about = xl["xl/worksheets/sheet2.xml"];
+  assert.ok(about.includes(">Made with Handover<") && [site, dmg, maker].every(u => about.includes("HYPERLINK(&quot;" + u + "&quot;")), "Excel gets a last sheet with the links");
+  assert.equal((xl["xl/workbook.xml"].match(/_FilterDatabase/g) || []).length, 1, "only the data sheet has a filter");
 });
 
 test("components export: overview, people, reference sections, asks, final check and sign-off", () => {
@@ -1102,4 +1126,90 @@ test("1.4: exports name a task's or job's guides", () => {
   assert.ok(items.find(i => i.id === "first-expenses").meta.includes("Guide: Step guide: Thursday expense claims (https://drive.example.com/exec/handover-2026/expenses-guide)"));
   assert.ok(items.find(i => i.id === "board-pack-dry-run").meta[0].startsWith("Guides: How Dana works; Recording: "));
   assert.ok(items.find(i => i.id === "visa-letters").meta.some(m => /^Guide: Visa invitation letter \(https:/.test(m)));
+});
+
+/* Calendar file: a small expander for the RRULE parts calendarFile writes, so each rule can be checked against occursOn */
+const icsUnfold = t => t.replace(/\r\n /g, "");
+const icsEvents = t => icsUnfold(t).split("BEGIN:VEVENT").slice(1).map(e => { const o = {}; e.split("\r\n").forEach(l => { const m = l.match(/^([A-Z-]+)(;[^:]*)?:(.*)$/); if (m && !(m[1] in o)) o[m[1]] = m[3], o[m[1] + "@"] = m[2] || ""; }); return o; });
+function expand(dtstart, rule, until){
+  const p = {}; rule.split(";").forEach(kv => { const [k, v] = kv.split("="); p[k] = v; });
+  const ymdOf = s => s.slice(0, 4) + "-" + s.slice(4, 6) + "-" + s.slice(6, 8), start = ymdOf(dtstart), stop = p.UNTIL ? ymdOf(p.UNTIL) : until;
+  const days = ["SU","MO","TU","WE","TH","FR","SA"], dimOf = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate(), out = [];
+  for (let d = start; d <= stop && d <= until; d = C.addDays(d, 1)){
+    const [y, m, dd] = d.split("-").map(Number), dow = new Date(Date.UTC(y, m - 1, dd)).getUTCDay();
+    const monthDays = () => { let s = p.BYMONTHDAY.split(",").map(Number).map(v => v < 0 ? dimOf(y, m) + 1 + v : v).filter(v => v <= dimOf(y, m)); if (p.BYSETPOS === "-1") s = [Math.max(...s)]; return s; };
+    let ok;
+    switch (p.FREQ){
+      case "DAILY": ok = true; break;
+      case "WEEKLY": ok = p.BYDAY.split(",").includes(days[dow]); break;
+      case "MONTHLY": { const sy = +start.slice(0, 4), sm = +start.slice(5, 7); ok = ((y - sy) * 12 + m - sm) % (+p.INTERVAL || 1) === 0 && monthDays().includes(dd); break; }
+      case "YEARLY": ok = +p.BYMONTH === m && monthDays().includes(dd); break;
+    }
+    if (ok) out.push(d);
+  }
+  return out;
+}
+const job = (r, tz) => ({ handover: "1.0", id: "office", title: "Office manager", timezone: tz || "Europe/London", recurring: [Object.assign({ id: "j", text: "The job" }, r)] });
+
+test("calendar: each schedule becomes one repeating event that falls on exactly the job's dates", () => {
+  const cases = [
+    [{ every: "day" }, "FREQ=DAILY"], [{ every: "weekday" }, "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"],
+    [{ every: "week", on: ["fri", "mon"] }, "FREQ=WEEKLY;BYDAY=MO,FR"], [{ every: "week" }, "FREQ=WEEKLY;BYDAY=MO"],
+    [{ every: "month", day: 5 }, "FREQ=MONTHLY;BYMONTHDAY=5"], [{ every: "month", day: "last" }, "FREQ=MONTHLY;BYMONTHDAY=-1"],
+    [{ every: "month", day: 31 }, "FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1"],
+    [{ every: "quarter", day: 30, monthOfQuarter: 2 }, "FREQ=MONTHLY;INTERVAL=3;BYMONTHDAY=28,29,30;BYSETPOS=-1"],
+    [{ every: "year", date: "02-29" }, "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=28,29;BYSETPOS=-1"], [{ every: "year", date: "07-04" }, "FREQ=YEARLY;BYMONTH=7;BYMONTHDAY=4"],
+    [{ every: "month", day: 31, start: "2027-01-10", end: "2028-03-01" }, "FREQ=MONTHLY;BYMONTHDAY=28,29,30,31;BYSETPOS=-1;UNTIL=20280301"]
+  ];
+  for (const [r, rule] of cases){
+    const h = job(r), out = C.calendarFile(h, { from: "2026-11-27", now: 0 }), [ev] = icsEvents(out.text);
+    assert.equal(out.count, 1); assert.equal(ev.RRULE, rule, JSON.stringify(r));
+    const want = []; for (let d = "2026-11-27"; d <= "2030-12-31"; d = C.addDays(d, 1)) if (C.occursOn(h.recurring[0], d)) want.push(d);
+    assert.equal(ev.DTSTART, want[0].replace(/-/g, ""), "starts on the first date: " + JSON.stringify(r));
+    assert.deepEqual(expand(ev.DTSTART, ev.RRULE, "2030-12-31"), want, JSON.stringify(r));
+  }
+});
+
+test("calendar: all-day and timed events, the zone's clock changes, a lead time and a stable UID", () => {
+  const h = job({ every: "week", on: "thu", time: "11:00", end: "2027-06-30", area: "Finance", detail: "Use the **claims** form; ask Ravi, then file it." }, "America/New_York");
+  h.recurring.push({ id: "insure", text: "Renew the van's insurance", every: "year", date: "03-01", lead: 30 });
+  const t = C.calendarFile(h, { from: "2026-11-27", now: Date.UTC(2026, 10, 27, 9) }).text, [a, b] = icsEvents(t);
+  assert.ok(t.startsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n") && t.endsWith("END:VCALENDAR\r\n"));
+  assert.match(t, /BEGIN:DAYLIGHT\r\nDTSTART:19700308T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU\r\nTZOFFSETFROM:-0500\r\nTZOFFSETTO:-0400/);
+  assert.match(t, /BEGIN:STANDARD\r\nDTSTART:19701101T020000\r\nRRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU\r\nTZOFFSETFROM:-0400\r\nTZOFFSETTO:-0500/);
+  assert.equal(a.UID, "j@office.handover"); assert.equal(a["DTSTART@"], ";TZID=America/New_York"); assert.equal(a.DTSTART, "20261203T110000");
+  assert.equal(a.DURATION, "PT30M"); assert.equal(a.RRULE, "FREQ=WEEKLY;BYDAY=TH;UNTIL=20270630T150000Z");
+  assert.equal(a.DTSTAMP, "20261127T090000Z"); assert.equal(a.CATEGORIES, "Finance");
+  assert.equal(a.DESCRIPTION, "Every Thursday\\, at 11:00.\\n\\nUse the claims form\\; ask Ravi\\, then file it.\\n\\nFrom the handover: Office manager");
+  assert.equal(b["DTSTART@"], ";VALUE=DATE"); assert.equal(b.DTSTART, "20270301"); assert.equal(b.DTEND, "20270302"); assert.equal(b.TRANSP, "TRANSPARENT");
+  assert.match(icsUnfold(t), /BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Start now: Renew the van's insurance \(due in 30 days\)\r\nTRIGGER:-P30D\r\nEND:VALARM/);
+  assert.equal(C.calendarFile(h, { from: "2027-01-05", now: 0 }).text.match(/UID:.*/g).join(), "UID:j@office.handover,UID:insure@office.handover", "the same UIDs every time");
+  const one = C.calendarFile(h, { ids: ["insure"], from: "2026-11-27" });
+  assert.equal(one.count, 1); assert.ok(!/VTIMEZONE/.test(one.text), "no zone needed for all-day events");
+});
+
+test("calendar: no zone means floating times; finished, hidden and unknown jobs are left out", () => {
+  const h = job({ every: "day", time: "09:30", end: "2027-01-31" }, "Not/AZone");
+  const [ev] = icsEvents(C.calendarFile(h, { from: "2026-11-27" }).text);
+  assert.equal(ev["DTSTART@"], ""); assert.equal(ev.DTSTART, "20261127T093000"); assert.equal(ev.RRULE, "FREQ=DAILY;UNTIL=20270131T093000");
+  assert.equal(C.calendarFile(h, { from: "2027-02-01" }).count, 0, "a job that has ended");
+  h.recurring[0].visibleTo = ["outgoing"]; assert.equal(C.calendarFile(h, { from: "2026-11-27" }).count, 0, "an item for some people only");
+  assert.equal(C.calendarFile(job({ every: "day" }), { ids: ["other"] }).count, 0);
+});
+
+test("calendar: long lines fold at 75 octets without splitting a character, and text is escaped", () => {
+  const long = "Réconcilier la carte — " + "ünïcødé 😀, ".repeat(12);
+  const t = C.calendarFile(job({ every: "day", text: long }), { from: "2026-11-27" }).text;
+  t.split("\r\n").forEach(l => assert.ok(Buffer.byteLength(l) <= 75, "line too long: " + l));
+  assert.ok(!t.includes("�") && !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(t), "no split characters");
+  assert.equal(icsEvents(t)[0].SUMMARY, long.trim().replace(/,/g, "\\,"));
+});
+
+test("calendar: the CLI writes a calendar file, for every job or the ones named", () => {
+  const cli = path.join(root, "skills/handover/scripts/handover.cjs"), file = path.join(root, "site/examples/ea-no-overlap.handover");
+  const all = execFileSync("node", [cli, "ics", file, "--from", "2026-11-27"], { encoding: "utf8" });
+  assert.equal((all.match(/BEGIN:VEVENT/g) || []).length, ea().recurring.length);
+  const one = execFileSync("node", [cli, "ics", file, "--jobs", "card-reconcile", "--from", "2026-11-27"], { encoding: "utf8" });
+  assert.deepEqual(icsEvents(one).map(e => [e.UID, e.DTSTART, e.RRULE]), [["card-reconcile@" + ea().id + ".handover", "20261205", "FREQ=MONTHLY;BYMONTHDAY=5"]]);
+  assert.throws(() => execFileSync("node", [cli, "ics", file, "--jobs", "nope"], { stdio: "pipe" }), /No regular job with the id nope/);
 });

@@ -18,6 +18,8 @@
 //                                              merge the progress in <other> into <file>
 //   node handover.cjs kit <file> [out.html] [--profile newcomer|record] [--audience role,role]
 //                                              the whole handover as one HTML file that opens in any browser
+//   node handover.cjs ics <file> [out.ics] [--jobs id,id] [--from YYYY-MM-DD]
+//                                              the regular jobs as a calendar file, each repeating on its schedule
 "use strict";
 const fs = require("fs");
 const path = require("path");
@@ -182,6 +184,18 @@ switch (cmd) {
     if (args[1]) { fs.writeFileSync(args[1], html); console.error("Wrote " + args[1]); } else process.stdout.write(html);
     break;
   }
+  case "ics": {
+    const jobs = flag("--jobs", ""), from = flag("--from", "");
+    const h = read(args[0]); requireValid(h, args[0]);
+    if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) die("--from takes a date: YYYY-MM-DD");
+    const ids = jobs ? jobs.split(",").map(s => s.trim()).filter(Boolean) : undefined;
+    const known = (h.recurring || []).map(r => r.id), unknown = (ids || []).filter(id => known.indexOf(id) < 0);
+    if (unknown.length) die("No regular job with the id " + unknown.join(", ") + ". The jobs are: " + (known.join(", ") || "none"));
+    const out = C.calendarFile(h, {ids, from: from || undefined});
+    if (!out.count) die("No regular jobs with dates left to put in a calendar.");
+    if (args[1]) { fs.writeFileSync(args[1], out.text); console.error("Wrote " + args[1] + " (" + out.count + " job" + (out.count === 1 ? "" : "s") + ")"); } else process.stdout.write(out.text);
+    break;
+  }
   case "merge": {
     const a = read(args[0]), b = read(args[1]);
     requireValid(a, args[0]); requireValid(b, args[1]);
@@ -193,6 +207,7 @@ switch (cmd) {
     break;
   }
   default:
-    console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(1, 20).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
+    const lines = fs.readFileSync(__filename, "utf8").split("\n").slice(1), end = lines.findIndex(l => !l.startsWith("//"));
+    console.log(lines.slice(0, end).map(l => l.replace(/^\/\/ ?/, "")).join("\n"));
     process.exit(cmd ? 2 : 0);
 }
