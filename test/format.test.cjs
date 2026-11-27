@@ -751,3 +751,55 @@ test("job description: only what the file shows, grouped by area, nothing restri
   assert.match(C.docPdf(d, {timezone: h.timezone}), /^%PDF-1\.4/);
   assert.ok(C.docDocx(d).length > 1000);
 });
+
+/* Transition kit: one self-contained HTML file (core.transitionKit) */
+const viewer = () => fs.readFileSync(path.join(root, "app/web/index.html"), "utf8");
+const scriptsOf = html => [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)].map(m => ({attrs: m[1], body: m[2]}));
+test("transition kit: self-contained, with no external URLs in any tag", () => {
+  const html = C.transitionKit(ea(), {viewer: viewer(), date: "2026-11-27"});
+  assert.match(html, /^<!doctype html>/i);
+  const tags = html.match(/<(?:script|link|img|iframe|a|source|video|audio|embed|object|form)\b[^>]*>/gi) || [];
+  tags.forEach(t => assert.ok(!/\b(?:src|href|action|data)\s*=\s*["']?(?:[a-z][a-z0-9+.-]*:)?\/\//i.test(t), "external URL in " + t));
+  assert.ok(!/<link\b/i.test(html), "no linked stylesheets");
+  assert.ok(!/@import|url\(\s*["']?(?:https?:)?\/\//i.test(html), "no CSS that loads from the web");
+  assert.ok(!html.includes('<script src="core.js">'), "core.js is inlined");
+  assert.match(html, /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'">/);
+  const scripts = scriptsOf(html);
+  assert.deepEqual(scripts.map(s => s.attrs.trim()), ["", 'type="application/json" id="handover-kit"', ""]);
+  scripts.filter(s => !s.attrs.trim()).forEach(s => assert.doesNotThrow(() => new Function(s.body), "inline script parses"));
+});
+test("transition kit: the data block round-trips, newcomer by default", () => {
+  const h = ea(), kit = C.readKit(C.transitionKit(h, {viewer: viewer(), date: "2026-11-27"}));
+  assert.equal(kit.kit, 1); assert.equal(kit.made, "2026-11-27"); assert.equal(kit.profile, "newcomer");
+  assert.deepEqual(kit.handover, C.exportProfile(h, "newcomer"));
+  assert.deepEqual(C.validate(kit.handover).errors, []);
+  const rec = C.readKit(C.transitionKit(h, {viewer: viewer(), profile: "record"}));
+  assert.deepEqual(rec.handover, C.exportProfile(h, "record"));
+  // a 1.0 file goes in as its content
+  const s = sample(); s.progress = {tasks: {x: "2026-01-01T00:00:00Z"}, recurring: {}};
+  assert.deepEqual(C.readKit(C.transitionKit(s, {viewer: viewer()})).handover, C.contentOnly(s));
+  // text that looks like markup can't end the data block early
+  const t = ea(); t.summary = "Ends here </script><script>alert(1)</script> <!-- and   here";
+  const tk = C.transitionKit(t, {viewer: viewer()});
+  assert.equal(scriptsOf(tk).length, 3);
+  assert.equal(C.readKit(tk).handover.summary, t.summary);
+  assert.throws(() => C.transitionKit(ea(), {}), /viewer/);
+  assert.throws(() => C.transitionKit(ea(), {viewer: viewer(), profile: "everyone"}), /profile/);
+});
+test("transition kit: nothing the audience may not see", () => {
+  const h = ea();
+  h.rules.push({id: "principal-only", text: "Kept only for the principal: the board seating plan", visibleTo: ["principal"]});
+  const newcomer = C.transitionKit(h, {viewer: viewer()});
+  ["Sam Whitfield", "evenings-line", "Profile correction: Dana reads WhatsApp", "principal-only", "board seating plan"].forEach(s => assert.ok(!newcomer.includes(s), "newcomer kit has " + s));
+  assert.ok(!/"progress"|"history"|"plan"/.test(JSON.stringify(C.readKit(newcomer).handover)), "no process state in a newcomer kit");
+  const record = C.transitionKit(h, {viewer: viewer(), profile: "record"});
+  assert.ok(record.includes("Sam Whitfield") && record.includes("evenings-line"), "the record keeps what its audience may see");
+  assert.ok(!record.includes("board seating plan"), "but not what only someone else may see");
+});
+test("the kit command writes a kit the format accepts", () => {
+  const out = execFileSync("node", [path.join(root, "skills/handover/scripts/handover.cjs"), "kit", path.join(root, "site/examples/ea-no-overlap.handover")], {encoding: "utf8", maxBuffer: 1 << 26});
+  const kit = C.readKit(out);
+  assert.equal(kit.profile, "newcomer");
+  assert.deepEqual(C.validate(kit.handover).errors, []);
+  assert.ok(!out.includes("Sam Whitfield"));
+});

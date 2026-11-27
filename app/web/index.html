@@ -367,6 +367,9 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   details.ref{border:0;border-bottom:1px solid #ccc;border-radius:0}
   details.ref > summary::after{display:none}
 }
+/* Transition kit: read-only, no app or editing controls */
+.is-kit [data-edit],.is-kit [data-add],.is-kit [data-close],.is-kit [data-reopen],.is-kit [data-export],.is-kit .addrow,.is-kit #gaps,.is-kit [data-cmd="close"],.is-kit [data-cmd="report"]{display:none!important}
+.is-kit #main .todo{cursor:auto}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.step-bar i,.toast{transition:none}.flash{animation:none}}
 </style>
 </head>
@@ -417,6 +420,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
           <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
           <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
+          <button type="button" data-cmd="kit" id="kitMenuBtn">Transition kit (HTML)…<small>One file that opens in any browser, with no app or internet</small></button>
           <hr>
           <button type="button" data-cmd="print">Print…</button>
           <button type="button" data-cmd="open">Open another handover…</button>
@@ -475,11 +479,12 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
         <details class="small">
           <summary>How this works</summary>
           <ul>
-            <li>Everything stays on this Mac, in your data folder. Nothing is sent anywhere. The app only asks GitHub whether a new version is out.</li>
+            <li class="not-kit">Everything stays on this Mac, in your data folder. Nothing is sent anywhere. The app only asks GitHub whether a new version is out.</li>
+            <li class="kit-only" id="kitNote">This is a transition kit: one file that works in any browser, with no app and no internet. It never sends anything anywhere. It is a copy of the handover and doesn't change when the handover does.</li>
             <li>Tick tasks as you go. Recurring duties come back on their schedule; anything missed shows as overdue.</li>
             <li id="autoExportNote">Each morning a task sheet for the day is saved in your data folder.</li>
             <li>Yellow boxes are information the author still has to fill in.</li>
-            <li>Press <kbd>/</kbd> to search, or <kbd>⌘F</kbd> in the app.</li>
+            <li>Press <kbd>/</kbd> to search<span class="not-kit">, or <kbd>⌘F</kbd> in the app</span>.</li>
           </ul>
         </details>
         <details class="small" id="settings">
@@ -493,6 +498,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <p class="native-only" style="margin:.2rem 0 .8rem">To work on a handover together, share that folder with the other person and have them choose it here too. Changes made on either Mac show up on the other within seconds of the cloud service copying them across, and changes made at the same time are combined. Each person keeps their own ticks and notes.</p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="loginItem"> Open at login, so the daily sheet is always written</label></div>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="autoUpdate"> Check for updates automatically</label> <button class="btn" type="button" data-cmd="checkUpdates">Check now</button> <span class="muted" id="appVersion"></span></div>
+          <div class="row kit-only">Your ticks and notes are kept in this browser only. To carry on in the Handover app, use Share &amp; export, Export with my progress, and open that file in the app.</div>
           <div class="row browser-only">Running in a browser: progress is saved in this browser only. Install the Mac app for files on disk, backups and the daily sheet.</div>
           <div class="row" id="switchRow" hidden><label for="switchSel">Switch handover</label> <select id="switchSel"></select></div>
           <div class="row"><button class="btn" type="button" data-cmd="resetProgress">Reset my progress</button></div>
@@ -591,6 +597,20 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   </form>
 </dialog>
 
+<dialog class="dlg" id="kitDlg" aria-labelledby="kitDlgTitle">
+  <form method="dialog" id="kitForm">
+    <header><h2 id="kitDlgTitle">Transition kit</h2><p>The whole handover as one HTML file. It opens in any browser, with no app, server or internet, so you can email it or put it on a shared drive. It holds only what the file holds, and only what the people you choose may see.</p></header>
+    <div class="dlg-body">
+      <div class="chow" id="kitHow" role="radiogroup" aria-label="Who it is for">
+        <label><input type="radio" name="kitProfile" value="newcomer" checked> <span><b>Newcomer copy</b><br><small>For the person taking over: the knowledge only. No process state, closed items or items only some people may see.</small></span></label>
+        <label id="kitRecordRow"><input type="radio" name="kitProfile" value="record"> <span><b>Full record</b><br><small id="kitRecordNote">Everything in this file, for the people running the handover.</small></span></label>
+      </div>
+      <p class="muted" style="font-size:13px;margin:0 0 8px">Ticks and notes made in the kit stay in that browser. Your own progress isn't included.</p>
+    </div>
+    <footer><button class="btn" type="button" id="kitCancel">Cancel</button><button class="btn primary" type="submit" id="kitGo">Save kit</button></footer>
+  </form>
+</dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="core.js"></script>
@@ -598,8 +618,13 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
 (function(){
 "use strict";
 
+/* The page as it was served, before anything changed it: the viewer a transition kit is made from */
+var PAGE = "<!doctype html>\n" + document.documentElement.outerHTML;
+
 /* ================= Bridge to the Mac app (or a browser fallback) ================= */
-var native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.handover;
+/* A transition kit carries its handover in a data block and keeps ticks and notes in this browser only */
+var KIT = null; try { var kitEl = document.getElementById("handover-kit"); if (kitEl) KIT = JSON.parse(kitEl.textContent); } catch(e){ KIT = null; }
+var native = !KIT && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.handover;
 var LS = "handover-web:v1";
 function lsGet(){ try { return JSON.parse(localStorage.getItem(LS)) || {items:{}}; } catch(e){ return {items:{}}; } }
 function lsSet(v){ try { localStorage.setItem(LS, JSON.stringify(v)); } catch(e){} }
@@ -623,15 +648,22 @@ var browser = {
   print: function(){ window.print(); return {ok: true}; },
   log: function(p){ console.log("[handover]", p.msg); return null; }
 };
+var KIT_LS = KIT && KIT.handover ? "handover-kit:" + KIT.handover.id : "";
+var kitBridge = {
+  init: function(){ var st = null; try { st = JSON.parse(localStorage.getItem(KIT_LS)); } catch(e){ st = null; } return {source: JSON.stringify(KIT.handover), state: st}; },
+  saveState: function(p){ try { localStorage.setItem(KIT_LS, JSON.stringify(p.state)); } catch(e){} return {ok: true}; },
+  saveAs: browser.saveAs, exportSheet: browser.exportSheet, copy: browser.copy, print: browser.print, log: function(){ return null; }
+};
 function call(action, payload){
+  if (KIT) return Promise.resolve(kitBridge[action] ? kitBridge[action](payload || {}) : null);
   if (native){
     return native.postMessage({action: action, payload: JSON.stringify(payload === undefined ? null : payload)})
       .then(function(r){ return r ? JSON.parse(r) : null; });
   }
   return Promise.resolve(browser[action] ? browser[action](payload || {}) : null);
 }
-document.documentElement.classList.add(native ? "is-native" : "is-browser");
-var hideSel = native ? ".browser-only" : ".native-only";
+document.documentElement.classList.add(KIT ? "is-kit" : native ? "is-native" : "is-browser");
+var hideSel = KIT ? ".browser-only, .native-only, .not-kit" : (native ? ".browser-only" : ".native-only") + ", .kit-only";
 document.querySelectorAll(hideSel).forEach(function(n){ n.hidden = true; });
 
 /* ================= Small helpers ================= */
@@ -783,7 +815,12 @@ function render(){
   $("reportMenuLabel").textContent = pf ? "Report for " + pf + "…" : "Report for the principal…";
   $("shareNote").textContent = is11 ? "For someone new: knowledge only, no process state or private items" : "The content only, for someone new";
   $("topnav").innerHTML = nav.map(function(n){ return '<a href="' + n[0] + '">' + n[1] + "</a>"; }).join("");
-  $("autoExportNote").textContent = native ? "Each morning at " + exportTime() + " a task sheet for the day is saved in your data folder." : "Use Share & export to save today's task sheet.";
+  if (KIT){
+    ["reportMenuBtn", "exportRecordBtn", "kitMenuBtn"].forEach(function(id){ $(id).hidden = true; });
+    document.querySelectorAll('#shareMenu [data-cmd="exportItems"], #shareMenu [data-cmd="shareFile"], #shareMenu [data-cmd="open"]').forEach(function(b){ b.hidden = true; });
+    if (KIT.made) $("kitNote").textContent = "This is a transition kit, made on " + nice(KIT.made, "long") + ": one file that works in any browser, with no app and no internet. It never sends anything anywhere. It is a copy of the handover and doesn't change when the handover does.";
+  }
+  $("autoExportNote").textContent = KIT ? "Your ticks and notes are kept in this browser only. Use Share & export to save today's task sheet, or your progress as a handover file." : native ? "Each morning at " + exportTime() + " a task sheet for the day is saved in your data folder." : "Use Share & export to save today's task sheet.";
   countGaps();
 }
 function exportTime(){ return (H.settings && H.settings.dailyExportTime) || "07:00"; }
@@ -949,9 +986,9 @@ function statusChip(s){ var t = STATUS[s] || [s, ""]; return chip(t[0], t[1]); }
 /* Provenance, visibility and closure of one item (spec section 11) */
 var RECORD_LISTS = ["gaps", "inProgress", "rules", "decisions", "risks", "systems", "documents", "decide"];
 function listOf(o){ for (var i = 0; i < RECORD_LISTS.length; i++){ var k = RECORD_LISTS[i], l = k === "decide" ? (H.decide && H.decide.cards) || [] : H[k] || []; if (l.indexOf(o) > -1) return k; } return ""; }
-function closeBtn(list, o){ return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
-function editBtn(list, o){ return '<button type="button" class="closebtn no-print' + (list === "path" ? " editbtn" : "") + '" data-edit="' + esc(list + ":" + o.id) + '" title="Change what isn\'t accurate">Edit…</button>'; }
-function canAdd(){ return !!H.handover && H.handover !== "1.0"; }
+function closeBtn(list, o){ if (KIT) return ""; return o.closed ? '<button type="button" class="closebtn no-print" data-reopen="' + esc(list + ":" + o.id) + '" title="Open this item again">Reopen</button>' : '<button type="button" class="closebtn no-print" data-close="' + esc(list + ":" + o.id) + '" title="Mark this item fixed, done or no longer needed">Close…</button>'; }
+function editBtn(list, o){ if (KIT) return ""; return '<button type="button" class="closebtn no-print' + (list === "path" ? " editbtn" : "") + '" data-edit="' + esc(list + ":" + o.id) + '" title="Change what isn\'t accurate">Edit…</button>'; }
+function canAdd(){ return !KIT && !!H.handover && H.handover !== "1.0"; }
 function addBtn(list){ return canAdd() ? '<div class="addrow no-print"><button type="button" class="closebtn" data-add="' + list + '">Add a ' + esc(C.listNoun[list]) + "…</button></div>" : ""; }
 function metaLine(o, extra){
   var bits = (extra || []).slice(), list = listOf(o);
@@ -970,6 +1007,7 @@ function cardsHtml(items){ return '<div class="cards">' + items.join("") + "</di
 function renderRole(){
   var w = $("roleWrap"), r = H.role || {}, facts = C.roleFacts.filter(function(f){ return r[f[0]]; });
   var edit = '<button class="btn no-print" type="button" data-edit="role:" title="Change the organisation, purpose, hours, skills and what good looks like">' + (H.role ? "Edit…" : "Describe the role…") + "</button>";
+  if (!H.role && KIT){ w.innerHTML = ""; return; }
   if (!H.role){ w.innerHTML = '<section class="panel block" id="role"><div class="panel-head"><h2>About the role</h2>' + edit + '</div><p class="role-empty">Not described yet. Its purpose, where and when the work is done and what it calls for go into the job description.</p></section>'; return; }
   var sub = function(t, x){ return x ? '<div class="subhead">' + esc(t) + '</div><div class="md">' + md(x) + "</div>" : ""; };
   w.innerHTML = '<section class="panel block" id="role"><div class="panel-head"><h2>About the role</h2>' + edit + "</div>" +
@@ -1123,6 +1161,7 @@ document.addEventListener("click", function(e){
   var cmd = t.closest("[data-cmd]"); if (cmd){ menu.open = false; command(cmd.dataset.cmd); return; }
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
+  if (KIT && t.closest("[data-export],#main .todo,[data-close],[data-reopen],[data-add],[data-edit]")) return;
   var xb = t.closest("[data-export]"); if (xb){ openExportDialog(xb.dataset.export.split(",")); return; }
   var td = t.closest("#main .todo"); if (td && !t.closest("a")){ openFill(td.textContent); return; }
   var cb = t.closest("[data-close]"); if (cb){ e.preventDefault(); openClose(cb.dataset.close); return; }
@@ -1140,7 +1179,7 @@ function rerenderKeepSearch(){
   var term = $("q").value; renderHero(); renderToday(); renderPath(); countGaps();
   if (term.trim().length > 1) search(term);
 }
-$("gaps").addEventListener("click", function(){ openFill(); });
+$("gaps").addEventListener("click", function(){ if (!KIT) openFill(); });
 
 /* Fill the gaps: every {TODO: …} in the file, filled in place and saved back to the handover */
 var FILL = [];
@@ -1557,10 +1596,12 @@ function sheet(date){
 function slugDate(){ return TODAY; }
 function command(c){
   if (!H && ["open","sample"].indexOf(c) < 0) return;
+  if (KIT && ["exportToday","exportProgress","print","find","ask","resetProgress"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
     case "close": return closeHandover();
     case "exportItems": return openExportDialog();
+    case "kit": return openKit();
     case "report": return openReport();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "shareFile": var share = has11() ? C.exportProfile(H, "newcomer") : H; return call("saveAs", {filename: H.id + ".handover", content: JSON.stringify(share, null, 2) + "\n", mime: "application/json", title: "Share handover file"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1604,7 +1645,7 @@ function xpRender(){
   if (!XP.titleEdited) $("exportTitle").value = xpAutoTitle();
 }
 /* An Export… button on a panel: the chooser opens with that panel's kinds ticked */
-function xbtn(kinds){ return '<button class="btn no-print xbtn" type="button" data-export="' + kinds + '" title="Export these as PDF, Word or Excel">Export…</button>'; }
+function xbtn(kinds){ if (KIT) return ""; return '<button class="btn no-print xbtn" type="button" data-export="' + kinds + '" title="Export these as PDF, Word or Excel">Export…</button>'; }
 function openExportDialog(only){
   $("shareMenu").open = false;
   var anyClosed = false, anyPrivate = false;
@@ -1650,6 +1691,23 @@ $("exportForm").addEventListener("submit", function(e){
   call("saveAs", {filename: H.id + "-" + slug + "." + fmt, content: out.content, base64: out.base64, mime: out.mime, title: "Export items as a document"})
     .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Exported " + o.title); });
 });
+
+/* Transition kit: the whole handover as one HTML file that opens in any browser (core.js makes it) */
+function openKit(){
+  $("shareMenu").open = false;
+  if (!has11()) return saveKit("newcomer");
+  $("kitRecordNote").textContent = "For the people running the handover" + (H.audience ? " (" + H.audience.map(who).filter(uniq).join(", ") + ")" : "") + ": everything in this file they may see.";
+  document.querySelector('[name="kitProfile"][value="newcomer"]').checked = true;
+  $("kitDlg").showModal();
+}
+function saveKit(profile){
+  var html;
+  try { html = C.transitionKit(H, {profile: profile, viewer: PAGE, date: TODAY}); } catch(err){ toast("Couldn't make the kit: " + err.message); return; }
+  return call("saveAs", {filename: H.id + (profile === "record" ? "-record" : "") + "-kit.html", content: html, mime: "text/html", title: "Transition kit"})
+    .then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); else if (!native) toast("Saved the transition kit"); });
+}
+$("kitCancel").addEventListener("click", function(){ $("kitDlg").close(); });
+$("kitForm").addEventListener("submit", function(e){ e.preventDefault(); var p = (document.querySelector('[name="kitProfile"]:checked') || {}).value || "newcomer"; $("kitDlg").close(); saveKit(p); });
 
 /* Closing: save what's pending, forget the open file and go back to the start screen */
 function closeHandover(){
@@ -1727,7 +1785,7 @@ $("autoUpdate").addEventListener("change", function(){ call("setAutoUpdate", {on
 $("loginItem").addEventListener("change", function(){ var on = this.checked; call("setLogin", {on: on}).then(function(r){ if (r && typeof r.enabled === "boolean"){ $("loginItem").checked = r.enabled; toast(r.enabled ? "Will open at login" : "Won't open at login"); if (r.message) toast(r.message); } }); });
 
 var params = new URLSearchParams(location.search);
-if (!native && params.get("src")){ fetch(params.get("src")).then(function(r){ return r.text(); }).then(function(t){ importText(t, params.get("src").split("/").pop()); }).catch(function(){ call("init").then(boot); }); }
+if (!native && !KIT && params.get("src")){ fetch(params.get("src")).then(function(r){ return r.text(); }).then(function(t){ importText(t, params.get("src").split("/").pop()); }).catch(function(){ call("init").then(boot); }); }
 else call("init").then(boot);
 })();
 </script>
