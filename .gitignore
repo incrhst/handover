@@ -1,6 +1,8 @@
 build/
 dist/
 .DS_Store
+# Serena (the coding agent tool) writes its project settings here.
+.serena/
 *.p12
 *.p8
 # Real handover files can hold private details about people and clients.
