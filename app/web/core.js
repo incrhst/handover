@@ -1888,9 +1888,10 @@ function docHtml(doc){
     ".app{border-top:1px solid #ddd;margin:28px 0 0;padding:12px 0 0;color:#555;font-size:9.5pt}.app p{margin:4px 0}.app .app-t{color:#1d1d1f;font-weight:700}" +
     "body{font-family:-apple-system,Helvetica,Arial,sans-serif;font-size:11pt;line-height:1.45;color:#1d1d1f;max-width:720px;margin:24px auto;padding:0 16px}" +
     "h1{font-size:20pt;margin:0 0 4px}h2{font-size:15pt;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:3px}h3{font-size:12pt;margin:14px 0 4px}" +
-    ".sub{color:#666;margin:0 0 12px}.intro{background:#f3f6f1;border-left:3px solid #4f7a5a;padding:8px 14px;margin:8px 0 16px}.intro p{margin:6px 0}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
+    ".sub{color:#666;margin:0 0 12px}.intro{background:#f3f6f1;border:1px solid #d3dfd5;border-radius:6px;padding:8px 14px;margin:8px 0 16px}.intro p{margin:6px 0}.meta{color:#555;font-size:10pt}ul,ol{padding-left:20px;margin:4px 0 10px}li{margin:0 0 7px}a{color:#3b2a8a}h4,h5,h6{font-size:11pt;margin:12px 0 4px}" +
     "table{border-collapse:collapse;width:100%;margin:6px 0 12px;font-size:10pt}th,td{border:1px solid #ddd;padding:4px 6px;text-align:left;vertical-align:top}th{background:#efede6}" +
-    ".note,.warn{border-left:3px solid #c9c4b5;background:#f6f5f1;padding:6px 10px;margin:6px 0 10px}.warn{border-color:#b3261e;background:#fbeeec}" +
+    ".note,.warn{border:1px solid #e2ded3;border-radius:6px;background:#f6f5f1;padding:6px 10px;margin:6px 0 10px}.warn{border-color:#ecc3bd;background:#fbeeec}.warn b{color:#b3261e}" +
+    "@media print{.intro,.note,.warn{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
     "</style></head><body>\n" + b.join("\n") + "\n</body></html>\n";
 }
 
@@ -2092,7 +2093,7 @@ function reportPdf(doc, o){
     need(th + 4);
     F.forEach(function(f, i){
       var x = M + i * (tw + gap), t = RPT.tones[f.tone] || RPT.tones.neutral, vs = f.value.length > 6 ? 15 : 22;
-      rect(x, y - th, tw, th, t[1]); rect(x, y - th, 3, th, t[0]);
+      rect(x, y - th, tw, th, t[1]);
       text(x + 12, y - 30, f.value, "F2", vs, t[0]);
       wrap(f.label, false, 8.5, tw - 20).slice(0, 2).forEach(function(l, j){ text(x + 12, y - 46 - j * 10.5, l, "F1", 8.5, RPT.ink); });
     });
@@ -2105,7 +2106,7 @@ function reportPdf(doc, o){
     var lines = [];
     intro.forEach(function(s, i){ wrap(s, false, 10.5, CW - 48).forEach(function(l, j){ lines.push({t: l, first: j === 0, gap: j === 0 && i > 0}); }); });
     var bh = 46 + lines.length * 14.5 + (intro.length - 1) * 4;
-    need(bh); rect(M, y - bh, CW, bh, RPT.tint); rect(M, y - bh, 3, bh, RPT.accent);
+    need(bh); rect(M, y - bh, CW, bh, RPT.tint);
     text(M + 18, y - 20, (label || "Summary").toUpperCase(), "F2", 7.5, RPT.accent, 1.2);
     var sy = y - 38;
     lines.forEach(function(l){ if (l.gap) sy -= 4; if (l.first) rect(M + 18, sy + 2.5, 4, 4, RPT.gold); text(M + 32, sy, l.t, "F1", 10.5, RPT.ink); sy -= 14.5; });
@@ -2151,7 +2152,7 @@ function reportPdf(doc, o){
     blockLines(it.body).forEach(function(s){ wrap(s, false, 10, inner).forEach(function(l){ body.push(l); }); });
     var meta = it.cells.filter(Boolean).join("  ·  "), ml = meta ? wrap(meta, false, 8.5, inner) : [], nl = it.note ? wrap(it.note, false, 9, inner) : [];
     var hgt = (tl2.length ? 22 : 18) + tl2.length * 14 + body.length * 13 + (ml.length ? 6 + ml.length * 11 : 0) + (nl.length ? 4 + nl.length * 12 : 0);
-    need(hgt); rect(M, y - hgt, CW, hgt, RPT.card); rect(M, y - hgt, 3, hgt, RPT.gold);
+    need(hgt); rect(M, y - hgt, CW, hgt, RPT.card);
     var cy = y - 18;
     tl2.forEach(function(l){ text(M + 18, cy, l, "F2", 11, RPT.ink); cy -= 14; });
     body.forEach(function(l){ text(M + 18, cy, l, "F1", 10, RPT.ink); cy -= 13; });
@@ -2193,7 +2194,7 @@ function reportPdf(doc, o){
   var adLines = APP_AD.lines.map(function(md){ return {md: md, lines: wrapText(plainText(md), false, adSize, inner)}; });
   var adH = pad + 12 + adLines.reduce(function(s, a){ return s + a.lines.length * adLh + 4; }, 0) + pad - 4;
   need(adH + 24); y -= 18;
-  rect(M, y - adH, CW, adH, RPT.tint); rect(M, y - adH, 3, adH, RPT.accent);
+  rect(M, y - adH, CW, adH, RPT.tint);
   var ax = M + 3 + pad, ay = y - pad - 6;
   text(ax, ay, APP_AD.title.toUpperCase(), "F2", 7.5, RPT.accent, 1.1); ay -= 6;
   adLines.forEach(function(a){ a.lines.forEach(function(l){
@@ -2250,20 +2251,20 @@ function reportHtml(doc){
     ".band{background:#" + RPT.accent + ";color:#fff;padding:30px 40px 22px;border-bottom:3px solid #" + RPT.gold + "}.kicker{color:#" + RPT.gold + ";font-weight:700;font-size:8pt;letter-spacing:.16em;text-transform:uppercase}" +
     ".band h1{font-size:24pt;margin:6px 0 8px;line-height:1.15}.band .line{color:#" + RPT.band + ";font-size:10pt}" +
     "main{padding:22px 40px 30px;max-width:900px}.figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:0 0 20px}" +
-    ".fig{background:var(--bg);border-left:3px solid var(--fg);padding:10px 12px}.fig b{display:block;color:var(--fg);font-size:20pt;line-height:1.1}.fig span{font-size:8.5pt}" +
+    ".fig{background:var(--bg);padding:10px 12px}.fig b{display:block;color:var(--fg);font-size:20pt;line-height:1.1}.fig span{font-size:8.5pt}" +
     tone("ok") + tone("warn") + tone("bad") + tone("neutral") +
-    ".summary{background:#" + RPT.tint + ";border-left:3px solid #" + RPT.accent + ";padding:12px 18px;margin:0 0 24px}.kick{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}" +
+    ".summary{background:#" + RPT.tint + ";padding:12px 18px;margin:0 0 24px}.kick{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}" +
     ".summary ul{margin:0;padding:0;list-style:none}.summary li{position:relative;padding-left:16px;margin:4px 0}.summary li::before{content:'';position:absolute;left:0;top:.55em;width:5px;height:5px;background:#" + RPT.gold + "}" +
     "h2{font-size:14pt;margin:26px 0 8px}.num{color:#" + RPT.gold + ";font-size:11pt;margin-right:10px}h3{color:#" + RPT.accent + ";font-size:7.5pt;letter-spacing:.1em;text-transform:uppercase;margin:14px 0 4px}" +
     "table{width:100%;border-collapse:collapse;margin:0 0 10px;font-size:9.5pt}th{text-align:left;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;color:#" + RPT.grey + ";border-bottom:1.5px solid #" + RPT.accent + ";padding:4px 6px}" +
     "td{border-bottom:1px solid #" + RPT.rule + ";padding:6px;vertical-align:top}td.t{font-weight:700}th.st,td.st{width:1%;white-space:nowrap}" +
     ".pill{display:inline-block;background:var(--bg);color:var(--fg);font-weight:700;font-size:7.5pt;padding:2px 7px}" +
-    ".card{background:#" + RPT.card + ";border-left:3px solid #" + RPT.gold + ";padding:10px 16px;margin:0 0 10px}.card h4{margin:0 0 4px;font-size:11pt}.card p{margin:4px 0}.cmeta{color:#" + RPT.accent + ";font-weight:700;font-size:8.5pt}.cnote{color:#" + RPT.grey + ";font-style:italic;font-size:9pt}" +
+    ".card{background:#" + RPT.card + ";padding:10px 16px;margin:0 0 10px}.card h4{margin:0 0 4px;font-size:11pt}.card p{margin:4px 0}.cmeta{color:#" + RPT.accent + ";font-weight:700;font-size:8.5pt}.cnote{color:#" + RPT.grey + ";font-style:italic;font-size:9pt}" +
     ".chapter{margin:40px 0 18px;padding-bottom:10px;border-bottom:2px solid #" + RPT.accent + "}.chapter:first-child{margin-top:4px}.partno{color:#" + RPT.gold + ";font-weight:700;font-size:8pt;letter-spacing:.14em;text-transform:uppercase}h2.ch{color:#" + RPT.accent + ";font-size:20pt;margin:4px 0 0}.none{color:#" + RPT.grey + "}" +
     "@media print{.chapter{break-before:page}.chapter:first-child{break-before:auto}}" +
     "footer{border-top:1px solid #" + RPT.rule + ";color:#" + RPT.grey + ";font-size:8pt;padding:8px 40px 20px;margin-top:10px}" +
-    ".app{background:#" + RPT.tint + ";border-left:3px solid #" + RPT.accent + ";padding:10px 18px;margin:30px 0 0;font-size:9pt;color:#" + RPT.grey + ";break-inside:avoid}.app p{margin:3px 0}.app .app-t{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase}.app a{color:#" + RPT.accent + "}" +
-    "@media print{.band,.fig,.summary,.pill,.card{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
+    ".app{background:#" + RPT.tint + ";padding:10px 18px;margin:30px 0 0;font-size:9pt;color:#" + RPT.grey + ";break-inside:avoid}.app p{margin:3px 0}.app .app-t{color:#" + RPT.accent + ";font-weight:700;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase}.app a{color:#" + RPT.accent + "}" +
+    "@media print{.band,.fig,.summary,.pill,.card,.app{-webkit-print-color-adjust:exact;print-color-adjust:exact}}" +
     "</style></head><body>\n" + b[0] + "\n<main>" + b.slice(1, -1).join("\n") + "</main>\n" + b[b.length - 1] + "\n</body></html>\n";
 }
 
@@ -2389,7 +2390,7 @@ function docDocx(doc){
       F.forEach(function(f, i){
         var t = T[f.tone] || T.neutral;
         if (i) cells.push({w: g, padX: 0, pad: 0});
-        cells.push({w: fw, fill: t[1], left: t[0], padX: 200, pad: 140, body: para(r(f.value, {bold: true, color: t[0], size: f.value.length > 6 ? 30 : 40}), sp(0, 20)) + para(r(f.label, {size: 17, color: RPT.ink}), sp(0, 0))});
+        cells.push({w: fw, fill: t[1], padX: 200, pad: 140, body: para(r(f.value, {bold: true, color: t[0], size: f.value.length > 6 ? 30 : 40}), sp(0, 20)) + para(r(f.label, {size: 17, color: RPT.ink}), sp(0, 0))});
       });
       body.push(gapP(160)); body.push(box(cells));
     }
@@ -2398,7 +2399,7 @@ function docDocx(doc){
     function summary(intro, label){
     if ((intro || []).length){
       body.push(gapP(240));
-      body.push(box([{w: TWD, fill: RPT.tint, left: RPT.accent, pad: 180, padX: 300, body:
+      body.push(box([{w: TWD, fill: RPT.tint, pad: 180, padX: 300, body:
         para(r((label || "Summary").toUpperCase(), {bold: true, color: RPT.accent, size: 15, spacing: 24}), sp(0, 100)) +
         intro.map(function(s){ return para(r("■  ", {color: RPT.gold, size: 14}) + runs(s, {size: 21}), sp(0, 80) + '<w:ind w:left="300" w:hanging="300"/>'); }).join("")}]));
     }
@@ -2424,7 +2425,7 @@ function docDocx(doc){
         if (gr.title) body.push(para(r(plainText(gr.title), {bold: true, caps: true, color: RPT.accent, size: 15, spacing: 16}), "<w:keepNext/>" + sp(160, 60)));
         if (gr.items.some(function(it){ return it.block; })){
           gr.items.forEach(function(it){
-            body.push(box([{w: TWD, fill: RPT.card, left: RPT.gold, pad: 140, padX: 260, body:
+            body.push(box([{w: TWD, fill: RPT.card, pad: 140, padX: 260, body:
               (it.title ? para(runs(it.title, {bold: true, size: 22}), sp(0, 60)) : "") + (it.body ? blocks(it.body) : "") +
               (it.cells.filter(Boolean).length ? para(r(it.cells.filter(Boolean).map(plainText).join("  ·  "), {bold: true, color: RPT.accent, size: 17}), sp(60, 20)) : "") +
               (it.note ? para(r(plainText(it.note), {italic: true, color: RPT.grey, size: 18}), sp(20, 0)) : "")}]));
@@ -2490,7 +2491,7 @@ function docDocx(doc){
     style("Heading2", "heading 2", '<w:keepNext/><w:spacing w:before="200" w:after="40"/><w:outlineLvl w:val="1"/>', '<w:b/><w:color w:val="5F645C"/><w:sz w:val="22"/>', "Normal") +
     style("Heading3", "heading 3", '<w:keepNext/><w:spacing w:before="240" w:after="60"/><w:outlineLvl w:val="2"/>', '<w:b/><w:sz w:val="24"/><w:szCs w:val="24"/>', "Normal") +
     style("Heading4", "heading 4", '<w:keepNext/><w:spacing w:before="160" w:after="40"/><w:outlineLvl w:val="3"/>', '<w:b/><w:color w:val="5F645C"/><w:sz w:val="21"/><w:szCs w:val="21"/>', "Normal") +
-    style("Callout", "Callout", '<w:pBdr><w:left w:val="single" w:sz="12" w:space="8" w:color="C9C4B5"/></w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="F6F5F1"/><w:spacing w:before="80" w:after="120"/><w:ind w:left="200" w:right="200"/>', "", "Normal") +
+    style("Callout", "Callout", '<w:shd w:val="clear" w:color="auto" w:fill="F6F5F1"/><w:spacing w:before="80" w:after="120"/><w:ind w:left="200" w:right="200"/>', "", "Normal") +
     style("TableText", "Table text", '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/>', '<w:sz w:val="18"/><w:szCs w:val="18"/>', "Normal") +
     style("Spacer", "Spacer", '<w:spacing w:after="0" w:line="120" w:lineRule="exact"/>', '<w:sz w:val="8"/>', "Normal") +
     style("ListParagraph", "List Paragraph", '<w:ind w:left="360" w:hanging="240"/>', "", "Normal") +
