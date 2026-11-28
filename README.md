@@ -1,6 +1,6 @@
 # Handover
 
-Take over a role, one step at a time. **Handover** is a free Mac app that turns one file into a guided first month, a daily list of what's due and a reference you can search. The file is an open format that you can write with any AI chat. Two people can work on the same handover through a shared iCloud Drive, Google Drive or Dropbox folder.
+Take over a role, one step at a time. **Handover** is a free Mac app that turns one file into a guided first month, a daily list of what's due and a reference you can search. The file is an open format that you can write with any AI chat. Two or three people can work on the same handover through a shared iCloud Drive, Google Drive or Dropbox folder.
 
 **[Download for Mac](https://github.com/incrhst/handover/releases/latest/download/Handover.dmg)** · [Website](https://incrhst.github.io/handover/) · [The format](spec/SPEC.md)
 
@@ -16,14 +16,14 @@ flowchart TB
 
   folder <--> mcp["MCP server<br/>Claude Desktop or Claude Code"]
   folder <--> app["Mac app<br/>Swift window around a web page"]
-  folder <-- "cloud service" --> other["The other person's Mac"]
+  folder <-- "cloud service" --> other["The other people's Macs"]
 
   app --> out["Notifications · Apple Reminders · a calendar file<br/>reports, exports and the transition kit"]
 ```
 
 - **Writing the file.** Any AI chat writes a handover with [the interview prompt](site/prompt.md). The [agent skill](skills/handover/SKILL.md) does the same in Claude Code and other agents, and can also check, convert and merge files.
 - **One folder holds everything.** The app keeps the handovers, each person's ticks, the morning sheets and the backups in one data folder, `~/Documents/Handover` unless you choose another. Put it in iCloud Drive, Google Drive or Dropbox to [work on a handover together](#working-on-a-handover-together).
-- **Three things read and write it.** The Mac app, the [MCP server](#use-it-with-claude-mcp) and the other person's Mac. Changes made at the same time are merged item by item, whoever makes them. The MCP server reads your ticks but never ticks anything off.
+- **Three things read and write it.** The Mac app, the [MCP server](#use-it-with-claude-mcp) and the other people's Macs. Changes made at the same time are merged item by item, whoever makes them. The MCP server reads your ticks but never ticks anything off.
 - **One copy of the logic.** The app, the skill's command-line tool and the MCP server all use the same `core.js`, so they agree on validation, schedules and merging.
 - **What the app sends out.** Reminders as Mac notifications, the regular jobs in Apple Reminders (ticks sync both ways), a calendar file, and reports, exports and the transition kit for people who don't use the app.
 
@@ -61,15 +61,15 @@ The app keeps its files in `~/Documents/Handover` (you can choose another folder
 You share the whole data folder, the **Handover** folder that holds `handovers/`, `progress/`, `daily/` and `backups/`. Don't share only `handovers/`: the app looks for all four inside the folder you choose, and `progress/` is where each person's ticks are kept. The default `~/Documents/Handover` is only on your Mac (unless iCloud syncs your Documents folder), so move it to a cloud service first:
 
 1. In **Settings › Change folder…**, choose or create a folder in iCloud Drive, Google Drive or Dropbox, such as `iCloud Drive/Handover`. The app asks which handovers to bring, then copies those (with their progress and morning sheets) into it and uses it from then on. Your old folder keeps everything, and the app no longer uses it.
-2. Share that folder with the other person (for example the incoming assistant) from Finder or the cloud service.
-3. They choose the same folder in **Settings › Change folder…** on their Mac.
+2. Share that folder with the other people (for example the incoming assistant, and whoever is running the handover) from Finder or the cloud service.
+3. Each of them chooses the same folder in **Settings › Change folder…** on their Mac.
 
 No server and no account is involved: the cloud service copies the files, and the app does the rest.
 
-- **Changes show up on the other Mac** a few seconds after the cloud service copies the file across.
-- **Changes made at the same time are combined.** A save never overwrites the other person's work: if the file changed since the app last read it, the app merges the two, item by item. If you both changed the same field of the same item, your version is kept and the app tells you which field.
+- **Changes show up on the other Macs** a few seconds after the cloud service copies the file across.
+- **Changes made at the same time are combined.** A save never overwrites anyone else's work: if the file changed since the app last read it, the app merges the two, item by item. If someone else changed the same field of the same item as you, your version is kept and the app tells you which field.
 - **Extra copies are folded in.** When a cloud service keeps two versions side by side (iCloud's conflict versions, or a file such as `role (Priya's conflicted copy).handover`), the app merges the extra one in and moves it to `backups/conflicts/`. Here the app can't tell which side changed a field, so where the copies differ the one on your Mac wins.
-- **Everyone keeps their own ticks and notes.** Progress is saved per person, and once two people share a handover, each person's morning sheet gets their name too.
+- **Everyone keeps their own ticks and notes.** Progress is saved per person, and once two or more people share a handover, each person's morning sheet gets their name too.
 - **Everyone with the folder sees everything in it**, including items marked for some roles only. Share the folder only with people who may see the whole record. For the principal, use the reports and exports.
 - **One folder per Mac, shared as a whole.** Every handover in the folder goes to everyone who can open it, so you can't share one handover with one person and another with someone else from the same folder. Keep a folder for each group of people, and switch between them with **Change folder…**: it only brings the handovers you tick, and none start ticked when the folder already has someone's handovers in it. For someone who should see just one handover, send the file from **Share & export** instead. That's a copy, so their changes won't come back to you.
 
