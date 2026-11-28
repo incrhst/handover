@@ -478,6 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             item("Export Today's Task Sheet…", #selector(exportToday), "e", target: self),
             item("Share Handover File…", #selector(shareFile), "s", [.command, .shift], target: self),
             item("Export With My Progress…", #selector(exportProgress), target: self),
+            item("Add Jobs to Calendar…", #selector(addToCalendar), target: self),
             .separator(),
             item("Close Window", #selector(NSWindow.performClose(_:)), "w"),
             item("Print…", #selector(printPage), "p", target: self),
@@ -525,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func exportToday() { command("exportToday") }
     @objc func shareFile() { command("shareFile") }
     @objc func exportProgress() { command("exportProgress") }
+    @objc func addToCalendar() { command("calendar") }
     @objc func printPage() { command("print") }
     @objc func find() { command("find") }
     @objc func openSettings() { command("settings") }
