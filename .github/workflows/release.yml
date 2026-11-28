@@ -69,11 +69,12 @@ jobs:
           echo "$NOTARY_KEY_P8" | base64 --decode > "$NOTARY_KEY_PATH"
           scripts/build-app.sh "${GITHUB_REF_NAME#v}"
           scripts/build-dmg.sh
+          scripts/build-mcpb.sh "${GITHUB_REF_NAME#v}"
           rm "$NOTARY_KEY_PATH"
       - name: Publish the release
         if: steps.gate.outputs.go == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/Handover.dmg dist/Handover.dmg.sha256 \
+          gh release create "$GITHUB_REF_NAME" dist/Handover.dmg dist/Handover.dmg.sha256 dist/Handover.mcpb dist/Handover.mcpb.sha256 \
             --title "Handover ${GITHUB_REF_NAME#v}" --generate-notes

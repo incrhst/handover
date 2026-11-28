@@ -11,3 +11,4 @@ jobs:
       - run: node skills/handover/scripts/handover.cjs check site/examples/ea-no-overlap.handover
       - run: node --test test/*.test.cjs
       - run: scripts/build-app.sh 0.0.0
+      - run: scripts/build-mcpb.sh 0.0.0

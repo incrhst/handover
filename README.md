@@ -63,6 +63,33 @@ npx skills add incrhst/handover
 
 It includes a validator and schedule preview: `node scripts/handover.cjs check role.handover`, `… gaps`, `… due`, `… strip [--profile newcomer|record]`, `… render`, `… export` (items as PDF, Word or Excel), `… report` (a job description or a report for the principal; `--kind working,jobs,needs` combines several), `… kit` (the whole handover as one HTML file that opens in any browser), `… ics` (the regular jobs as a calendar file), `… merge`.
 
+### Use it with Claude (MCP)
+
+Handover comes with an MCP server, so Claude can work with the handovers in your data folder. You can ask what's due today, ask where something is written down, or have it fill the gaps as you talk it through.
+
+- **Claude Desktop:** download **[Handover.mcpb](https://github.com/incrhst/handover/releases/latest/download/Handover.mcpb)** and double-click it, or drag it onto **Settings › Extensions**. Leave **Data folder** empty to use the folder chosen in the app.
+- **Claude Code**, or any other MCP client that runs a command: after `npx skills add incrhst/handover`, add the server from the folder the skill went into. For the default install into the project, that is:
+
+  ```bash
+  claude mcp add handover -- node "$PWD/.agents/skills/handover/scripts/mcp-server.cjs"
+  ```
+
+  It needs only Node 16 or later. From a clone of this repository, use `skills/handover/scripts/mcp-server.cjs` instead.
+
+| Tool | What it does |
+|---|---|
+| `list_handovers` | The handovers in the data folder, with their gaps and open records |
+| `get_today` | What's overdue, what to start now, what's due today and in the next days, and the open first-weeks tasks, using your ticks from the app |
+| `get_handover` | An overview, or chosen parts of the file |
+| `search` | Where something is written: the reference, answers, tasks, jobs and records |
+| `list_gaps` / `fill_gap` | What the handover still doesn't say, and filling it in |
+| `add_record`, `edit_item`, `close_item`, `reopen_item` | The same changes as **Add…**, **Edit…**, **Close…** and **Reopen** in the app |
+| `make_report` | A report for the principal or a job description, as Markdown, or saved as PDF, Word or HTML |
+
+It runs on your Mac and makes no network requests. Claude's changes go into the handover file the way a second person's would on a shared folder: the open app picks them up within a few seconds, and merges them if you were changing something at the same time. Each change is in the change log as made by an AI assistant, and the records Claude adds or edits show as **AI draft** until you edit them yourself. Like the app, it refuses passwords, PINs, codes and card or bank numbers. Ticking jobs and tasks off stays with you, in the app.
+
+It finds the data folder the way the app does: `$HANDOVER_DATA`, then the folder chosen in **Settings**, then `~/Documents/Handover`. With more than one handover, Claude names the one it means, or uses the one last open in the app.
+
 ## Repository
 
 | Path | What |
@@ -71,8 +98,9 @@ It includes a validator and schedule preview: `node scripts/handover.cjs check r
 | `site/` | The website, schema, example and AI prompt (published to GitHub Pages) |
 | `app/web/` | The dashboard page (`index.html`) and the shared format logic (`core.js`) |
 | `app/macos/` | The Mac app: a native window around the page, plus files, scheduling, backups and shared-folder sync |
-| `skills/handover/` | The agent skill. Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, examples or prompt |
-| `test/` | Format and merge tests: `node --test test/*.test.cjs` |
+| `skills/handover/` | The agent skill, and the MCP server (`scripts/mcp-server.cjs`). Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, examples or prompt |
+| `app/mcp/` | The Claude Desktop extension's manifest. `scripts/build-mcpb.sh` packs it with the server into `dist/Handover.mcpb` |
+| `test/` | Format, merge and MCP server tests: `node --test test/*.test.cjs` |
 | `scripts/` | Icon, build, notarisation and DMG scripts |
 
 ### Build it yourself
@@ -82,6 +110,7 @@ Needs Xcode or the Command Line Tools (Swift 5.9 or later). No other dependencie
 ```bash
 scripts/build-app.sh            # build/Handover.app, signed ad hoc
 scripts/build-dmg.sh            # dist/Handover.dmg
+scripts/build-mcpb.sh           # dist/Handover.mcpb, the Claude Desktop extension (needs Node)
 ```
 
 To try the page in a browser without the app, serve the repo and open `app/web/index.html?src=../../site/examples/ea-no-overlap.handover`.
@@ -102,7 +131,8 @@ Then tag `main`, build, and publish both files with release notes:
 git tag -a v0.15.0 -m "Handover 0.15.0" && git push origin v0.15.0
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-app.sh 0.15.0
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=handover scripts/build-dmg.sh
-gh release create v0.15.0 dist/Handover.dmg dist/Handover.dmg.sha256 --verify-tag --title "Handover 0.15.0" --notes-file notes.md
+scripts/build-mcpb.sh 0.15.0
+gh release create v0.15.0 dist/Handover.dmg dist/Handover.dmg.sha256 dist/Handover.mcpb dist/Handover.mcpb.sha256 --verify-tag --title "Handover 0.15.0" --notes-file notes.md
 ```
 
 If `security find-identity -v -p codesigning` lists more than one certificate with the same name, `codesign` refuses the name as ambiguous: set `SIGN_IDENTITY` to the certificate's SHA-1 hash from that list instead. Notarising the app and the DMG takes a few minutes.
