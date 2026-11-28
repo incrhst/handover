@@ -162,18 +162,34 @@ final class Store {
         let all = ((try? fm.contentsOfDirectory(atPath: dir("backups").path)) ?? []).filter { $0.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil }.sorted()
         for old in all.dropLast(30) { try? fm.removeItem(at: dir("backups").appendingPathComponent(old)) }
     }
-    /// Move to a new folder, copying across anything not already there.
-    func moveTo(_ newRoot: URL) {
+    /// The handovers in another data folder, by id.
+    func ids(in folder: URL) -> Set<String> {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("handovers").path)) ?? []
+        return Set(names.filter { $0.hasSuffix(".handover") }.map { String($0.dropLast(9)) }.filter(validID))
+    }
+    /// Which handover a file in handovers/, progress/ or daily/ belongs to, if it's one of these.
+    static func owner(_ file: String, of ids: Set<String>) -> Bool {
+        ids.contains { id in
+            file == id + ".handover"
+                || (file.hasPrefix(id + ".") && file.hasSuffix(".json"))  // progress: <id>.json or <id>.<reader>.json (ids have no dots)
+                || file.range(of: "^" + NSRegularExpression.escapedPattern(for: id) + #"-\d{4}-\d{2}-\d{2}(-[a-z0-9-]+)?\.md$"#, options: .regularExpression) != nil  // daily sheet
+        }
+    }
+    /// Use a new folder, copying across the chosen handovers (with their progress and morning sheets)
+    /// unless the new folder already has them. Nothing else comes along: everyone who can open the new
+    /// folder sees what's in it. The old folder is left as it was.
+    func moveTo(_ newRoot: URL, bringing ids: Set<String>) {
         let fm = FileManager.default
         for name in ["handovers", "progress", "daily"] {
             let from = dir(name), to = newRoot.appendingPathComponent(name, isDirectory: true)
             try? fm.createDirectory(at: to, withIntermediateDirectories: true)
-            for item in (try? fm.contentsOfDirectory(atPath: from.path)) ?? [] {
+            for item in (try? fm.contentsOfDirectory(atPath: from.path)) ?? [] where Store.owner(item, of: ids) {
                 let dest = to.appendingPathComponent(item)
                 if !fm.fileExists(atPath: dest.path) { try? fm.copyItem(at: from.appendingPathComponent(item), to: dest) }
             }
         }
         defaults.set(newRoot.path, forKey: "dataFolder")
+        if let id = last, !fm.fileExists(atPath: sourceURL(id).path) { last = nil }
     }
 }
 
@@ -304,6 +320,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
 
     func alert(_ text: String) { let a = NSAlert(); a.messageText = text; a.beginSheetModal(for: window, completionHandler: nil) }
 
+    /// Before switching folders: which handovers to copy into the new one. Everyone who can open a shared
+    /// folder sees every handover in it, so nothing is copied without a tick. If the new folder already
+    /// has handovers (it's probably someone else's), none start ticked. nil: cancelled.
+    func chooseHandoversToBring(to folder: URL, done: @escaping (Set<String>?) -> Void) {
+        let there = store.ids(in: folder)
+        let offer = store.library().filter { !there.contains($0["id"]!) }
+        if offer.isEmpty { done([]); return }
+        let boxes = offer.map { h -> NSButton in
+            let b = NSButton(checkboxWithTitle: h["title"]!, target: nil, action: nil)
+            b.identifier = NSUserInterfaceItemIdentifier(h["id"]!)
+            b.state = there.isEmpty ? .on : .off
+            b.lineBreakMode = .byTruncatingTail
+            return b
+        }
+        let stack = NSStackView(views: boxes)
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 6
+        stack.edgeInsets = NSEdgeInsets(top: 4, left: 2, bottom: 4, right: 2)
+        let width: CGFloat = 340
+        boxes.forEach { $0.widthAnchor.constraint(lessThanOrEqualToConstant: width - 8).isActive = true }
+        stack.frame.size = NSSize(width: width, height: stack.fittingSize.height)
+        let a = NSAlert()
+        a.messageText = "Which handovers should come with you?"
+        a.informativeText = (there.isEmpty ? "" : "“\(folder.lastPathComponent)” already has handovers in it, perhaps shared by someone else. ")
+            + "Anyone who can open “\(folder.lastPathComponent)” will see every handover in it, so tick only the ones they may see. The rest stay in your current folder, which Handover stops using."
+        if stack.frame.height > 240 {
+            let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: width + 16, height: 240))
+            scroll.hasVerticalScroller = true; scroll.borderType = .bezelBorder; scroll.documentView = stack
+            a.accessoryView = scroll
+        } else {
+            a.accessoryView = stack
+        }
+        a.addButton(withTitle: "Use This Folder")
+        a.addButton(withTitle: "Cancel")
+        a.beginSheetModal(for: window) { r in
+            guard r == .alertFirstButtonReturn else { done(nil); return }
+            done(Set(boxes.filter { $0.state == .on }.compactMap { $0.identifier?.rawValue }))
+        }
+    }
+
     // MARK: Bridge. The page calls window.webkit.messageHandlers.handover.postMessage({action, payload}).
 
     func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage, replyHandler: @escaping @MainActor (Any?, String?) -> Void) {
@@ -399,8 +454,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             let p = NSOpenPanel(); p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
             p.prompt = "Use This Folder"; p.message = "Choose where Handover keeps its files. A folder in iCloud Drive or Google Drive is backed up automatically."
             p.beginSheetModal(for: window) { r in
-                guard r == .OK, let u = p.url else { reply(nil); return }
-                self.store.moveTo(u); reply(["path": u.path])
+                guard r == .OK, let u = p.url?.standardizedFileURL else { reply(nil); return }
+                if u.path == self.store.root.standardizedFileURL.path { reply(["path": u.path]); return }
+                // Let the folder panel close before the next sheet opens.
+                DispatchQueue.main.async {
+                    self.chooseHandoversToBring(to: u) { ids in
+                        guard let ids = ids else { reply(nil); return }
+                        self.store.moveTo(u, bringing: ids); reply(["path": u.path])
+                    }
+                }
             }
         case "setLogin":
             let on = payload["on"] as? Bool ?? false

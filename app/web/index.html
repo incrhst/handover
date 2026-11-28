@@ -540,7 +540,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
             <button class="btn" type="button" data-cmd="chooseFolder">Change folder…</button>
           </div>
           <p class="native-only" style="margin:.2rem 0 .8rem">Choose a folder in iCloud Drive, Google Drive or Dropbox to back it up automatically. A dated copy is also kept every night.</p>
-          <p class="native-only" style="margin:.2rem 0 .8rem">To work on a handover together, share that folder with the other person and have them choose it here too. Changes made on either Mac show up on the other within seconds of the cloud service copying them across, and changes made at the same time are combined. Each person keeps their own ticks and notes.</p>
+          <p class="native-only" style="margin:.2rem 0 .8rem">To work on a handover together, share that folder with the other person and have them choose it here too. Changes made on either Mac show up on the other within seconds of the cloud service copying them across, and changes made at the same time are combined. Each person keeps their own ticks and notes. Everyone who can open the folder sees every handover in it, so keep handovers for different people in different folders.</p>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="loginItem"> Open at login, so the daily sheet is always written</label></div>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="remindMorning" checked> Remind me each morning of what's to do</label></div>
           <div class="row native-only"><label class="switch"><input type="checkbox" id="remindJobs" checked> Remind me when a job with a time is due</label></div>
@@ -1948,7 +1948,16 @@ function command(c){
     case "checkUpdates": return call("checkUpdates");
     case "notificationSettings": return call("notificationSettings");
     case "remindersSettings": return call("remindersSettings");
-    case "chooseFolder": return call("chooseFolder").then(function(r){ if (r && r.path){ $("dataFolder").textContent = r.path; toast("Data folder changed"); } });
+    case "chooseFolder":
+      // Save any waiting ticks to the old folder first. Afterwards start again from the new folder,
+      // which may not have the handover that's open now.
+      clearTimeout(saveTimer); saveTimer = null;
+      return (H ? call("saveState", {id: H.id, state: S}) : Promise.resolve()).then(function(){ return call("chooseFolder"); }).then(function(r){
+        if (!r || !r.path) return;
+        if (r.path === $("dataFolder").textContent) return toast("Already using that folder");
+        H = null; S = null; BASE = null; closeShare(); $("warnBanner").hidden = true; $("errors").hidden = true; document.title = "Handover";
+        return call("init").then(function(res){ boot(res); toast("Now using " + r.path.split("/").pop()); });
+      });
     case "resetProgress": if (!confirm("Clear all your ticks and notes for this handover? This can't be undone.")) return; S = emptyState(TODAY); save(); render(); return toast("Progress cleared");
   }
 }
@@ -2124,7 +2133,8 @@ function boot(res){
   if (res && res.reminders){ REMIND = {morning: res.reminders.morning !== false, jobs: res.reminders.jobs !== false}; $("remindMorning").checked = REMIND.morning; $("remindJobs").checked = REMIND.jobs; }
   if (res && typeof res.todoSync === "boolean"){ TODO = res.todoSync; $("todoSync").checked = TODO; }
   if (res && res.version) $("appVersion").textContent = "Version " + res.version;
-  if (lib.length > 1){ $("switchRow").hidden = false; $("switchSel").innerHTML = '<option value="">Choose…</option>' + lib.map(function(x){ return '<option value="' + esc(x.id) + '">' + esc(x.title || x.id) + "</option>"; }).join(""); }
+  $("switchRow").hidden = lib.length < 2;
+  if (lib.length > 1){ $("switchSel").innerHTML = '<option value="">Choose…</option>' + lib.map(function(x){ return '<option value="' + esc(x.id) + '">' + esc(x.title || x.id) + "</option>"; }).join(""); }
   if (res && res.source){
     var obj; try { obj = parse(res.source); } catch(e){ showWelcome(); return; }
     var v = validate(obj); if (v.errors.length){ showErrors("The saved handover has problems", v.errors, ""); return; }
