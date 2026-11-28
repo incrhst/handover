@@ -58,14 +58,13 @@ button{font:inherit}
 .topnav{display:flex;gap:2px;margin-right:auto}
 .topnav a{display:inline-flex;align-items:center;min-height:40px;padding:0 10px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:14px}
 .topnav a:hover{background:var(--surface-2);color:var(--ink)}
-.menu{position:relative}
-.menu > summary{list-style:none}
-.menu > summary::-webkit-details-marker{display:none}
-.menu-panel{position:absolute;right:0;top:calc(100% + 6px);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.14);padding:6px;min-width:250px;z-index:30;display:flex;flex-direction:column}
-.menu-panel button{text-align:left;border:0;background:none;color:var(--ink);padding:10px 12px;border-radius:8px;cursor:pointer;font-size:14.5px}
-.menu-panel button:hover{background:var(--surface-2)}
-.menu-panel small{display:block;color:var(--ink-3);font-size:12.5px}
-.menu-panel hr{border:0;border-top:1px solid var(--line);margin:4px 6px}
+.share-body h3{margin:10px 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.share-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.share-list button{text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:11px 13px;border-radius:10px;cursor:pointer;font:inherit;font-size:14.5px;font-weight:650}
+.share-list button:hover,.share-list button:focus-visible{background:var(--surface-2);border-color:var(--accent)}
+.share-list small{display:block;margin-top:2px;color:var(--ink-3);font-size:12.5px;font-weight:400;line-height:1.35}
+.dlg footer .grow{flex:1}
+@media (max-width:560px){.share-list{grid-template-columns:1fr}}
 dialog.dlg{border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);padding:0;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
 dialog.dlg::backdrop{background:rgba(0,0,0,.35)}
 .dlg form{display:flex;flex-direction:column;max-height:calc(100vh - 48px)}
@@ -437,23 +436,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <button class="gapchip" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
       <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
       <button class="btn" type="button" data-cmd="report" id="reportBtn" hidden title="A short, plain report for the principal: what's under way, the assistant's jobs, what needs them, or a job description">Report…</button>
-      <details class="menu" id="shareMenu">
-        <summary class="btn primary">Share &amp; export</summary>
-        <div class="menu-panel" role="menu">
-          <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
-          <button type="button" data-cmd="report" id="reportMenuBtn" hidden><span id="reportMenuLabel">Report for the principal…</span><small>What we're working on, the assistant's jobs, what needs them, or a job description</small></button>
-          <button type="button" data-cmd="exportItems">Export items as a document…<small>Jobs, tasks or any other list, as PDF, Word or Excel</small></button>
-          <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
-          <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
-          <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
-          <button type="button" data-cmd="calendar">Add jobs to calendar (.ics)…<small>Every regular job, repeating, for Apple Calendar, Google Calendar or Outlook</small></button>
-          <button type="button" data-cmd="kit" id="kitMenuBtn">Transition kit (HTML)…<small>One file that opens in any browser, with no app or internet</small></button>
-          <hr>
-          <button type="button" data-cmd="print">Print…</button>
-          <button type="button" data-cmd="open">Open another handover…</button>
-          <button type="button" data-cmd="close">Close this handover<small>Back to the start, to open or choose another</small></button>
-        </div>
-      </details>
+      <button class="btn primary" type="button" data-cmd="share" id="shareBtn" aria-haspopup="dialog">Share &amp; export…</button>
     </div>
   </header>
 
@@ -640,6 +623,27 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   </form>
 </dialog>
 
+<dialog class="dlg" id="shareDlg" aria-labelledby="shareDlgTitle"><form method="dialog">
+  <header><h2 id="shareDlgTitle">Share &amp; export</h2><p>Save, print or pass on this handover.</p></header>
+  <div class="dlg-body share-body">
+    <h3>Documents</h3>
+    <div class="share-list">
+      <button type="button" data-cmd="exportToday">Today's task sheet<small>A document of what's due, for today</small></button>
+      <button type="button" data-cmd="report" id="reportMenuBtn" hidden><span id="reportMenuLabel">Report for the principal…</span><small>What we're working on, the assistant's jobs, what needs them, or a job description</small></button>
+      <button type="button" data-cmd="exportItems">Export items as a document…<small>Jobs, tasks or any other list, as PDF, Word or Excel</small></button>
+      <button type="button" data-cmd="print">Print…<small>This handover, on paper or as a PDF</small></button>
+    </div>
+    <h3>Files and calendar</h3>
+    <div class="share-list">
+      <button type="button" data-cmd="calendar">Add jobs to calendar (.ics)…<small>Every regular job, repeating, for Apple Calendar, Google Calendar or Outlook</small></button>
+      <button type="button" data-cmd="shareFile">Share handover file<small id="shareNote">The content only, for someone new</small></button>
+      <button type="button" data-cmd="exportRecord" id="exportRecordBtn" hidden>Export the full record<small>Everything in this file, for the people running the handover</small></button>
+      <button type="button" data-cmd="exportProgress">Export with my progress<small>To move to another Mac or tool</small></button>
+      <button type="button" data-cmd="kit" id="kitMenuBtn">Transition kit (HTML)…<small>One file that opens in any browser, with no app or internet</small></button>
+    </div>
+  </div>
+  <footer><button class="btn" type="button" data-cmd="open">Open another handover…</button><button class="btn" type="button" data-cmd="close">Close this handover</button><span class="grow"></span><button class="btn primary" type="submit">Done</button></footer>
+</form></dialog>
 <dialog class="dlg" id="kitDlg" aria-labelledby="kitDlgTitle">
   <form method="dialog" id="kitForm">
     <header><h2 id="kitDlgTitle">Transition kit</h2><p>The whole handover as one HTML file. It opens in any browser, with no app, server or internet, so you can email it or put it on a shared drive. It holds only what the file holds, and only what the people you choose may see.</p></header>
@@ -979,7 +983,7 @@ function render(){
   $("topnav").innerHTML = nav.map(function(n){ return '<a href="' + n[0] + '">' + n[1] + "</a>"; }).join("");
   if (KIT){
     ["reportMenuBtn", "exportRecordBtn", "kitMenuBtn"].forEach(function(id){ $(id).hidden = true; });
-    document.querySelectorAll('#shareMenu [data-cmd="exportItems"], #shareMenu [data-cmd="shareFile"], #shareMenu [data-cmd="open"]').forEach(function(b){ b.hidden = true; });
+    document.querySelectorAll('#shareDlg [data-cmd="exportItems"], #shareDlg [data-cmd="shareFile"], #shareDlg [data-cmd="open"]').forEach(function(b){ b.hidden = true; });
     if (KIT.made) $("kitNote").textContent = "This is a transition kit, made on " + nice(KIT.made, "long") + ": one file that works in any browser, with no app and no internet. It never sends anything anywhere. It is a copy of the handover and doesn't change when the handover does.";
   }
   $("autoExportNote").textContent = KIT ? "Your ticks and notes are kept in this browser only. Use Share & export to save today's task sheet, or your progress as a handover file." : native ? "Each morning at " + exportTime() + " a task sheet for the day is saved in your data folder." : "Use Share & export to save today's task sheet.";
@@ -1039,7 +1043,7 @@ function renderToday(){
   }).join("") + (needed.length ? '<h4 class="alljobs-sub">Done as needed</h4>' + needed.map(function(a){
     return '<div class="duty plain"><span class="t">' + inline(a.text) + areaTag(a) + '</span><span class="when">' + esc(C.whenNeeded(a)) + editBtn("asNeeded", a) + "</span>" + (a.detail ? '<div class="detail">' + md(a.detail) + "</div>" : "") + guidesHtml("asNeeded", a) + "</div>";
   }).join("") : "") + '<div class="addrow"><button type="button" class="closebtn" data-add="asNeeded">Add a job done as needed…</button></div></details>' : "";
-  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + all + "</section>";
+  w.innerHTML = '<section class="panel lift" id="today"><div class="panel-head"><h2>Today · ' + esc(nice(TODAY, "long")) + '</h2>' + xbtn("jobs") + (jobs.length ? '<button class="btn no-print" type="button" data-cmd="calendar" title="Save the regular jobs as a calendar file (.ics) for Apple Calendar, Google Calendar or Outlook">Add to calendar</button>' : "") + '<button class="btn no-print" type="button" data-cmd="exportToday">Today\'s sheet</button></div><div class="today-grid">' + cols + "</div>" + later + all + "</section>";
 }
 function stats(stage){ var d = 0; stage.tasks.forEach(function(t){ if (S.tasks[t.id]) d++; }); return {n: stage.tasks.length, d: d}; }
 function currentStage(){ var p = H.path || []; for (var i = 0; i < p.length; i++){ var s = stats(p[i]); if (s.d < s.n) return i; } return Math.max(0, p.length - 1); }
@@ -1373,7 +1377,6 @@ function reveal(el){
 }
 document.addEventListener("click", function(e){
   var t = e.target;
-  var menu = $("shareMenu"); if (menu.open && !menu.contains(t)) menu.open = false;
   var tick = t.closest(".tick");
   if (tick){
     var li = tick.closest("[data-task]"), duty = tick.closest("[data-key]");
@@ -1385,7 +1388,7 @@ document.addEventListener("click", function(e){
   }
   var go = t.closest("[data-go]");
   if (go){ S.stage = +go.dataset.go; save(); buildStepper(); showStage(); if (go.classList.contains("btn")) $("path").scrollIntoView({block: "start"}); return; }
-  var cmd = t.closest("[data-cmd]"); if (cmd){ menu.open = false; command(cmd.dataset.cmd); return; }
+  var cmd = t.closest("[data-cmd]"); if (cmd){ closeShare(); command(cmd.dataset.cmd); return; }
   var chip = t.closest("[data-qa]"); if (chip){ var c = $(chip.dataset.qa); if (c){ c.scrollIntoView({block: "center"}); flash(c); } return; }
   var sw = t.closest("[data-switch]"); if (sw){ switchTo(sw.dataset.switch); return; }
   var cal = t.closest("[data-calendar]"); if (cal){ e.preventDefault(); exportCalendar(cal.dataset.calendar); return; }
@@ -1859,12 +1862,13 @@ function sheet(date){
 function slugDate(){ return TODAY; }
 function command(c){
   if (!H && ["open","sample","settings","reveal","chooseFolder","checkUpdates","notificationSettings","remindersSettings"].indexOf(c) < 0) return;
-  if (KIT && ["exportToday","exportProgress","calendar","print","find","ask","resetProgress"].indexOf(c) < 0) return;
+  if (KIT && ["share","exportToday","exportProgress","calendar","print","find","ask","resetProgress"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
     case "close": return closeHandover();
     case "exportItems": return openExportDialog();
     case "kit": return openKit();
+    case "share": return openShare();
     case "calendar": return exportCalendar();
     case "report": return openReport();
     case "exportToday": return call("exportSheet", {id: H.id, date: TODAY, filename: H.id + "-" + TODAY + ".md", content: sheet(TODAY), auto: false}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
@@ -1884,6 +1888,11 @@ function command(c){
   }
 }
 window.handoverCommand = command;
+
+/* Share & export: every way to save, print or pass on the handover, in one dialog */
+function openShare(){ var d = $("shareDlg"); if (!d.open) d.showModal(); }
+function closeShare(){ var d = $("shareDlg"); if (d.open) d.close(); }
+$("shareDlg").addEventListener("click", function(e){ if (e.target === this) this.close(); });
 
 /* Export items as a document: choose kinds (and single items), then save as Word or Markdown */
 var XP = {kinds: {jobs: true, tasks: true}, only: {}, open: {}, titleEdited: false};
@@ -1914,7 +1923,7 @@ function xpRender(){
 /* An Export… button on a panel: the chooser opens with that panel's kinds ticked */
 function xbtn(kinds){ if (KIT) return ""; return '<button class="btn no-print xbtn" type="button" data-export="' + kinds + '" title="Export these as PDF, Word or Excel">Export…</button>'; }
 function openExportDialog(only){
-  $("shareMenu").open = false;
+  closeShare();
   var anyClosed = false, anyPrivate = false;
   ["gaps","inProgress","rules","decisions","risks","systems","documents","stakeholders"].forEach(function(k){ (H[k] || []).forEach(function(x){ if (x.closed) anyClosed = true; if (x.visibleTo || x.contactVisibleTo) anyPrivate = true; }); });
   ((H.decide && H.decide.cards) || []).forEach(function(x){ if (x.closed) anyClosed = true; if (x.visibleTo) anyPrivate = true; });
@@ -1961,7 +1970,7 @@ $("exportForm").addEventListener("submit", function(e){
 
 /* The regular jobs, or one of them, as a calendar file (.ics) that repeats on each job's schedule (core.js makes it) */
 function exportCalendar(id){
-  $("shareMenu").open = false;
+  closeShare();
   var out = C.calendarFile(H, {ids: id ? [id] : undefined, from: TODAY});
   if (!out.count) return toast(id ? "That job has no dates left" : "There are no regular jobs with dates left");
   var name = H.id + (id ? "-" + id : "-jobs") + ".ics";
@@ -1970,7 +1979,7 @@ function exportCalendar(id){
 }
 /* Transition kit: the whole handover as one HTML file that opens in any browser (core.js makes it) */
 function openKit(){
-  $("shareMenu").open = false;
+  closeShare();
   if (!has11()) return saveKit("newcomer");
   $("kitRecordNote").textContent = "For the people running the handover" + (H.audience ? " (" + H.audience.map(who).filter(uniq).join(", ") + ")" : "") + ": everything in this file they may see.";
   document.querySelector('[name="kitProfile"][value="newcomer"]').checked = true;
@@ -1992,7 +2001,7 @@ function closeHandover(){
   clearTimeout(saveTimer); saveTimer = null;
   return call("saveState", {id: id, state: S}).then(function(){ return call("close", {id: id}); }).then(function(){
     H = null; S = null; SOURCE_NAME = ""; BASE = null; syncReminders();
-    $("shareMenu").open = false; $("warnBanner").hidden = true; $("errors").hidden = true;
+    closeShare(); $("warnBanner").hidden = true; $("errors").hidden = true;
     document.title = "Handover";
     showWelcome(); window.scrollTo(0, 0);
     toast("Closed " + title);
