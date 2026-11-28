@@ -257,7 +257,7 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
         <div class="feature"><h3>Reminders</h3><p>A notification each morning with what's to do, and another when a job with a time is due. Click Done to tick it off.</p></div>
         <div class="feature"><h3>In your calendar</h3><p>Save the regular jobs as a calendar file for Apple Calendar, Google Calendar or Outlook. Each one repeats on its schedule, with an alert when the work has to start.</p></div>
         <div class="feature"><h3>On your iPhone</h3><p>Keep the regular jobs in an Apple Reminders list. Tick one off on your phone and it's ticked in the app, and the other way round.</p></div>
-        <div class="feature"><h3>Work on it together</h3><p>Share the data folder in iCloud Drive, Google Drive or Dropbox. Changes reach the other Mac in seconds, and edits made at the same time are combined. <a href="#together">See how</a>.</p></div>
+        <div class="feature"><h3>Work on it together</h3><p>Share the data folder in iCloud Drive, Google Drive or Dropbox, with two or three people. Changes reach the other Macs in seconds, and edits made at the same time are combined. <a href="#together">See how</a>.</p></div>
         <div class="feature"><h3>Correct anything</h3><p>Edit any task, regular job or record that isn't right. It keeps its place and its ticks, and the change goes in the change log.</p></div>
         <div class="feature"><h3>Ask first</h3><p>One search box covers the path, the answers and every reference section.</p></div>
         <div class="feature"><h3>Private and backed up</h3><p>No account, no server, no tracking. Your files stay in a folder you choose, and a dated copy is kept every night.</p></div>
@@ -269,7 +269,7 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
   <section id="together">
     <div class="wrap">
       <h2>Work on a handover together</h2>
-      <p class="sub">The outgoing and incoming person can both work in the same handover, each on their own Mac. A folder you already share in iCloud Drive, Google Drive or Dropbox carries the changes. There's no server and no account.</p>
+      <p class="sub">The outgoing and incoming person can both work in the same handover, each on their own Mac, and a third person can join them, such as whoever is running the handover. A folder you already share in iCloud Drive, Google Drive or Dropbox carries the changes. There's no server and no account.</p>
 
       <figure class="sync" aria-label="Two Macs share one data folder in the cloud">
         <div class="node mac who-p"><span class="dot" aria-hidden="true">P</span><svg width="56" height="40" viewBox="0 0 56 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="40" height="27" rx="3"/><path d="M2 35h52l-3 3H5z"/></svg><b>Priya's Mac</b><span>Outgoing assistant</span><small>Writes up the role and fills gaps as they come up</small></div>
@@ -290,16 +290,16 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
       <h3 class="part">Set it up in a minute</h3>
       <ol class="steps">
         <li><h3>Move the data folder</h3><p>Out of the box it's <code>Documents/Handover</code>, which stays on your Mac. In Handover, open <b>Settings › Change folder…</b> and choose or create a folder in iCloud Drive, Google Drive or Dropbox. Tick the handovers to bring, and the app copies them across.</p></li>
-        <li><h3>Share the folder</h3><p>Share that whole folder, the one holding <code>handovers</code>, <code>progress</code>, <code>daily</code> and <code>backups</code>, with the other person from Finder or the cloud service. Not just <code>handovers</code>, and not just the file.</p></li>
-        <li><h3>They choose it too</h3><p>The other person picks the same folder in <b>Settings › Change folder…</b>. The handover is there, and each of you keeps your own ticks.</p></li>
+        <li><h3>Share the folder</h3><p>Share that whole folder, the one holding <code>handovers</code>, <code>progress</code>, <code>daily</code> and <code>backups</code>, with the other people from Finder or the cloud service. Not just <code>handovers</code>, and not just the file.</p></li>
+        <li><h3>They choose it too</h3><p>Each of them picks the same folder in <b>Settings › Change folder…</b>. The handover is there, and each of you keeps your own ticks.</p></li>
       </ol>
       <figure class="shot">
         <picture><source srcset="img/together-settings-dark.webp" media="(prefers-color-scheme: dark)"><img src="img/together-settings-light.webp" width="1600" height="542" loading="lazy" alt="Handover's Settings panel, with the data folder in iCloud Drive and the note: to work on a handover together, share that folder with the other person and have them choose it here too."></picture>
         <figcaption>Marcus's Settings, with the data folder in iCloud Drive.</figcaption>
       </figure>
 
-      <h3 class="part">When you both change it at once</h3>
-      <p class="sub">A save never overwrites the other person's work. Before it writes, the app checks whether the file changed since it last read it. If it did, the app combines the two, item by item.</p>
+      <h3 class="part">When two of you change it at once</h3>
+      <p class="sub">A save never overwrites anyone else's work. Before it writes, the app checks whether the file changed since it last read it. If it did, the app combines the two, item by item.</p>
       <ol class="merge">
         <li><span class="tag">Both Macs</span><h3>The same starting point</h3><p>Priya and Marcus have the same copy of the handover open.</p>
           <div class="file"><div class="file-h">role.handover · gaps</div><div class="row"><span>Travel portal access</span><span class="pill">Open</span></div></div></li>
@@ -322,11 +322,11 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
 
       <h3 class="part">What else to know</h3>
       <ul class="rules">
-        <li><b>The same field, changed twice</b>If you both changed the same field of the same item, your version is kept and the app tells you which field, so you can check it.</li>
+        <li><b>The same field, changed twice</b>If someone else changed the same field of the same item as you, your version is kept and the app tells you which field, so you can check it.</li>
         <li><b>Extra copies are folded in</b>When a cloud service keeps two copies side by side, such as iCloud's conflict versions or a "conflicted copy" file, the app merges the extra one in and moves it to <code>backups/conflicts</code>.</li>
-        <li><b>Your own ticks</b>Ticks, notes and your start date are saved per person, so one person's progress never changes the other's.</li>
+        <li><b>Your own ticks</b>Ticks, notes and your start date are saved per person, so one person's progress never changes anyone else's.</li>
         <li><b>One folder, shared as a whole</b>Everyone who can open the folder sees every handover in it. Keep a folder for each group of people and switch with “Change folder…”, which only brings the handovers you tick. For one person and one handover, send the file from Share &amp; export instead.</li>
-        <li><b>OneDrive isn't tested yet</b>It should work like the others: share the folder, and the other person adds it to their OneDrive with “Add shortcut to My files”. Extra copies OneDrive keeps are the part we're least sure of. If you try it, <a href="https://github.com/incrhst/handover/issues">tell us how it went</a>.</li>
+        <li><b>OneDrive isn't tested yet</b>It should work like the others: share the folder, and each person adds it to their OneDrive with “Add shortcut to My files”. Extra copies OneDrive keeps are the part we're least sure of. If you try it, <a href="https://github.com/incrhst/handover/issues">tell us how it went</a>.</li>
       </ul>
       <div class="note">Everyone with the folder sees everything in it, including items marked for some roles only. Share it only with people who may see the whole record. For the principal, use the reports and exports instead.</div>
     </div>
