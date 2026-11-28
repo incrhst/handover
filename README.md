@@ -139,7 +139,7 @@ It finds the data folder the way the app does: `$HANDOVER_DATA`, then the folder
 | `skills/handover/` | The agent skill, and the MCP server (`scripts/mcp-server.cjs`). Run `scripts/sync-shared.sh` after changing `core.js`, the spec, schema, examples or prompt |
 | `app/mcp/` | The Claude Desktop extension's manifest. `scripts/build-mcpb.sh` packs it with the server into `dist/Handover.mcpb` |
 | `test/` | Format, merge and MCP server tests: `node --test test/*.test.cjs` |
-| `scripts/` | Icon, build, notarisation and DMG scripts |
+| `scripts/` | Icon, build, notarisation and DMG scripts, and `capture.html`, which stages the website's screenshots of working together |
 
 ### Build it yourself
 

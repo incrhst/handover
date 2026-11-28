@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Capture</title>
+<script>
+/* The app page with a stand-in for the Mac app: an in-memory "disk" that behaves like Store in
+   main.swift. Scenes stage what the website screenshots show. Seen from Marcus's Mac (incoming);
+   Priya (outgoing) saves on hers.
+
+   Stages the "Work on a handover together" screenshots (site/img/together-*.webp):
+     1. Serve the repository root, e.g. `python3 -m http.server 8766`, and open
+        http://localhost:8766/scripts/capture.html in a browser.
+     2. Run `await runScene("settings")`, `"combined"` or `"changelog"` in the console.
+        Each returns the page rectangle ({x, y, width, height}) to screenshot.
+     3. Take each one in light and dark mode, and save it as together-<scene>-light.webp and
+        together-<scene>-dark.webp. Reload the page between scenes: "combined" and "changelog"
+        both change the handover. */
+window.DISK = {files: {}, last: null};
+window.webkit = {messageHandlers: {handover: {postMessage: function(m){
+  var p = JSON.parse(m.payload) || {}, D = window.DISK, r = null;
+  switch (m.action){
+    case "init": r = {library: [], dataFolder: "/Users/marcus/Library/Mobile Documents/com~apple~CloudDocs/Handover", loginItem: true, autoUpdate: true, version: "0.9.0", source: D.files[D.last], state: null}; break;
+    case "adopt":
+      var base = p.force ? null : p.base;
+      if (base != null && D.files[p.id] != null && D.files[p.id] !== base){ r = {current: D.files[p.id]}; break; }
+      D.files[p.id] = p.text; r = {state: null}; break;
+    case "current": r = {text: D.files[p.id]}; break;
+    case "conflictCopies": r = {copies: []}; break;
+    case "saveState": case "close": case "conflictsDone": r = {ok: true}; break;
+  }
+  return Promise.resolve(r === null ? null : JSON.stringify(r));
+}}}};
+var pretty = function(h){ return JSON.stringify(h, null, 2); };
+var wait = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+function rect(el, pad){ var b = el.getBoundingClientRect(); pad = pad || 0; return {x: Math.max(0, b.left - pad), y: Math.max(0, b.top + window.scrollY - pad), width: b.width + 2 * pad, height: b.height + 2 * pad}; }
+function stamp(min){ var d = new Date(Date.now() - min * 60000); return d.toISOString().replace(/\.\d+Z$/, "Z"); }
+
+/* Priya adds a gap on her Mac (it reaches the shared folder), then Marcus closes another on his,
+   before his app has seen her save: his save finds the file changed and combines the two. */
+async function together(){
+  var C = HandoverCore, id = DISK.last;
+  var r = C.addItem(JSON.parse(DISK.files[id]), "gaps", {text: "Spare office keys: who holds them", blocks: true}, {role: "outgoing", date: C.zoneParts().date, at: stamp(3)});
+  DISK.files[id] = pretty(r.h);
+  document.querySelector('[data-close="gaps:travel-booking"]').click();
+  await wait(200);
+  document.querySelector('input[name="closeHow"][value="fixed"]').checked = true;
+  document.getElementById("closeFix").value = "The agency upgraded the licence";
+  var by = document.getElementById("closeBy"); if ([].some.call(by.options, function(o){ return o.value === "incoming"; })) by.value = "incoming";
+  document.getElementById("closeForm").requestSubmit();
+  await wait(3300);   // the "combined" toast follows the "closed" one
+}
+
+window.runScene = async function(name){
+  await wait(600);
+  if (name === "settings"){
+    var s = document.getElementById("settings"); s.open = true;
+    s.scrollIntoView({block: "center"}); await wait(300);
+    return rect(s, 1);
+  }
+  if (name === "combined"){
+    await together();
+    var td = document.getElementById("today"), bar = document.querySelector(".topbar");
+    window.scrollTo(0, td.getBoundingClientRect().top + window.scrollY - bar.offsetHeight - 24); await wait(300);
+    var top = Math.max(0, bar.getBoundingClientRect().top);
+    return {x: 0, y: window.scrollY + top, width: window.innerWidth, height: window.innerHeight - top};
+  }
+  if (name === "changelog"){
+    await together();
+    var t = document.getElementById("toast"); t.classList.remove("show");
+    var h = document.getElementById("plan-history"); h.open = true;
+    var hand = h.closest("details:not(#plan-history)"); if (hand) hand.open = true;
+    h.scrollIntoView({block: "start"}); window.scrollBy(0, -16); await wait(300);
+    var b = rect(h, 12); b.height = Math.min(b.height, 520);
+    return b;
+  }
+  throw new Error("no scene " + name);
+};
+
+var ea = new XMLHttpRequest(); ea.open("GET", "/site/examples/ea-no-overlap.handover", false); ea.send();
+var h = JSON.parse(ea.responseText); delete h.progress;
+DISK.files[h.id] = pretty(h); DISK.last = h.id;
+var x = new XMLHttpRequest(); x.open("GET", "/app/web/index.html", false); x.send();
+document.open(); document.write(x.responseText.replace('<script src="core.js">', '<script src="/app/web/core.js">')); document.close();
+</script>
