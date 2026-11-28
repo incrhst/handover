@@ -4,6 +4,29 @@ Take over a role, one step at a time. **Handover** is a free Mac app that turns 
 
 **[Download for Mac](https://github.com/incrhst/handover/releases/latest/download/Handover.dmg)** · [Website](https://incrhst.github.io/handover/) · [The format](spec/SPEC.md)
 
+## How the pieces fit together
+
+```mermaid
+flowchart TB
+  chat["AI chat + the interview prompt<br/>Claude, ChatGPT or Gemini"] --> file
+  skill["Agent skill<br/>create, check, convert, merge"] --> file
+  file(["role.handover"]) -- "opened in the app" --> folder
+
+  folder[("Data folder<br/>handovers/ · progress/<br/>daily/ · backups/")]
+
+  folder <--> mcp["MCP server<br/>Claude Desktop or Claude Code"]
+  folder <--> app["Mac app<br/>Swift window around a web page"]
+  folder <-- "cloud service" --> other["The other person's Mac"]
+
+  app --> out["Notifications · Apple Reminders · a calendar file<br/>reports, exports and the transition kit"]
+```
+
+- **Writing the file.** Any AI chat writes a handover with [the interview prompt](site/prompt.md). The [agent skill](skills/handover/SKILL.md) does the same in Claude Code and other agents, and can also check, convert and merge files.
+- **One folder holds everything.** The app keeps the handovers, each person's ticks, the morning sheets and the backups in one data folder, `~/Documents/Handover` unless you choose another. Put it in iCloud Drive, Google Drive or Dropbox to [work on a handover together](#working-on-a-handover-together).
+- **Three things read and write it.** The Mac app, the [MCP server](#use-it-with-claude-mcp) and the other person's Mac. Changes made at the same time are merged item by item, whoever makes them. The MCP server reads your ticks but never ticks anything off.
+- **One copy of the logic.** The app, the skill's command-line tool and the MCP server all use the same `core.js`, so they agree on validation, schedules and merging.
+- **What the app sends out.** Reminders as Mac notifications, the regular jobs in Apple Reminders (ticks sync both ways), a calendar file, and reports, exports and the transition kit for people who don't use the app.
+
 ## How it works
 
 1. Download `Handover.dmg` and drag Handover to Applications.
@@ -35,13 +58,28 @@ The app keeps its files in `~/Documents/Handover` (you can choose another folder
 
 ### Working on a handover together
 
-Put the data folder in iCloud Drive, Google Drive or Dropbox, share it with the other person (for example the incoming assistant), and have them choose the same folder in **Settings › Change folder…**. No server and no account is involved: the cloud service copies the files, and the app does the rest.
+You share the whole data folder, the **Handover** folder that holds `handovers/`, `progress/`, `daily/` and `backups/`. Don't share only `handovers/`: the app looks for all four inside the folder you choose, and `progress/` is where each person's ticks are kept. The default `~/Documents/Handover` is only on your Mac (unless iCloud syncs your Documents folder), so move it to a cloud service first:
+
+1. In **Settings › Change folder…**, choose or create a folder in iCloud Drive, Google Drive or Dropbox, such as `iCloud Drive/Handover`. The app asks which handovers to bring, then copies those (with their progress and morning sheets) into it and uses it from then on. Your old folder keeps everything, and the app no longer uses it.
+2. Share that folder with the other person (for example the incoming assistant) from Finder or the cloud service.
+3. They choose the same folder in **Settings › Change folder…** on their Mac.
+
+No server and no account is involved: the cloud service copies the files, and the app does the rest.
 
 - **Changes show up on the other Mac** a few seconds after the cloud service copies the file across.
 - **Changes made at the same time are combined.** A save never overwrites the other person's work: if the file changed since the app last read it, the app merges the two, item by item. If you both changed the same field of the same item, your version is kept and the app tells you which field.
 - **Extra copies are folded in.** When a cloud service keeps two versions side by side (iCloud's conflict versions, or a file such as `role (Priya's conflicted copy).handover`), the app merges the extra one in and moves it to `backups/conflicts/`. Here the app can't tell which side changed a field, so where the copies differ the one on your Mac wins.
 - **Everyone keeps their own ticks and notes.** Progress is saved per person, and once two people share a handover, each person's morning sheet gets their name too.
 - **Everyone with the folder sees everything in it**, including items marked for some roles only. Share the folder only with people who may see the whole record. For the principal, use the reports and exports.
+- **One folder per Mac, shared as a whole.** Every handover in the folder goes to everyone who can open it, so you can't share one handover with one person and another with someone else from the same folder. Keep a folder for each group of people, and switch between them with **Change folder…**: it only brings the handovers you tick, and none start ticked when the folder already has someone's handovers in it. For someone who should see just one handover, send the file from **Share & export** instead. That's a copy, so their changes won't come back to you.
+
+**OneDrive hasn't been tested yet.** It should work, because the app only needs a folder that a cloud service keeps in step, but nobody has tried it. This is our best guess at how it would go:
+
+- **Setting it up.** One person shares the folder in OneDrive and the other chooses **Add shortcut to My files**, so it syncs to their Mac under `~/Library/CloudStorage/OneDrive-…`. Both then choose that folder in **Settings › Change folder…**.
+- **Changes and merging** should work as they do with Google Drive and Dropbox. The app watches the file for changes and merges before it saves, whichever service copies it. A file OneDrive hasn't downloaded yet is fetched when the app reads it.
+- **Extra copies are the part to watch.** OneDrive doesn't use iCloud's conflict versions, so the app can only find an extra copy by its name. We think OneDrive names one after the computer that saved it, such as `role-Priyas-MacBook-Pro.handover`, and the app should fold that in. If a computer's name is all lowercase letters, digits and hyphens, the copy could instead show up as a second handover in the list.
+
+If you try it, [tell us how it went](https://github.com/incrhst/handover/issues). To check it, make a change to the same handover on both Macs while one is offline, reconnect it, and see whether the app merges the extra copy and moves it to `backups/conflicts/`.
 
 The app checks GitHub for a new release once a day (or **Handover › Check for Updates…**). Installing one downloads the DMG, checks its SHA-256 and confirms the new app is signed by the same Apple developer team before swapping it in and relaunching. The only network request the app makes is this check, and you can turn it off in Settings.
 

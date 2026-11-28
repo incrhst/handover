@@ -289,8 +289,8 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
 
       <h3 class="part">Set it up in a minute</h3>
       <ol class="steps">
-        <li><h3>Move the data folder</h3><p>In Handover, open <b>Settings › Change folder…</b> and choose a folder in iCloud Drive, Google Drive or Dropbox.</p></li>
-        <li><h3>Share the folder</h3><p>Share that folder, not just the file, with the other person from Finder or the cloud service.</p></li>
+        <li><h3>Move the data folder</h3><p>Out of the box it's <code>Documents/Handover</code>, which stays on your Mac. In Handover, open <b>Settings › Change folder…</b> and choose or create a folder in iCloud Drive, Google Drive or Dropbox. Tick the handovers to bring, and the app copies them across.</p></li>
+        <li><h3>Share the folder</h3><p>Share that whole folder, the one holding <code>handovers</code>, <code>progress</code>, <code>daily</code> and <code>backups</code>, with the other person from Finder or the cloud service. Not just <code>handovers</code>, and not just the file.</p></li>
         <li><h3>They choose it too</h3><p>The other person picks the same folder in <b>Settings › Change folder…</b>. The handover is there, and each of you keeps your own ticks.</p></li>
       </ol>
       <figure class="shot">
@@ -325,6 +325,8 @@ h3.part{font-size:1.25rem;letter-spacing:-.01em;margin:44px 0 6px}
         <li><b>The same field, changed twice</b>If you both changed the same field of the same item, your version is kept and the app tells you which field, so you can check it.</li>
         <li><b>Extra copies are folded in</b>When a cloud service keeps two copies side by side, such as iCloud's conflict versions or a "conflicted copy" file, the app merges the extra one in and moves it to <code>backups/conflicts</code>.</li>
         <li><b>Your own ticks</b>Ticks, notes and your start date are saved per person, so one person's progress never changes the other's.</li>
+        <li><b>One folder, shared as a whole</b>Everyone who can open the folder sees every handover in it. Keep a folder for each group of people and switch with “Change folder…”, which only brings the handovers you tick. For one person and one handover, send the file from Share &amp; export instead.</li>
+        <li><b>OneDrive isn't tested yet</b>It should work like the others: share the folder, and the other person adds it to their OneDrive with “Add shortcut to My files”. Extra copies OneDrive keeps are the part we're least sure of. If you try it, <a href="https://github.com/incrhst/handover/issues">tell us how it went</a>.</li>
       </ul>
       <div class="note">Everyone with the folder sees everything in it, including items marked for some roles only. Share it only with people who may see the whole record. For the principal, use the reports and exports instead.</div>
     </div>
