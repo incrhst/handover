@@ -3,6 +3,8 @@ dist/
 .DS_Store
 # Serena (the coding agent tool) writes its project settings here.
 .serena/
+# npx skills add installs skills here, including a copy of this repo's own skill.
+.agents/
 *.p12
 *.p8
 # Real handover files can hold private details about people and clients.
