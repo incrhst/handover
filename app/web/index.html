@@ -55,30 +55,32 @@ button{font:inherit}
 /* Top bar: the sections on the left; a status, two quiet controls and the one primary action on the right.
    The handover's title isn't repeated here: the banner under the bar already says it. */
 .topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.topbar .wrap{display:flex;align-items:center;gap:8px 16px;min-height:56px;padding-top:8px;padding-bottom:8px}
-.topnav{display:flex;gap:2px;flex:1 1 auto;min-width:0;margin-left:-10px}
-.topnav a{flex:none;display:inline-flex;align-items:center;min-height:40px;padding:0 10px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap}
+.topbar .wrap{display:flex;align-items:center;gap:8px 12px;min-height:56px;padding-top:8px;padding-bottom:8px}
+.topnav{display:flex;gap:0;flex:1 1 auto;min-width:0;margin-left:-8px}
+.topnav a{flex:none;display:inline-flex;align-items:center;min-height:40px;padding:0 8px;border-radius:8px;color:var(--ink-3);text-decoration:none;font-weight:500;font-size:14px;white-space:nowrap}
 .topnav a:hover{background:var(--surface-2);color:var(--ink)}
-.topacts{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;margin-left:auto}
-.topacts .btn.primary{margin-left:8px}
-.gapnote{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--todo-ink);font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap}
-.gapnote::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--todo-dot);flex:none}
-.gapnote:hover{background:var(--todo-bg)}
+.topacts{display:flex;align-items:center;justify-content:flex-end;gap:0;flex:none;margin-left:auto}
+.topacts .btn.primary{margin-left:6px;min-height:36px;padding:0 13px;font-size:13.5px}
+.topacts .iconbtn{width:36px;height:36px;color:var(--ink-3)}
+.gapnote{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 8px;border:0;border-radius:8px;background:transparent;color:var(--ink-3);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.gapnote::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--todo-dot);flex:none}
+.gapnote:hover{background:var(--todo-bg);color:var(--todo-ink)}
 .more{position:relative}
 .menu{position:absolute;right:0;top:calc(100% + 6px);min-width:230px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.14);z-index:30}
 .menu button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:16px;min-height:40px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--ink);font-size:14px;font-weight:600;text-align:left;cursor:pointer;white-space:nowrap}
 .menu button:hover,.menu button:focus-visible{background:var(--surface-2);outline:none}
 .menu kbd{background:transparent;padding:0;color:var(--ink-3);font-size:12px}
 html:not(.is-native) .menu kbd{display:none}
-/* Narrower windows: the controls on the first row, the sections on a second row that scrolls sideways */
-@media (max-width: 1080px){
-  html{scroll-padding-top:112px}
-  .topbar .wrap{flex-wrap:wrap;row-gap:2px;padding-bottom:4px}
-  .topacts{order:-1;width:100%}
-  .topacts .gapnote{margin:0 auto 0 -10px}
-  .topnav{order:1;width:100%;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
-  .topnav::-webkit-scrollbar{display:none}
-}
+/* The bar stays one row while everything fits (fitBar() measures it). First "N gaps to fill"
+   shortens to "N gaps"; only when that isn't enough do the sections drop to a second row
+   that scrolls sideways, under the controls. */
+html.bar-tight .gapnote .gx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+html.bar-stacked{scroll-padding-top:108px}
+html.bar-stacked .topbar .wrap{flex-wrap:wrap;row-gap:0;padding-bottom:2px}
+html.bar-stacked .topacts{order:-1;width:100%}
+html.bar-stacked .topacts .gapnote{margin:0 auto 0 -8px}
+html.bar-stacked .topnav{order:1;width:100%;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+html.bar-stacked .topnav::-webkit-scrollbar{display:none}
 @media (max-width: 420px){
   .gapnote .gx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
@@ -1001,7 +1003,6 @@ function render(){
   if ($("decide")) nav.push(["#decide", "Who decides"]);
   if ($("records")) nav.push(["#records", "Records"]);
   if ($("handover")) nav.push(["#handover", "Handover"]);
-  nav.push(["#ask", "Ask"]);
   if (visibleSections().length) nav.push(["#refWrap", "Reference"]);
   var is11 = has11();
   $("exportRecordBtn").hidden = !is11;
@@ -1011,6 +1012,7 @@ function render(){
   $("reportMenuLabel").textContent = pf ? "Report for " + pf + "…" : "Report for the principal…";
   $("shareNote").textContent = is11 ? "For someone new: knowledge only, no process state or private items" : "The content only, for someone new";
   $("topnav").innerHTML = nav.map(function(n){ return '<a href="' + n[0] + '">' + n[1] + "</a>"; }).join("");
+  fitBar();
   if (KIT){
     ["reportMenuBtn", "exportRecordBtn", "kitMenuBtn"].forEach(function(id){ $(id).hidden = true; });
     document.querySelectorAll('#shareDlg [data-cmd="exportItems"], #shareDlg [data-cmd="shareFile"], #shareDlg [data-cmd="open"]').forEach(function(b){ b.hidden = true; });
@@ -1133,6 +1135,7 @@ function renderRefs(){
 function countGaps(){
   var all = C.gapList(H).length, chip = $("gaps");
   chip.hidden = !all; chip.innerHTML = "<span>" + all + (all === 1 ? " gap" : " gaps") + '<span class="gx"> to fill</span></span>';
+  fitBar();
   var shelfLinks = $("shelf").querySelectorAll("a");
   visibleSections().forEach(function(s, i){
     var n = document.querySelectorAll("#sec-" + CSS.escape(s.id) + " .md .todo").length;
@@ -1859,6 +1862,20 @@ q.addEventListener("input", function(){ clearTimeout(qtimer); qtimer = setTimeou
 q.addEventListener("keydown", function(e){ if (e.key === "Escape") clearSearch(); if (e.key === "Enter"){ var m = document.querySelector("mark.hit"); if (m) m.scrollIntoView({block: "center"}); } });
 function jumpToSearch(){ $("ask").scrollIntoView({block: "start"}); setTimeout(function(){ q.focus({preventScroll: true}); }, 250); }
 $("searchJump").addEventListener("click", jumpToSearch);
+
+/* The top bar is one row whenever it fits: try the full row, then "N gaps" without "to fill",
+   and only then put the sections on a second row. Measured, so it suits any set of sections. */
+function fitBar(){
+  var root = document.documentElement, nav = $("topnav");
+  var fits = function(){ return nav.scrollWidth <= nav.clientWidth + 1; };
+  root.classList.remove("bar-tight", "bar-stacked");
+  if (fits()) return;
+  root.classList.add("bar-tight");
+  if (!fits()) root.classList.replace("bar-tight", "bar-stacked"); // two rows leave room for "to fill" again
+}
+var fitTimer;
+window.addEventListener("resize", function(){ cancelAnimationFrame(fitTimer); fitTimer = requestAnimationFrame(fitBar); });
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitBar);
 
 /* The top bar's More menu (Report, Close): a button and a short menu, with arrow keys and Escape */
 function moreItems(){ return [].slice.call($("moreMenu").querySelectorAll("[role=menuitem]")).filter(function(b){ return !b.hidden; }); }
