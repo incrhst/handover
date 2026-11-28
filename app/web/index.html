@@ -421,6 +421,8 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
       <div class="s"><div class="k">3</div><h3>Save and load it</h3><p>Save the answer as <code>role.handover</code> and drop it here.</p></div>
     </div>
     <div id="library" style="margin-top:22px" hidden></div>
+    <!-- Settings moves in here while no handover is open (placeSettings) -->
+    <footer class="no-print" id="welcomeFoot"></footer>
   </div>
 </div>
 
@@ -533,8 +535,9 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
           <div class="row kit-only">Your ticks and notes are kept in this browser only. To carry on in the Handover app, use Share &amp; export, Export with my progress, and open that file in the app.</div>
           <div class="row browser-only">Running in a browser: progress is saved in this browser only. Install the Mac app for files on disk, backups and the daily sheet.</div>
           <div class="row" id="switchRow" hidden><label for="switchSel">Switch handover</label> <select id="switchSel"></select></div>
-          <div class="row"><button class="btn" type="button" data-cmd="resetProgress">Reset my progress</button></div>
+          <div class="row" id="resetRow"><button class="btn" type="button" data-cmd="resetProgress">Reset my progress</button></div>
         </details>
+        <div id="settingsHome" hidden></div>
         <p>Handover format <span id="fmtVersion"></span> · <a href="https://incrhst.github.io/handover/">About the format</a></p>
       </div>
     </footer>
@@ -925,14 +928,27 @@ function load(content, state, name, warnings){
   sectionIds = {}; (H.sections || []).forEach(function(s){ sectionIds[s.id] = true; });
   renderedIds = {}; (H.rendered || []).forEach(function(id){ renderedIds[id] = true; });
   $("errors").hidden = true;
-  $("welcome").hidden = true; $("app").hidden = false;
+  $("welcome").hidden = true; $("app").hidden = false; placeSettings();
   var wb = $("warnBanner");
   if (warnings && warnings.length){ wb.textContent = "This file uses a newer version of the format (" + H.handover + "). Some parts may not show: " + warnings.slice(0, 3).join("; "); wb.hidden = false; } else wb.hidden = true;
   render();
   window.scrollTo(0, 0);
   call("log", {msg: "loaded " + H.id + " · " + document.querySelectorAll("#main .todo").length + " gaps · today " + TODAY});
 }
-function showWelcome(){ $("app").hidden = true; $("welcome").hidden = false; renderLibrary(); }
+function showWelcome(){ $("app").hidden = true; $("welcome").hidden = false; placeSettings(); renderLibrary(); }
+/* Settings sit at the foot of the handover, and under the welcome screen while none is open, so they can always be reached
+   (Handover › Settings…, ⌘,). Most of them are the app's, not the handover's: only resetting progress needs one open. */
+function placeSettings(){
+  var box = $("settings"), open = !!H && !$("app").hidden;
+  if (open) $("settingsHome").before(box); else $("welcomeFoot").appendChild(box);
+  $("resetRow").hidden = !open;
+  $("switchRow").style.display = open ? "" : "none";
+}
+function openSettings(){
+  var box = $("settings");
+  box.open = true;
+  box.scrollIntoView({block: "start"});
+}
 
 /* ================= Rendering ================= */
 var stages = [], stepper;
@@ -1842,7 +1858,7 @@ function sheet(date){
 }
 function slugDate(){ return TODAY; }
 function command(c){
-  if (!H && ["open","sample"].indexOf(c) < 0) return;
+  if (!H && ["open","sample","settings","reveal","chooseFolder","checkUpdates","notificationSettings","remindersSettings"].indexOf(c) < 0) return;
   if (KIT && ["exportToday","exportProgress","calendar","print","find","ask","resetProgress"].indexOf(c) < 0) return;
   switch (c){
     case "open": return openFile();
@@ -1856,6 +1872,7 @@ function command(c){
     case "exportRecord": return call("saveAs", {filename: H.id + "-record.handover", content: JSON.stringify(H, null, 2) + "\n", mime: "application/json", title: "Export the full record"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "exportProgress": var o = JSON.parse(JSON.stringify(H)); o.progress = progressOut(); return call("saveAs", {filename: H.id + "-with-progress.handover", content: JSON.stringify(o, null, 2) + "\n", mime: "application/json", title: "Export with my progress"}).then(function(r){ if (r && r.path) toast("Saved " + r.path.split("/").pop()); });
     case "print": clearSearch(); document.querySelectorAll("details.ref").forEach(function(d){ d.open = true; }); return call("print");
+    case "settings": return openSettings();
     case "find": return jumpToSearch();
     case "ask": return jumpToSearch();
     case "reveal": return call("reveal");

@@ -31,7 +31,7 @@ The app keeps its files in `~/Documents/Handover` (you can choose another folder
 | `daily/` | The task sheet, written each morning at 07:00 while the app is running |
 | `backups/` | A dated copy of the two folders above, every day, last 30 days. `backups/conflicts/` keeps any extra copy a cloud folder made, once it has been merged in |
 
-Turn on **Settings › Open at login** so the morning sheet is always written.
+**Handover › Settings…** (⌘,) opens Settings from anywhere, even with no handover open. Turn on **Settings › Open at login** so the morning sheet is always written.
 
 ### Working on a handover together
 

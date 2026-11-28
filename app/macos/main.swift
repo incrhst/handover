@@ -460,6 +460,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
             item("About Handover", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: NSApp),
             item("Check for Updates…", #selector(checkForUpdates), target: self),
             .separator(),
+            item("Settings…", #selector(openSettings), ",", target: self),
+            .separator(),
             item("Show Data Folder", #selector(revealData), target: self),
             .separator(),
             item("Hide Handover", #selector(NSApplication.hide(_:)), "h"),
@@ -525,6 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler
     @objc func exportProgress() { command("exportProgress") }
     @objc func printPage() { command("print") }
     @objc func find() { command("find") }
+    @objc func openSettings() { command("settings") }
     @objc func checkForUpdates() { showWindow(); updater.check(userInitiated: true) }
     @objc func revealData() { NSWorkspace.shared.activateFileViewerSelecting([store.root]) }
     @objc func zoomReset() { web.pageZoom = 1 }
