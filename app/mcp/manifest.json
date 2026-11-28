@@ -1,0 +1,36 @@
+{
+  "manifest_version": "0.2",
+  "name": "handover",
+  "display_name": "Handover",
+  "version": "__VERSION__",
+  "description": "Ask Claude what's due today, search the reference and fill gaps in the handovers you keep in the Handover Mac app.",
+  "long_description": "Connects Claude to the handovers in the Handover app's data folder on this Mac. Claude can tell you what's overdue, due today and coming up, search the reference and the answers to questions, list what the handover still doesn't say, fill those gaps, add, edit, close and reopen records, and write a report for the principal or a job description.\n\nEverything stays on this Mac: the extension reads and writes the files in the data folder and makes no network requests. Each change Claude makes is in the handover's change log as made by an AI assistant, and the records it adds or edits show as AI drafts in the app for you to check. Like the app, it refuses passwords, PINs, codes, keys and card or bank numbers. Ticking jobs and tasks off stays with you, in the app.",
+  "author": { "name": "Incrementic", "url": "https://incrementic.com" },
+  "homepage": "https://incrhst.github.io/handover/",
+  "repository": { "type": "git", "url": "https://github.com/incrhst/handover" },
+  "license": "MIT",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/mcp-server.cjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/mcp-server.cjs"],
+      "env": { "HANDOVER_DATA": "${user_config.data_folder}" }
+    }
+  },
+  "tools": "__TOOLS__",
+  "user_config": {
+    "data_folder": {
+      "type": "directory",
+      "title": "Data folder",
+      "description": "Leave empty to use the folder chosen in the Handover app's Settings (~/Documents/Handover unless you changed it).",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": ["darwin"],
+    "runtimes": { "node": ">=16.0.0" }
+  },
+  "keywords": ["handover", "handoff", "executive assistant", "onboarding"]
+}

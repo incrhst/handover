@@ -824,11 +824,13 @@ var CLOSE_LABEL = {fixed: "Fixed", answered: "Answered", principal: "Handed to t
 var LIST_NOUN = {gaps: "gap", inProgress: "thing in progress", risks: "risk", rules: "rule", decisions: "decision", systems: "system", documents: "document", decide: "who-decides card"};
 function recordList(h, list){ return list === "decide" ? (h.decide && h.decide.cards) || [] : h[list] || []; }
 function stamp(o){ return o.at || new Date().toISOString().replace(/\.\d+Z$/, "Z"); }
+/* o.source "ai" records a change an AI assistant made (through the MCP server): the change log says so, and the item is marked for review */
+function viaAI(o){ return !!o && o.source === "ai"; }
 function logChange(out, o, text){
   if (out.handover === "1.0") return;
   var hist = out.history || [], used = {}; hist.forEach(function(x){ used[x.id] = true; });
   var base = (o.idPrefix || "change") + "-" + (o.date || "x"), id = base, k = 2; while (used[id]) id = base + "-" + k++;
-  var entry = {id: id, at: stamp(o), source: "app", text: text};
+  var entry = viaAI(o) ? {id: id, at: stamp(o), source: "ai", text: text.replace(" in the app", " by an AI assistant")} : {id: id, at: stamp(o), source: "app", text: text};
   if (o.role) entry.role = o.role;
   out.history = hist.concat([entry]);
 }
@@ -971,7 +973,7 @@ function addItem(h, list, values, o){
   while (used[id]) id = base + "-" + k++;
   var rec = {id: id};
   Object.keys(item).forEach(function(f){ rec[f] = item[f]; });
-  if (list !== "asNeeded"){ rec.added = stamp(o); if (o.role) rec.addedBy = o.role; }  /* jobs carry no provenance: the change log says who added it */
+  if (list !== "asNeeded"){ rec.added = stamp(o); if (o.role) rec.addedBy = o.role; if (viaAI(o)) rec.aiDrafted = true; }  /* jobs carry no provenance: the change log says who added it */
   if (list === "decide"){ out.decide = out.decide || {}; out.decide.cards = (out.decide.cards || []).concat([rec]); }
   else out[list] = items.concat([rec]);
   o.idPrefix = "add";
@@ -1120,7 +1122,7 @@ function editItem(h, list, id, values, o){
     if (next[d.k] === undefined) delete item[d.k]; else item[d.k] = next[d.k];
   });
   if (!changed.length) throw new Error("Nothing has changed.");
-  if (!EDIT_FIELDS[list]) delete item.aiDrafted;  /* a person has now checked it */
+  if (!EDIT_FIELDS[list]){ if (viaAI(o)) item.aiDrafted = true; else delete item.aiDrafted; }  /* a person has now checked it, or an AI changed it and a person should */
   o.idPrefix = "edit";
   logChange(out, o, "Edited " + LIST_NOUN[list] + " " + id + " in the app: " + listWords(changed) + ".");
   return {h: finish(out, o), changed: changed};
@@ -1140,7 +1142,7 @@ function fillGaps(h, answers, o){
   var out = h;
   picked.forEach(function(g){ out = fillGap(out, g.path, g.n, answers[g.key]); });
   var areas = []; picked.forEach(function(g){ var a = GAP_AREA[g.area] || g.area; if (areas.indexOf(a) < 0) areas.push(a); });
-  logChange(out, {idPrefix: "fill", date: o.date, at: o.at, role: o.role}, "Filled " + picked.length + (picked.length === 1 ? " gap" : " gaps") + " in the app: " + areas.join(", ") + ".");
+  logChange(out, {idPrefix: "fill", date: o.date, at: o.at, role: o.role, source: o.source},"Filled " + picked.length + (picked.length === 1 ? " gap" : " gaps") + " in the app: " + areas.join(", ") + ".");
   return {h: finish(out, o), filled: picked.length};
 }
 /* TODO gaps counted by top-level area, plus the open items on the gaps list */
