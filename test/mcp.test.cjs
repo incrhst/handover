@@ -66,6 +66,15 @@ test("initialize agrees a protocol version, lists the tools, and answers nothing
   assert.deepEqual(tools.filter(t => t.annotations.readOnlyHint).map(t => t.name), ["list_handovers", "get_today", "get_handover", "search", "list_gaps"]);
 });
 
+test("the server answers when another script loads it, as Claude Desktop's Node does", () => {
+  const dir = folder(["ea-no-overlap"]);
+  const input = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }) + "\n";
+  const r = spawnSync(process.execPath, ["-e", "require(process.argv[1])", server], { input, encoding: "utf8", timeout: 10000, env: Object.assign({}, process.env, { HANDOVER_DATA: dir, HANDOVER_BUNDLE_ID: "none" }) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout.trim()).result.serverInfo.name, "handover");
+  assert.match(r.stderr, /Handover MCP server .*, data folder /, "says on stderr that it started, for the client's log");
+});
+
 test("list_handovers lists the folder, and a call without an id says which handovers there are", () => {
   const dir = folder();
   const list = tool(dir, "list_handovers").json;

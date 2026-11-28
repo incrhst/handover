@@ -326,7 +326,10 @@ function handle(msg) {
   }
 }
 
-if (require.main === module) {
+// Always listen, however the file was loaded: Claude Desktop runs extensions in its own Node through a
+// wrapper that loads this file, so it is never require.main there. Anything on stderr goes to the client's log.
+{
+  console.error("Handover MCP server " + VERSION + ", data folder " + dataRoot());
   let buf = "";
   process.stdin.setEncoding("utf8");
   process.stdin.on("data", chunk => {
@@ -342,4 +345,3 @@ if (require.main === module) {
   });
   process.stdin.on("end", () => process.exit(0));
 }
-module.exports = { tools, handle };

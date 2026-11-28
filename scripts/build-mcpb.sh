@@ -18,10 +18,13 @@ sed "s/^const VERSION = \".*\";/const VERSION = \"$VERSION\";/" skills/handover/
 cp site/icon.png "$OUT/icon.png"
 cp LICENSE "$OUT/LICENSE"
 
-# The tool list comes from the server itself, so the manifest can't fall behind it
+# The tool list comes from the bundled server itself, asked over stdio, so the manifest can't fall behind it
 VERSION="$VERSION" node -e '
   const fs = require("fs");
-  const { tools } = require("./" + process.argv[1] + "/server/mcp-server.cjs");
+  const { execFileSync } = require("child_process");
+  const ask = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) + "\n";
+  const out = execFileSync(process.execPath, [process.argv[1] + "/server/mcp-server.cjs"], { input: ask, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"], env: Object.assign({}, process.env, { HANDOVER_BUNDLE_ID: "none" }) });
+  const { tools } = JSON.parse(out.trim().split("\n")[0]).result;
   const m = JSON.parse(fs.readFileSync("app/mcp/manifest.json", "utf8"));
   m.version = process.env.VERSION;
   m.tools = tools.map(t => ({ name: t.name, description: t.description.split(/(?<=\.) /)[0] }));
