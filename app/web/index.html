@@ -11,7 +11,7 @@
   --line:#dedad0; --hero:#1f4a36; --hero-ink:#f3f7f4; --hero-ink-2:#cfe3d7;
   --accent:#5b3f8c; --accent-ink:#ffffff; --accent-soft:#efeaf7;
   --green:#1f6b47; --purple:#5b3f8c; --orange:#a5481a; --red:#a1281d; --red-soft:#fbe9e7;
-  --todo-bg:#fff3d6; --todo-ink:#6b4500; --todo-line:#d9b25a;
+  --todo-bg:#fff3d6; --todo-ink:#6b4500; --todo-line:#d9b25a; --todo-dot:#d69a1f;
   --mark:#ffe58a; --warn-bg:#fdeceb; --warn-ink:#7c241c;
   --radius:14px; --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
@@ -24,7 +24,7 @@
     --line:#323733; --hero:#16352a; --hero-ink:#eef4f0; --hero-ink-2:#b4d1c0;
     --accent:#b9a2e6; --accent-ink:#1a1229; --accent-soft:#2a2338;
     --green:#7fcaa2; --purple:#c3aef0; --orange:#f0a074; --red:#f2a49b; --red-soft:#3a1c1a;
-    --todo-bg:#3a2e12; --todo-ink:#f3d58a; --todo-line:#6b5420;
+    --todo-bg:#3a2e12; --todo-ink:#f3d58a; --todo-line:#6b5420; --todo-dot:#e3b04b;
     --mark:#6b5a12; --warn-bg:#3a1c1a; --warn-ink:#f2b3ab; --shadow:none;
   }
 }
@@ -49,15 +49,42 @@ button{font:inherit}
 .btn:hover{border-color:var(--ink-3)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .btn.big{min-height:48px;padding:0 20px;font-size:15px;border-radius:11px}
-.gapchip{font-size:13px;font-weight:700;min-height:40px;padding:0 12px;border-radius:999px;background:var(--todo-bg);color:var(--todo-ink);border:1px dashed var(--todo-line);cursor:pointer;white-space:nowrap}
+.iconbtn{display:inline-grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:9px;background:transparent;color:var(--ink-2);cursor:pointer;flex:none}
+.iconbtn:hover,.iconbtn[aria-expanded="true"]{background:var(--surface-2);color:var(--ink)}
 
-/* Top bar */
+/* Top bar: the sections on the left; a status, two quiet controls and the one primary action on the right.
+   The handover's title isn't repeated here: the banner under the bar already says it. */
 .topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.topbar .wrap{display:flex;align-items:center;gap:8px;min-height:60px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
-.brand{font-weight:800;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
-.topnav{display:flex;gap:2px;margin-right:auto}
-.topnav a{display:inline-flex;align-items:center;min-height:40px;padding:0 10px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:14px}
+.topbar .wrap{display:flex;align-items:center;gap:8px 16px;min-height:56px;padding-top:8px;padding-bottom:8px}
+.topnav{display:flex;gap:2px;flex:1 1 auto;min-width:0;margin-left:-10px}
+.topnav a{flex:none;display:inline-flex;align-items:center;min-height:40px;padding:0 10px;border-radius:8px;color:var(--ink-2);text-decoration:none;font-weight:600;font-size:14px;white-space:nowrap}
 .topnav a:hover{background:var(--surface-2);color:var(--ink)}
+.topacts{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;margin-left:auto}
+.topacts .btn.primary{margin-left:8px}
+.gapnote{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--todo-ink);font-size:13px;font-weight:650;cursor:pointer;white-space:nowrap}
+.gapnote::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--todo-dot);flex:none}
+.gapnote:hover{background:var(--todo-bg)}
+.more{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 6px);min-width:230px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.14);z-index:30}
+.menu button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:16px;min-height:40px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:var(--ink);font-size:14px;font-weight:600;text-align:left;cursor:pointer;white-space:nowrap}
+.menu button:hover,.menu button:focus-visible{background:var(--surface-2);outline:none}
+.menu kbd{background:transparent;padding:0;color:var(--ink-3);font-size:12px}
+html:not(.is-native) .menu kbd{display:none}
+/* Narrower windows: the controls on the first row, the sections on a second row that scrolls sideways */
+@media (max-width: 1080px){
+  html{scroll-padding-top:112px}
+  .topbar .wrap{flex-wrap:wrap;row-gap:2px;padding-bottom:4px}
+  .topacts{order:-1;width:100%}
+  .topacts .gapnote{margin:0 auto 0 -10px}
+  .topnav{order:1;width:100%;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent)}
+  .topnav::-webkit-scrollbar{display:none}
+}
+@media (max-width: 420px){
+  .gapnote .gx{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
+@media (max-width: 360px){
+  .topacts .btn.primary{margin-left:2px;padding:0 10px}
+}
 .share-body h3{margin:10px 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
 .share-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}
 .share-list button{text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:11px 13px;border-radius:10px;cursor:pointer;font:inherit;font-size:14.5px;font-weight:650}
@@ -367,8 +394,6 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
 
 @media (max-width: 760px){
   .wrap{padding:0 16px}
-  .topnav{display:none}
-  .brand{margin-right:auto;max-width:160px}
   .panel{padding:20px 18px}
   .questions{padding:22px 18px}
   .md{padding:6px 16px 18px}
@@ -391,7 +416,7 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   details.ref > summary::after{display:none}
 }
 /* Transition kit: read-only, no app or editing controls */
-.is-kit [data-edit],.is-kit [data-add],.is-kit [data-close],.is-kit [data-reopen],.is-kit [data-export],.is-kit .addrow,.is-kit #gaps,.is-kit [data-cmd="close"],.is-kit [data-cmd="report"]{display:none!important}
+.is-kit [data-edit],.is-kit [data-add],.is-kit [data-close],.is-kit [data-reopen],.is-kit [data-export],.is-kit .addrow,.is-kit #gaps,.is-kit #moreWrap,.is-kit [data-cmd="close"],.is-kit [data-cmd="report"]{display:none!important}
 .is-kit #main .todo{cursor:auto}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.step-bar i,.toast{transition:none}.flash{animation:none}}
 </style>
@@ -430,13 +455,19 @@ details.small[open] > summary{border-bottom:1px solid var(--line);margin-bottom:
   <div class="banner" id="warnBanner" hidden></div>
   <header class="topbar">
     <div class="wrap">
-      <div class="brand" id="brand">Handover</div>
       <nav class="topnav" id="topnav" aria-label="Sections"></nav>
-      <button class="btn" id="searchJump" type="button">Search</button>
-      <button class="gapchip" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
-      <button class="btn" type="button" data-cmd="close" title="Close this handover and go back to the start (⇧⌘W in the Mac app)">Close</button>
-      <button class="btn" type="button" data-cmd="report" id="reportBtn" hidden title="A short, plain report for the principal: what's under way, the assistant's jobs, what needs them, or a job description">Report…</button>
-      <button class="btn primary" type="button" data-cmd="share" id="shareBtn" aria-haspopup="dialog">Share &amp; export…</button>
+      <div class="topacts">
+        <button class="gapnote" id="gaps" type="button" title="Fill in the parts that are still missing" hidden></button>
+        <button class="iconbtn" id="searchJump" type="button" aria-label="Search" title="Search this handover (/)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+        <div class="more" id="moreWrap">
+          <button class="iconbtn" id="moreBtn" type="button" aria-label="More" title="More" aria-haspopup="menu" aria-expanded="false" aria-controls="moreMenu"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+          <div class="menu" id="moreMenu" role="menu" aria-labelledby="moreBtn" hidden>
+            <button type="button" role="menuitem" data-cmd="report" id="reportBtn" hidden>Report…</button>
+            <button type="button" role="menuitem" data-cmd="close">Close this handover <kbd>⇧⌘W</kbd></button>
+          </div>
+        </div>
+        <button class="btn primary" type="button" data-cmd="share" id="shareBtn" aria-haspopup="dialog">Share &amp; export…</button>
+      </div>
     </div>
   </header>
 
@@ -959,7 +990,6 @@ var stages = [], stepper;
 function render(){
   TODAY = zoneParts(H.timezone).date;
   document.title = H.title;
-  $("brand").textContent = H.title;
   $("fmtVersion").textContent = C.version + (H.handover !== C.version ? " (this file uses " + H.handover + ")" : "");
   renderHero(); renderToday(); renderPath(); renderRole(); renderPeople(); renderDecide(); renderRecords(); renderHandover(); renderAsk(); renderRefs();
   syncReminders();
@@ -1102,7 +1132,7 @@ function renderRefs(){
 }
 function countGaps(){
   var all = C.gapList(H).length, chip = $("gaps");
-  chip.hidden = !all; chip.textContent = all + (all === 1 ? " gap" : " gaps") + " to fill";
+  chip.hidden = !all; chip.innerHTML = "<span>" + all + (all === 1 ? " gap" : " gaps") + '<span class="gx"> to fill</span></span>';
   var shelfLinks = $("shelf").querySelectorAll("a");
   visibleSections().forEach(function(s, i){
     var n = document.querySelectorAll("#sec-" + CSS.escape(s.id) + " .md .todo").length;
@@ -1829,6 +1859,23 @@ q.addEventListener("input", function(){ clearTimeout(qtimer); qtimer = setTimeou
 q.addEventListener("keydown", function(e){ if (e.key === "Escape") clearSearch(); if (e.key === "Enter"){ var m = document.querySelector("mark.hit"); if (m) m.scrollIntoView({block: "center"}); } });
 function jumpToSearch(){ $("ask").scrollIntoView({block: "start"}); setTimeout(function(){ q.focus({preventScroll: true}); }, 250); }
 $("searchJump").addEventListener("click", jumpToSearch);
+
+/* The top bar's More menu (Report, Close): a button and a short menu, with arrow keys and Escape */
+function moreItems(){ return [].slice.call($("moreMenu").querySelectorAll("[role=menuitem]")).filter(function(b){ return !b.hidden; }); }
+function setMore(open, focusBtn){
+  $("moreMenu").hidden = !open; $("moreBtn").setAttribute("aria-expanded", open ? "true" : "false");
+  if (open){ var f = moreItems()[0]; if (f) f.focus(); } else if (focusBtn) $("moreBtn").focus();
+}
+$("moreBtn").addEventListener("click", function(){ setMore($("moreMenu").hidden); });
+$("moreBtn").addEventListener("keydown", function(e){ if (e.key === "ArrowDown"){ e.preventDefault(); setMore(true); } });
+$("moreMenu").addEventListener("keydown", function(e){
+  var items = moreItems(), i = items.indexOf(document.activeElement);
+  if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); setMore(false, true); }
+  else if (e.key === "ArrowDown" || e.key === "ArrowUp"){ e.preventDefault(); items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus(); }
+  else if (e.key === "Home" || e.key === "End"){ e.preventDefault(); items[e.key === "Home" ? 0 : items.length - 1].focus(); }
+  else if (e.key === "Tab") setMore(false);
+});
+document.addEventListener("click", function(e){ if (!$("moreMenu").hidden && !$("moreBtn").contains(e.target)) setMore(false); });
 document.addEventListener("keydown", function(e){ if (e.key === "/" && H && !$("app").hidden && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)){ e.preventDefault(); jumpToSearch(); } });
 
 /* Notes */
