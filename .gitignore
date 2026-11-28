@@ -5,6 +5,8 @@ dist/
 .serena/
 # npx skills add installs skills here, including a copy of this repo's own skill.
 .agents/
+# Claude Code's local settings for this checkout (preview servers, worktrees).
+.claude/
 *.p12
 *.p8
 # Real handover files can hold private details about people and clients.
